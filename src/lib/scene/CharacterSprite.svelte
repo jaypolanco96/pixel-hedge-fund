@@ -17,6 +17,7 @@
 		lampBoost = 0,
 		tick = 0,
 		pinned = false,
+		blofinBadge = null as string | null,
 		onInspect = () => {},
 		onPin = () => {},
 		onLeverageCommit = (_leverage: number) => {}
@@ -31,6 +32,8 @@
 		lampBoost?: number;
 		tick?: number;
 		pinned?: boolean;
+		/** Short BloFin overlay label when a live position is assigned to this desk. */
+		blofinBadge?: string | null;
 		onInspect?: () => void;
 		onPin?: () => void;
 		onLeverageCommit?: (leverage: number) => void;
@@ -140,6 +143,9 @@
 
 	{#if trader}
 		<div class="status-badge" data-status={status}>{statusLabel(status)}</div>
+		{#if blofinBadge}
+			<div class="blofin-badge" title="BloFin position assigned">{blofinBadge}</div>
+		{/if}
 	{:else}
 		<div class="staff-note">{note}</div>
 	{/if}
@@ -224,7 +230,9 @@
 		position: relative;
 		width: 100%;
 		max-width: 128px;
+		margin: 0 auto;
 		height: 154px;
+		overflow: visible;
 		outline: none;
 		image-rendering: pixelated;
 		cursor: pointer;
@@ -250,8 +258,8 @@
 	.character[data-skin='chris'] { --skin:#d9ac83;--hair:#1d1b1a;--suit:#304562; }
 	.character[data-skin='samir'] { --skin:#b7784d;--hair:#15100d;--suit:#313e59; }
 
-	.desk-cluster { position:absolute; left:0; right:0; top:47px; height:72px; z-index:4; }
-	.wood-top { position:absolute; left:2px; right:2px; top:43px; height:8px; background:#9d5e2d; border:2px solid #3d2417; box-shadow:inset 0 2px #c47b3a, 0 3px 0 #2a1710; }
+	.desk-cluster { position:absolute; left:0; right:0; top:47px; height:72px; z-index:4; overflow:visible; }
+	.wood-top { position:absolute; left:2px; right:2px; top:43px; height:8px; z-index:2; background:#9d5e2d; border:2px solid #3d2417; box-shadow:inset 0 2px #c47b3a, 0 3px 0 #2a1710; }
 	.desk-base { position:absolute; left:8px; right:8px; top:51px; height:25px; background:#60391f; border:2px solid #332015; z-index:-1; }
 	.desk-base i { position:absolute; bottom:-13px; width:7px; height:14px; background:#4a2b1c; }
 	.desk-base i:first-child { left:5px; }.desk-base i:last-child { right:5px; }
@@ -261,13 +269,14 @@
 	.desk-lamp { position:absolute; right:11px; top:4px; width:23px; height:39px; z-index:5; }
 	.desk-lamp span { position:absolute; left:10px; bottom:0; width:3px; height:28px; background:#34291e; transform:rotate(9deg); transform-origin:bottom; }
 	.desk-lamp i { position:absolute; top:1px; right:0; width:15px; height:9px; background:#2b5137; border:2px solid #1a291d; clip-path:polygon(15% 0,85% 0,100% 100%,0 100%); box-shadow:0 7px 10px rgba(244,190,94,var(--lamp)); }
-	.keyboard { position:absolute; left:35px; top:40px; width:34px; height:6px; background:#c2b797; border:1px solid #494235; transform:skewX(-12deg); }
-	.mug { position:absolute; right:34px; top:37px; width:8px; height:9px; background:#ddd0ad; border:1px solid #40392f; }
-	.mug i { position:absolute; right:-4px; top:2px; width:4px; height:4px; border:1px solid #ddd0ad; }
+	.keyboard { position:absolute; left:35px; top:40px; width:34px; height:6px; z-index:3; background:#c2b797; border:1px solid #494235; transform:skewX(-12deg); }
+	/* Sit fully on the wood top — higher z-index so the desk surface doesn't clip the mug */
+	.mug { position:absolute; right:28px; top:34px; width:9px; height:10px; z-index:6; background:#ddd0ad; border:1px solid #40392f; box-sizing:border-box; }
+	.mug i { position:absolute; right:-3px; top:2px; width:4px; height:5px; border:1px solid #ddd0ad; border-left:0; box-sizing:border-box; }
 	.desk-phone { position:absolute; left:5px; top:33px; width:16px; height:9px; background:#9b927b; border:2px solid #40392f; border-radius:3px; }
 	.clipboard { position:absolute; right:3px; top:34px; width:16px; height:11px; background:#d5b96e; border:1px solid #47331e; transform:rotate(-7deg); }
 
-	.person { position:absolute; left:23px; top:53px; width:38px; height:62px; z-index:7; transform-origin:50% 100%; }
+	.person { position:absolute; left:23px; top:34px; width:38px; height:62px; z-index:7; transform-origin:50% 100%; }
 	.hair { position:absolute; top:0; left:10px; width:20px; height:13px; background:var(--hair); border:2px solid #21140f; clip-path:polygon(0 15%,20% 0,80% 0,100% 20%,95% 85%,5% 85%); }
 	.head { position:absolute; top:8px; left:12px; width:16px; height:16px; background:var(--skin); border:2px solid #4a2d1e; }
 	.head i { position:absolute; top:5px; right:2px; width:2px; height:2px; background:#261812; box-shadow:-7px 0 #261812; }
@@ -279,7 +288,7 @@
 	.legs i { position:absolute; left:10px; width:3px; height:15px; background:#111720; }
 	.receiver { position:absolute; right:-2px; top:6px; width:5px; height:15px; background:#262c31; border:1px solid #0e1112; }
 	.pm-pad { position:absolute; right:-5px; top:34px; width:10px; height:15px; background:#d8c177; border:1px solid #49361e; transform:rotate(9deg); }
-	.chair { position:absolute; left:17px; top:88px; width:50px; height:33px; z-index:3; background:#352d2a; border:2px solid #171313; border-radius:8px 8px 2px 2px; }
+	.chair { position:absolute; left:17px; top:69px; width:50px; height:33px; z-index:3; background:#352d2a; border:2px solid #171313; border-radius:8px 8px 2px 2px; }
 
 	.character[data-anim='type'] .arm { animation:type .34s steps(2) infinite; }
 	.character[data-anim='phone'] .arm.right { transform:rotate(-112deg) translateY(-5px); }
@@ -305,6 +314,8 @@
 	.activity { position:absolute; right:7px; top:106px; z-index:12; padding:1px 3px; color:#d9ccb6; background:#2a211d; border:1px solid #5d4432; font:5px var(--mono, monospace); }
 
 	.status-badge { position:absolute; left:1px; top:31px; z-index:15; padding:2px 4px; background:#33433b; color:#e6d9bf; border:2px solid #201713; font:6px var(--mono, monospace); text-transform:uppercase; letter-spacing:.05em; box-shadow:2px 2px 0 rgba(20,10,5,.45); }
+	.blofin-badge { position:absolute; left:1px; top:48px; z-index:16; max-width:calc(100% - 4px); padding:2px 4px; background:#0c2a1c; color:#7dffb0; border:2px solid #1a5a3a; font:5px/1.1 var(--mono, monospace); letter-spacing:.04em; box-shadow:2px 2px 0 rgba(10,40,25,.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+	.blofin-badge::before { content:'BF '; opacity:.7; }
 	.status-badge[data-status='open'] { background:#2e6d4d; color:#d6ffe2; }
 	.status-badge[data-status='thinking'] { background:#8a682c; color:#fff2bd; }
 	.status-badge[data-status='flat'] { background:#554a46; color:#c9bfb4; }

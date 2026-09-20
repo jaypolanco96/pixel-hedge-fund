@@ -22,7 +22,7 @@ export interface CandlesResponse {
 	symbol: string;
 	display: string;
 	tf: Tf;
-	provider: 'kraken-futures' | 'sample';
+	provider: 'kraken-futures' | 'bybit' | 'sample';
 	sample: boolean;
 	bars: Bar[];
 }
@@ -35,7 +35,7 @@ export interface QuoteResponse {
 	bid: number;
 	ask: number;
 	t: number;
-	provider: 'kraken-futures' | 'sample';
+	provider: 'kraken-futures' | 'bybit' | 'sample';
 	sample: boolean;
 	change24h?: number;
 }
@@ -63,7 +63,7 @@ export interface SignalResponse {
 		rr_tp1: number;
 	};
 	sample: boolean;
-	provider: 'kraken-futures' | 'sample';
+	provider: 'kraken-futures' | 'bybit' | 'sample';
 }
 
 // Trader leverage is user-editable within the persisted 1–1000 range.

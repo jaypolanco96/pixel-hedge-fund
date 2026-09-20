@@ -32,10 +32,6 @@
 	let placed = false;
 
 	function viewportSize() {
-		const hud = document.getElementById('phf-hud-root');
-		if (hud) {
-			return { w: hud.clientWidth, h: hud.clientHeight };
-		}
 		return { w: window.innerWidth, h: window.innerHeight };
 	}
 
@@ -47,29 +43,32 @@
 		};
 	}
 
-	/** Double-lock: fixed !important + left/top/z-index on the drag root itself. */
+	/**
+	 * Plain position:fixed — no visualViewport offset, no scroll reassert.
+	 * Parent is #phf-hud-root on document.body (no transformed ancestors).
+	 */
 	function applyPosition(nextLeft: number, nextTop: number) {
 		left = nextLeft;
 		top = nextTop;
 		if (!root) return;
 		const z = dragging ? 100001 : 100000;
-		root.style.cssText = [
-			'position: fixed !important',
-			`left: ${nextLeft}px`,
-			`top: ${nextTop}px`,
-			'pointer-events: auto',
-			`z-index: ${z}`,
-			'margin: 0',
-			'width: max-content',
-			'max-width: 100vw',
-			`cursor: ${dragging ? 'grabbing' : 'grab'}`,
-			'touch-action: none',
-			'user-select: none',
-			'-webkit-user-select: none',
-			'transform: none',
-			'filter: none',
-			`visibility: ${ready ? 'visible' : 'hidden'}`
-		].join('; ');
+		root.style.setProperty('position', 'fixed', 'important');
+		root.style.left = `${nextLeft}px`;
+		root.style.top = `${nextTop}px`;
+		root.style.right = 'auto';
+		root.style.bottom = 'auto';
+		root.style.margin = '0';
+		root.style.width = 'max-content';
+		root.style.maxWidth = '100vw';
+		root.style.pointerEvents = 'auto';
+		root.style.zIndex = String(z);
+		root.style.cursor = dragging ? 'grabbing' : 'grab';
+		root.style.touchAction = 'none';
+		root.style.userSelect = 'none';
+		root.style.setProperty('-webkit-user-select', 'none');
+		root.style.transform = 'none';
+		root.style.filter = 'none';
+		root.style.visibility = ready ? 'visible' : 'hidden';
 	}
 
 	function moveTo(x: number, y: number) {
@@ -77,16 +76,6 @@
 		const rect = root.getBoundingClientRect();
 		const next = clamp(x, y, rect.width, rect.height);
 		applyPosition(next.left, next.top);
-	}
-
-	function reassert() {
-		if (!ready || !root) return;
-		const hud = ensureHudRoot();
-		if (root.parentElement !== hud) {
-			hud.appendChild(root);
-		}
-		applyPosition(left, top);
-		moveTo(left, top);
 	}
 
 	function placeInitial() {
@@ -103,57 +92,43 @@
 		moveTo(initialLeft, initialTop);
 	}
 
-	/**
-	 * Svelte action: keep the node under #phf-hud-root even when reactivity
-	 * tries to move it back under TradingFloor on each update.
-	 */
+	/** Move node under body HUD once; keep it there if Svelte reparents. */
 	const hudPortal: Action<HTMLElement> = (node) => {
 		const hud = ensureHudRoot();
 		hud.appendChild(node);
 
 		let destroyed = false;
-		let resizeObserver: ResizeObserver | undefined;
-		let rafId = 0;
+		let mo: MutationObserver | undefined;
 
 		const keepParented = () => {
 			if (destroyed) return;
 			const h = ensureHudRoot();
 			if (node.parentElement !== h) {
 				h.appendChild(node);
+				if (ready) applyPosition(left, top);
 			}
-			rafId = requestAnimationFrame(keepParented);
 		};
-		rafId = requestAnimationFrame(keepParented);
 
-		window.addEventListener('resize', reassert);
-		window.addEventListener('scroll', reassert, true);
-		const vv = window.visualViewport;
-		vv?.addEventListener('resize', reassert);
-		vv?.addEventListener('scroll', reassert);
+		mo = new MutationObserver(keepParented);
+		mo.observe(document.body, { childList: true, subtree: true });
+
+		const onResize = () => {
+			if (!ready || !root) return;
+			moveTo(left, top);
+		};
+		window.addEventListener('resize', onResize);
 
 		void (async () => {
 			await tick();
 			if (destroyed) return;
 			placeInitial();
-			resizeObserver = new ResizeObserver(reassert);
-			resizeObserver.observe(node);
 		})();
 
 		return {
-			update() {
-				const h = ensureHudRoot();
-				if (node.parentElement !== h) {
-					h.appendChild(node);
-				}
-			},
 			destroy() {
 				destroyed = true;
-				cancelAnimationFrame(rafId);
-				window.removeEventListener('resize', reassert);
-				window.removeEventListener('scroll', reassert, true);
-				vv?.removeEventListener('resize', reassert);
-				vv?.removeEventListener('scroll', reassert);
-				resizeObserver?.disconnect();
+				window.removeEventListener('resize', onResize);
+				mo?.disconnect();
 				releaseHudChild(node);
 			}
 		};
@@ -196,15 +171,10 @@
 		applyPosition(left, top);
 	}
 
-	// Re-apply fixed styles whenever drag/ready state flips (Svelte may rewrite style attrs).
 	$effect(() => {
 		if (!root || !ready) return;
 		void dragging;
 		applyPosition(left, top);
-		const hud = ensureHudRoot();
-		if (root.parentElement !== hud) {
-			hud.appendChild(root);
-		}
 	});
 </script>
 
@@ -225,14 +195,18 @@
 </div>
 
 <style>
-	/* Non-positioning chrome only — left/top/position live on inline style after HUD mount. */
 	.viewport-drag {
+		position: fixed;
 		width: max-content;
 		max-width: 100vw;
 		cursor: grab;
 		touch-action: none;
 		user-select: none;
 		-webkit-user-select: none;
+		z-index: 100000;
+		pointer-events: auto;
+		transform: none;
+		filter: none;
 	}
 
 	.viewport-drag.is-dragging {

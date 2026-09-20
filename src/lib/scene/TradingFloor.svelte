@@ -11,12 +11,30 @@
 	import FloorPet from './FloorPet.svelte';
 	import TrashCan from './TrashCan.svelte';
 	import MariachiBand from './MariachiBand.svelte';
-	import ViewportDrag from '$lib/ui/ViewportDrag.svelte';
+	import DeskConsole from './DeskConsole.svelte';
+	import ToastStack from '$lib/ui/ToastStack.svelte';
+	import {
+		DEFAULT_DESK_SETTINGS,
+		loadDeskSettings,
+		saveDeskSettings,
+		type DeskSettings
+	} from '$lib/persist/deskSettings';
+	import MonitorPanel from './MonitorPanel.svelte';
+	import QuickTradePanel from './QuickTradePanel.svelte';
+	import ProfitCalcPanel from './ProfitCalcPanel.svelte';
 	import { TRADERS, STAFF } from '$lib/characters/cast';
+	import {
+		loadBloFinAssignments,
+		type BloFinAssignments
+	} from '$lib/persist/blofinAssignments';
+	import {
+		loadScenePosition,
+		saveScenePosition
+	} from '$lib/persist/scenePositions';
 	import { initialSimClock, tickSimClock, SIM_MINUTES_PER_REAL_SECOND } from '$lib/weather/timeCycle';
 	import { initialKong, tickKong } from '$lib/weather/kongEvent';
 	import { initialMariachi, tickMariachi } from '$lib/weather/mariachiEvent';
-	import { DEFAULT_DISPLAY, SYMBOLS, resolveSymbol } from '$lib/data/symbols';
+	import { DEFAULT_DISPLAY, SYMBOLS, SYMBOL_CATEGORIES, resolveSymbol, symbolsInCategory, type SymbolCategory } from '$lib/data/symbols';
 	import type {
 		Bar,
 		CandlesResponse,
@@ -55,6 +73,16 @@
 	let lastKongPulse = $state(-1);
 	let mariachi = $state(initialMariachi());
 	let leverageOverrides = $state<LeverageOverrides>({});
+	let deskConsoleOpen = $state(false);
+	let monitorPanelOpen = $state(false);
+	let quickTradeOpen = $state(false);
+	let profitCalcOpen = $state(false);
+	let coffeeTripActive = $state(false);
+	let coffeeTripTimer: ReturnType<typeof setTimeout> | null = null;
+	let deskSettings = $state(loadDeskSettings());
+	let settingsOpen = $state(false);
+	let blofinAssignments = $state<BloFinAssignments>({});
+	let blofinOverlay = $state<Record<string, string>>({});
 	let sceneFrame = $state<HTMLDivElement>();
 	let clipboardRoot = $state<HTMLElement>();
 	let clipboardLeft = $state(16);
@@ -64,6 +92,89 @@
 	let clipboardPointerId: number | null = null;
 	let clipboardOffsetX = 0;
 	let clipboardOffsetY = 0;
+
+	const PRICE_PAD_KEY = 'phf-price-pad-pos';
+	let pricePadRoot = $state<HTMLElement>();
+	let pricePadLeft = $state(18);
+	let pricePadTop = $state(0);
+	let pricePadReady = $state(false);
+	let pricePadPlaced = $state(false);
+	let pricePadDragging = $state(false);
+	let pricePadPointerId: number | null = null;
+	let pricePadOffsetX = 0;
+	let pricePadOffsetY = 0;
+	let pricePadSaved = $state<{ left: number; top: number } | null>(null);
+
+
+	/** Individual desk props — each drags alone; positions in localStorage. */
+	type DeskPropId = 'pad' | 'calc' | 'coffee' | 'set' | 'keyboard' | 'wsj' | 'legal';
+	type DeskPropState = {
+		left: number;
+		top: number;
+		ready: boolean;
+		placed: boolean;
+		dragging: boolean;
+		suppressClick: boolean;
+	};
+
+	const DESK_PROP_KEYS: Record<DeskPropId, string> = {
+		pad: 'phf-tool-pad-pos',
+		calc: 'phf-tool-calc-pos',
+		coffee: 'phf-tool-coffee-pos',
+		set: 'phf-tool-set-pos',
+		keyboard: 'phf-tool-keyboard-pos',
+		wsj: 'phf-wsj-pos',
+		legal: 'phf-legal-pad-pos'
+	};
+
+	const DESK_PROP_DEFAULTS: Record<DeskPropId, { left: number; top: number }> = {
+		pad: { left: 990, top: 28 },
+		calc: { left: 1086, top: 30 },
+		coffee: { left: 1134, top: 34 },
+		set: { left: 1178, top: 36 },
+		keyboard: { left: 790, top: 52 },
+		wsj: { left: 185, top: 20 },
+		legal: { left: 325, top: 16 }
+	};
+
+	let foregroundDesk = $state<HTMLElement>();
+	let deskPropEls: Partial<Record<DeskPropId, HTMLElement>> = {};
+	let deskProps = $state<Record<DeskPropId, DeskPropState>>(
+		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).reduce(
+			(acc, id) => {
+				acc[id] = {
+					...DESK_PROP_DEFAULTS[id],
+					ready: false,
+					placed: false,
+					dragging: false,
+					suppressClick: false
+				};
+				return acc;
+			},
+			{} as Record<DeskPropId, DeskPropState>
+		)
+	);
+
+	/** MARKET WIRE category filter */
+	let wireCategory = $state<SymbolCategory | 'all'>('all');
+	const wireSymbols = $derived(symbolsInCategory(wireCategory));
+	const filteredTapeQuotes = $derived(
+		tapeQuotes.filter((q) => {
+			if (wireCategory === 'all') return true;
+			return resolveSymbol(q.display).category === wireCategory;
+		})
+	);
+
+	/** WSJ headlines for active symbol */
+	type DeskHeadline = { title: string; link: string; source: string };
+	let newsHeadlines = $state<DeskHeadline[]>([]);
+	let newsSample = $state(true);
+	let wsjExpanded = $state(false);
+
+	/** Live exchange positions for yellow legal pad */
+	type DeskPosLine = { venue: 'BF' | 'BY'; text: string };
+	let deskPosLines = $state<DeskPosLine[]>([]);
+	let deskPosNote = $state<string | null>(null);
 
 	const activeDef = $derived(resolveSymbol(activeDisplay));
 	const traders = $derived(applyLeverageOverrides(TRADERS, leverageOverrides));
@@ -103,6 +214,60 @@
 	function legFor(id: string) {
 		return legs.find((l) => l.traderId === id) ?? null;
 	}
+	function blofinBadgeFor(traderId: string): string | null {
+		if (!deskSettings.showBlofinBadges) return null;
+		if (blofinOverlay[traderId]) return blofinOverlay[traderId];
+		const assigned = Object.entries(blofinAssignments)
+			.filter(([, tid]) => tid === traderId)
+			.map(([pid]) => pid);
+		return assigned.length ? `BF×${assigned.length}` : null;
+	}
+	function openDeskConsole() {
+		deskConsoleOpen = true;
+	}
+	function openMonitorPanel() {
+		monitorPanelOpen = true;
+	}
+	function openQuickTrade() {
+		quickTradeOpen = true;
+	}
+	function openProfitCalc() {
+		profitCalcOpen = true;
+	}
+	function updateDeskSetting<K extends keyof DeskSettings>(key: K, value: DeskSettings[K]) {
+		deskSettings = { ...deskSettings, [key]: value };
+		saveDeskSettings(deskSettings);
+	}
+
+	function toggleHideAllDraggables() {
+		const hide = !deskSettings.hideAllDraggables;
+		deskSettings = {
+			...deskSettings,
+			hideAllDraggables: hide,
+			showClipboard: !hide,
+			showPricePad: !hide,
+			showFax: !hide,
+			showPet: !hide,
+			showTrash: !hide
+		};
+		saveDeskSettings(deskSettings);
+	}
+
+	function openDeskSettings() {
+		settingsOpen = true;
+	}
+
+	function triggerCoffeeTrip() {
+		if (deskSettings.disableCoffeeTrip || deskSettings.reduceMotion) return;
+		if (coffeeTripActive) return;
+		coffeeTripActive = true;
+		if (coffeeTripTimer) clearTimeout(coffeeTripTimer);
+		const ms = 2000 + Math.floor(Math.random() * 2000); // 2–4s
+		coffeeTripTimer = setTimeout(() => {
+			coffeeTripActive = false;
+			coffeeTripTimer = null;
+		}, ms);
+	}
 	function postureFor(t: TraderDef) {
 		return postureForTrader(t, signal, legFor(t.id));
 	}
@@ -125,6 +290,8 @@
 		);
 		saveLeverageOverrides(next);
 		pollMarket();
+		pollNews();
+		pollDeskPositions();
 	}
 
 	function fmt(n: number | undefined, digits = priceDecimals) {
@@ -207,6 +374,397 @@
 		if (clipboardRoot.hasPointerCapture(event.pointerId)) clipboardRoot.releasePointerCapture(event.pointerId);
 	}
 
+	function pricePadBounds() {
+		if (!sceneFrame || !pricePadRoot) return null;
+		const width = pricePadRoot.offsetWidth;
+		const height = pricePadRoot.offsetHeight;
+		return {
+			maxLeft: Math.max(0, sceneFrame.clientWidth - width),
+			maxTop: Math.max(0, sceneFrame.clientHeight - height)
+		};
+	}
+
+	function clampPricePad(left: number, top: number) {
+		const bounds = pricePadBounds();
+		if (!bounds) return { left, top };
+		return {
+			left: Math.min(Math.max(0, left), bounds.maxLeft),
+			top: Math.min(Math.max(0, top), bounds.maxTop)
+		};
+	}
+
+	function setPricePadPosition(left: number, top: number) {
+		const next = clampPricePad(left, top);
+		pricePadLeft = next.left;
+		pricePadTop = next.top;
+	}
+
+	function defaultPricePadPosition() {
+		if (!sceneFrame || !pricePadRoot) return { left: 18, top: 18 };
+		const h = pricePadRoot.offsetHeight || 88;
+		return {
+			left: 18,
+			top: Math.max(0, sceneFrame.clientHeight - h - 18)
+		};
+	}
+
+	function placePricePad() {
+		if (!sceneFrame || !pricePadRoot || pricePadPlaced) return;
+		const fallback = defaultPricePadPosition();
+		setPricePadPosition(pricePadSaved?.left ?? fallback.left, pricePadSaved?.top ?? fallback.top);
+		pricePadPlaced = true;
+		pricePadReady = true;
+	}
+
+	function reflowPricePad() {
+		if (!pricePadReady || !pricePadRoot) return;
+		setPricePadPosition(pricePadLeft, pricePadTop);
+	}
+
+	function onPricePadPointerDown(event: PointerEvent) {
+		if (!pricePadRoot || pricePadPointerId !== null) return;
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		const target = event.target;
+		if (target instanceof HTMLElement && target.closest('a, button, input, select, textarea, [data-no-drag]')) return;
+
+		event.preventDefault();
+		const frameRect = sceneFrame?.getBoundingClientRect();
+		const panelRect = pricePadRoot.getBoundingClientRect();
+		const scaleX = frameRect && frameRect.width > 0 ? sceneFrame!.clientWidth / frameRect.width : 1;
+		const scaleY = frameRect && frameRect.height > 0 ? sceneFrame!.clientHeight / frameRect.height : 1;
+		pricePadOffsetX = (event.clientX - panelRect.left) * scaleX;
+		pricePadOffsetY = (event.clientY - panelRect.top) * scaleY;
+		pricePadPointerId = event.pointerId;
+		pricePadDragging = true;
+		pricePadRoot.setPointerCapture(event.pointerId);
+	}
+
+	function onPricePadPointerMove(event: PointerEvent) {
+		if (!pricePadDragging || pricePadPointerId !== event.pointerId || !sceneFrame) return;
+		const frameRect = sceneFrame.getBoundingClientRect();
+		const scaleX = frameRect.width > 0 ? sceneFrame.clientWidth / frameRect.width : 1;
+		const scaleY = frameRect.height > 0 ? sceneFrame.clientHeight / frameRect.height : 1;
+		setPricePadPosition(
+			(event.clientX - frameRect.left) * scaleX - pricePadOffsetX,
+			(event.clientY - frameRect.top) * scaleY - pricePadOffsetY
+		);
+	}
+
+	function stopPricePadDragging(event: PointerEvent) {
+		if (!pricePadRoot || pricePadPointerId !== event.pointerId) return;
+		if (pricePadDragging) {
+			saveScenePosition(PRICE_PAD_KEY, { left: pricePadLeft, top: pricePadTop });
+		}
+		pricePadDragging = false;
+		pricePadPointerId = null;
+		if (pricePadRoot.hasPointerCapture(event.pointerId)) pricePadRoot.releasePointerCapture(event.pointerId);
+	}
+
+
+	function deskSurfaceOffsetTop() {
+		return foregroundDesk?.offsetTop ?? 0;
+	}
+
+	function clampDeskProp(id: DeskPropId, left: number, top: number) {
+		const parent = sceneFrame;
+		const el = deskPropEls[id];
+		if (!parent || !el) return { left, top };
+		return {
+			left: Math.min(Math.max(0, left), Math.max(0, parent.clientWidth - el.offsetWidth)),
+			top: Math.min(Math.max(0, top), Math.max(0, parent.clientHeight - el.offsetHeight))
+		};
+	}
+
+	function setDeskPropPos(id: DeskPropId, left: number, top: number) {
+		const next = clampDeskProp(id, left, top);
+		deskProps = {
+			...deskProps,
+			[id]: { ...deskProps[id], left: next.left, top: next.top }
+		};
+	}
+
+	function placeDeskProp(id: DeskPropId) {
+		if (deskProps[id].placed || !deskPropEls[id] || !sceneFrame || !foregroundDesk) return;
+		const saved = loadScenePosition(DESK_PROP_KEYS[id]);
+		const deskTop = deskSurfaceOffsetTop();
+		const fallback = {
+			left: DESK_PROP_DEFAULTS[id].left,
+			top: DESK_PROP_DEFAULTS[id].top + deskTop
+		};
+		// Migrate legacy desk-local saves (tops lived in the ~150px foreground strip).
+		let left = saved?.left ?? fallback.left;
+		let top = saved?.top ?? fallback.top;
+		if (saved && saved.top <= 160 && deskTop > 0) {
+			top = saved.top + deskTop;
+		}
+		setDeskPropPos(id, left, top);
+		deskProps = {
+			...deskProps,
+			[id]: { ...deskProps[id], placed: true, ready: true }
+		};
+	}
+
+	function placeAllDeskProps() {
+		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).forEach(placeDeskProp);
+	}
+
+	function reflowDeskProps() {
+		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).forEach((id) => {
+			if (!deskProps[id].ready) return;
+			setDeskPropPos(id, deskProps[id].left, deskProps[id].top);
+		});
+	}
+
+	/** Click-vs-drag: arm on pointerdown; drag after >4px or 200ms hold. */
+	const deskDragMeta: Partial<
+		Record<
+			DeskPropId,
+			{
+				pointerId: number | null;
+				offsetX: number;
+				offsetY: number;
+				startX: number;
+				startY: number;
+				armed: boolean;
+				holdTimer: ReturnType<typeof setTimeout> | null;
+			}
+		>
+	> = {};
+
+	function deskDragMetaFor(id: DeskPropId) {
+		if (!deskDragMeta[id]) {
+			deskDragMeta[id] = {
+				pointerId: null,
+				offsetX: 0,
+				offsetY: 0,
+				startX: 0,
+				startY: 0,
+				armed: false,
+				holdTimer: null
+			};
+		}
+		return deskDragMeta[id]!;
+	}
+
+	function beginDeskDrag(id: DeskPropId, event: PointerEvent) {
+		const el = deskPropEls[id];
+		const parent = sceneFrame;
+		const meta = deskDragMetaFor(id);
+		if (!el || !parent) return;
+		const parentRect = parent.getBoundingClientRect();
+		const panelRect = el.getBoundingClientRect();
+		const scaleX = parentRect.width > 0 ? parent.clientWidth / parentRect.width : 1;
+		const scaleY = parentRect.height > 0 ? parent.clientHeight / parentRect.height : 1;
+		meta.offsetX = (event.clientX - panelRect.left) * scaleX;
+		meta.offsetY = (event.clientY - panelRect.top) * scaleY;
+		deskProps = {
+			...deskProps,
+			[id]: { ...deskProps[id], dragging: true, suppressClick: true }
+		};
+		el.setPointerCapture(event.pointerId);
+	}
+
+	function onDeskPropPointerDown(id: DeskPropId, event: PointerEvent) {
+		const el = deskPropEls[id];
+		const meta = deskDragMetaFor(id);
+		if (!el || meta.pointerId !== null) return;
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		meta.pointerId = event.pointerId;
+		meta.armed = true;
+		meta.startX = event.clientX;
+		meta.startY = event.clientY;
+		deskProps = {
+			...deskProps,
+			[id]: { ...deskProps[id], suppressClick: false }
+		};
+		/* Paper/legal: movement-only drag so a click can expand. Tools: also allow 200ms hold. */
+		if (id !== 'wsj' && id !== 'legal') {
+			meta.holdTimer = setTimeout(() => {
+				if (meta.armed && meta.pointerId === event.pointerId && !deskProps[id].dragging) {
+					beginDeskDrag(id, event);
+				}
+			}, 200);
+		}
+	}
+
+	function onDeskPropPointerMove(id: DeskPropId, event: PointerEvent) {
+		const meta = deskDragMetaFor(id);
+		const parent = sceneFrame;
+		if (meta.pointerId !== event.pointerId || !meta.armed || !parent) return;
+		const dx = event.clientX - meta.startX;
+		const dy = event.clientY - meta.startY;
+		if (!deskProps[id].dragging && Math.hypot(dx, dy) > 4) {
+			if (meta.holdTimer) {
+				clearTimeout(meta.holdTimer);
+				meta.holdTimer = null;
+			}
+			beginDeskDrag(id, event);
+		}
+		if (!deskProps[id].dragging) return;
+		event.preventDefault();
+		const parentRect = parent.getBoundingClientRect();
+		const scaleX = parentRect.width > 0 ? parent.clientWidth / parentRect.width : 1;
+		const scaleY = parentRect.height > 0 ? parent.clientHeight / parentRect.height : 1;
+		setDeskPropPos(
+			id,
+			(event.clientX - parentRect.left) * scaleX - meta.offsetX,
+			(event.clientY - parentRect.top) * scaleY - meta.offsetY
+		);
+	}
+
+	function onDeskPropPointerUp(id: DeskPropId, event: PointerEvent) {
+		const meta = deskDragMetaFor(id);
+		const el = deskPropEls[id];
+		if (meta.pointerId !== event.pointerId) return;
+		if (meta.holdTimer) {
+			clearTimeout(meta.holdTimer);
+			meta.holdTimer = null;
+		}
+		if (deskProps[id].dragging) {
+			saveScenePosition(DESK_PROP_KEYS[id], {
+				left: deskProps[id].left,
+				top: deskProps[id].top
+			});
+		}
+		deskProps = {
+			...deskProps,
+			[id]: { ...deskProps[id], dragging: false }
+		};
+		meta.armed = false;
+		meta.pointerId = null;
+		if (el?.hasPointerCapture(event.pointerId)) el.releasePointerCapture(event.pointerId);
+	}
+
+	function deskPropAction(node: HTMLElement, id: DeskPropId) {
+		bindDeskProp(id, node);
+		return {
+			destroy() {
+				delete deskPropEls[id];
+			}
+		};
+	}
+
+	function bindDeskProp(id: DeskPropId, node: HTMLElement) {
+		deskPropEls[id] = node;
+		queueMicrotask(() => placeDeskProp(id));
+	}
+
+	function deskPropClick(id: DeskPropId, action: () => void) {
+		if (deskProps[id].suppressClick) {
+			deskProps = {
+				...deskProps,
+				[id]: { ...deskProps[id], suppressClick: false }
+			};
+			return;
+		}
+		action();
+	}
+
+	function setWireCategory(cat: SymbolCategory | 'all') {
+		wireCategory = cat;
+		const list = symbolsInCategory(cat);
+		if (list.length && !list.some((s) => s.display === activeDisplay)) {
+			setSymbol(list[0].display);
+		}
+	}
+
+	async function pollNews() {
+		const sym = activeDisplay;
+		try {
+			const res = await fetch(`/api/news?symbol=${encodeURIComponent(sym)}`);
+			if (!res.ok) throw new Error('news HTTP');
+			const data = (await res.json()) as {
+				sample?: boolean;
+				headlines?: { title: string; link: string; source: string }[];
+			};
+			if (sym !== activeDisplay) return;
+			newsHeadlines = (data.headlines ?? []).slice(0, 5).map((h) => ({
+				title: h.title,
+				link: h.link ?? '',
+				source: h.source ?? ''
+			}));
+			newsSample = !!data.sample || newsHeadlines.length === 0;
+		} catch {
+			if (sym !== activeDisplay) return;
+			newsSample = true;
+			newsHeadlines = [
+				{
+					title: `${activeDef.label} — wire quiet (SAMPLE)`,
+					link: '',
+					source: 'SAMPLE'
+				}
+			];
+		}
+	}
+
+	async function pollDeskPositions() {
+		const lines: DeskPosLine[] = [];
+		let note: string | null = null;
+		try {
+			const [bfRes, byRes] = await Promise.all([
+				fetch('/api/blofin/positions'),
+				fetch('/api/bybit/positions')
+			]);
+			if (bfRes.ok) {
+				const bf = (await bfRes.json()) as {
+					ok?: boolean;
+					sample?: boolean;
+					error?: string;
+					positions?: Array<{
+						instId: string;
+						side: string;
+						size: number;
+						leverage: number;
+					}>;
+				};
+				if (!bf.ok && bf.error) {
+					if (/403|network|block|cloudfront|country/i.test(bf.error)) {
+						note = 'BF network blocked';
+					} else if (!bf.sample) {
+						note = `BF: ${bf.error}`;
+					}
+				}
+				for (const p of bf.positions ?? []) {
+					if (!p.size || p.side === 'flat') continue;
+					const sym = String(p.instId ?? '').replace(/-USDT|_USDT|USDT/gi, '') || p.instId;
+					lines.push({
+						venue: 'BF',
+						text: `${sym} ${String(p.side).toUpperCase()} ${p.size}× ${p.leverage}x`
+					});
+				}
+			} else if (bfRes.status === 403 || bfRes.status === 503) {
+				note = 'BF network blocked';
+			}
+			if (byRes.ok || byRes.status === 503) {
+				const by = (await byRes.json()) as {
+					ok?: boolean;
+					note?: string;
+					error?: string;
+					positions?: Array<{
+						symbol: string;
+						deskSide: string;
+						size: number;
+						leverage: number;
+					}>;
+				};
+				if (by.note && !note) note = by.note;
+				for (const p of by.positions ?? []) {
+					if (!p.size || p.deskSide === 'flat') continue;
+					const sym = String(p.symbol ?? '').replace(/USDT$/i, '');
+					lines.push({
+						venue: 'BY',
+						text: `${sym} ${String(p.deskSide).toUpperCase()} ${p.size}× ${p.leverage}x`
+					});
+				}
+			}
+		} catch {
+			if (!note) note = 'Positions unreachable';
+		}
+		deskPosLines = lines;
+		deskPosNote = note;
+	}
+
+
 	function persistSymbol(display: string) {
 		try {
 			localStorage.setItem(STORAGE_KEY, display);
@@ -229,6 +787,8 @@
 		bars = [];
 		persistSymbol(def.display);
 		pollMarket();
+		pollNews();
+		pollDeskPositions();
 	}
 
 	function onChannelChange(e: Event) {
@@ -277,6 +837,7 @@
 	}
 
 	onMount(() => {
+		deskSettings = loadDeskSettings();
 		let initial = DEFAULT_DISPLAY;
 		try {
 			const params = new URLSearchParams(window.location.search);
@@ -293,6 +854,29 @@
 		let last = performance.now();
 		let pollAcc = 0;
 		leverageOverrides = loadLeverageOverrides();
+		blofinAssignments = loadBloFinAssignments();
+		pricePadSaved = loadScenePosition(PRICE_PAD_KEY);
+		void (async () => {
+			const asg = blofinAssignments;
+			if (!Object.keys(asg).length) return;
+			try {
+				const res = await fetch('/api/blofin/positions');
+				const data = await res.json();
+				const positions = Array.isArray(data?.positions) ? data.positions : [];
+				const byPos = new Map(positions.map((pos: { positionId: string; instId: string; side: string }) => [pos.positionId, pos]));
+				const overlay: Record<string, string> = {};
+				for (const [positionId, traderId] of Object.entries(asg)) {
+					const pos = byPos.get(positionId) as { instId: string; side: string } | undefined;
+					const label = pos
+						? `${pos.instId} ${pos.side === 'flat' ? '' : String(pos.side).toUpperCase()}`.trim()
+						: `BF×1`;
+					overlay[traderId] = overlay[traderId] ? `${overlay[traderId]} · ${label}` : label;
+				}
+				blofinOverlay = overlay;
+			} catch {
+				/* ignore — console will refresh */
+			}
+		})();
 		pollMarket();
 		const loop = (now: number) => {
 			const dt = Math.min(0.05, (now - last) / 1000);
@@ -313,7 +897,14 @@
 			raf = requestAnimationFrame(loop);
 		};
 		raf = requestAnimationFrame(loop);
-		return () => cancelAnimationFrame(raf);
+
+		const newsPollTimer = setInterval(() => { void pollNews(); }, 60_000);
+		const posPollTimer = setInterval(() => { void pollDeskPositions(); }, 18_000);
+		return () => {
+			cancelAnimationFrame(raf);
+			clearInterval(newsPollTimer);
+			clearInterval(posPollTimer);
+		};
 	});
 	$effect(() => {
 		if (!clipboardRoot || !sceneFrame) return;
@@ -322,16 +913,35 @@
 			placeClipboard();
 		});
 	});
+	$effect(() => {
+		if (!pricePadRoot || !sceneFrame) return;
+		requestAnimationFrame(() => {
+			if (!pricePadRoot || !sceneFrame) return;
+			placePricePad();
+		});
+	});
+	$effect(() => {
+		if (!sceneFrame || !foregroundDesk) return;
+		requestAnimationFrame(() => placeAllDeskProps());
+	});
 </script>
 
 <svelte:window
-	onresize={reflowClipboard}
+	onresize={() => {
+		reflowClipboard();
+		reflowPricePad();
+		reflowDeskProps();
+	}}
 	onkeydown={(e) => {
 		if (e.key === 'Escape') pinnedId = null;
 	}}
 />
 
-<main class="scene" data-phase={clock.phase}>
+<main
+	class="scene"
+	class:reduce-motion={deskSettings.reduceMotion}
+	class:night-tint={deskSettings.nightModeTint}
+	class:crt-scan={deskSettings.crtScanlines} data-phase={clock.phase}>
 	<div class="scene-frame" bind:this={sceneFrame}>
 		<section class="upper-wall">
 			<div class="wall-panel left-wall">
@@ -376,25 +986,31 @@
 					<header>
 						<span>MARKET WIRE</span><i>{quote?.sample ? 'SAMPLE' : `LIVE ${activeDef.label}`}</i>
 					</header>
-					<!-- Diegetic channel switch: CRT-style desk pad selector -->
+
+					<div class="wire-cats" role="tablist" aria-label="Wire categories">
+						{#each SYMBOL_CATEGORIES as cat (cat.id)}
+							<button
+								type="button"
+								role="tab"
+								class="wire-cat"
+								class:active={wireCategory === cat.id}
+								aria-selected={wireCategory === cat.id}
+								onclick={() => setWireCategory(cat.id)}
+							>{cat.label}</button>
+						{/each}
+					</div>
 					<label class="channel-switch">
 						<span>CHANNEL</span>
 						<select value={activeDisplay} onchange={onChannelChange} aria-label="Active trading symbol">
-							{#each SYMBOLS as s (s.display)}
+							{#each wireSymbols as s (s.display)}
 								<option value={s.display}>{s.label} · {s.display}</option>
 							{/each}
 						</select>
 					</label>
-					<div>
-						<b>{activeDef.label} PERP</b>
-						<strong>{quote?.price?.toFixed(priceDecimals) ?? '—'}</strong>
-						<em class:down={(quote?.change24h ?? 0) < 0}
-							>{quote?.change24h == null
-								? '—'
-								: `${quote.change24h >= 0 ? '+' : ''}${quote.change24h.toFixed(2)}%`}</em
-						>
-					</div>
-					{#each tapeQuotes.filter((q) => q.display !== activeDisplay).slice(0, 5) as tq (tq.display)}
+					{#if wireCategory === 'etf' || wireCategory === 'stock'}
+						<p class="wire-note">No live ETF/stock perps on desk venues — tabs reserved.</p>
+					{/if}
+					{#each filteredTapeQuotes.filter((q) => q.display !== activeDisplay).slice(0, 5) as tq (tq.display)}
 						<div>
 							<b>{resolveSymbol(tq.display).label}</b>
 							<strong
@@ -424,7 +1040,9 @@
 
 		<section class="office-floor">
 			<div class="floor-light"></div>
-			<div class="back-staff">
+			<div class="back-staff" aria-label="Management and research desks">
+				<div class="staff-zone-sign"><span>FLOOR MANAGEMENT</span><b>STAFF</b></div>
+				<div class="staff-row">
 				{#each STAFF as s (s.id)}
 					<CharacterSprite
 						staff={s}
@@ -440,6 +1058,7 @@
 						}}
 					/>
 				{/each}
+				</div>
 			</div>
 
 			<div class="desk-zones">
@@ -455,6 +1074,7 @@
 								lampBoost={signal?.bias === 'LONG' ? 0.22 : 0}
 								tick={animTick}
 								pinned={pinnedId === t.id}
+								blofinBadge={blofinBadgeFor(t.id)}
 								onInspect={() => (inspectedId = t.id)}
 								onPin={() => pin(t.id)}
 								onLeverageCommit={(value) => setTraderLeverage(t.id, value)}
@@ -477,6 +1097,7 @@
 								lampBoost={signal?.bias === 'SHORT' ? 0.22 : 0}
 								tick={animTick}
 								pinned={pinnedId === t.id}
+								blofinBadge={blofinBadgeFor(t.id)}
 								onInspect={() => (inspectedId = t.id)}
 								onPin={() => pin(t.id)}
 								onLeverageCommit={(value) => setTraderLeverage(t.id, value)}
@@ -496,29 +1117,35 @@
 
 		</section>
 
-		<FaxMachine
-			{signal}
-			{quote}
-			{bars}
-			displaySymbol={activeDisplay}
-			decimals={priceDecimals}
-			sceneFrame={sceneFrame}
-		/>
-		<FloorPet
-			bias={signal?.bias ?? 'FLAT'}
-			confluenceBand={signal?.confluenceBand ?? 'weak'}
-			tick={animTick}
-			sceneFrame={sceneFrame}
-		/>
-		<TrashCan
-			{signal}
-			{quote}
-			displaySymbol={activeDisplay}
-			decimals={priceDecimals}
-			sceneFrame={sceneFrame}
-		/>
+		{#if deskSettings.showFax && !deskSettings.hideAllDraggables}
+			<FaxMachine
+				{signal}
+				{quote}
+				{bars}
+				displaySymbol={activeDisplay}
+				decimals={priceDecimals}
+				sceneFrame={sceneFrame}
+			/>
+		{/if}
+		{#if deskSettings.showPet && !deskSettings.hideAllDraggables}
+			<FloorPet
+				bias={signal?.bias ?? 'FLAT'}
+				confluenceBand={signal?.confluenceBand ?? 'weak'}
+				tick={animTick}
+				sceneFrame={sceneFrame}
+			/>
+		{/if}
+		{#if deskSettings.showTrash && !deskSettings.hideAllDraggables}
+			<TrashCan
+				{signal}
+				{quote}
+				displaySymbol={activeDisplay}
+				decimals={priceDecimals}
+				sceneFrame={sceneFrame}
+			/>
+		{/if}
 
-		<section class="foreground-desk">
+		<section class="foreground-desk" bind:this={foregroundDesk}>
 			<div class="desk-edge"></div>
 			<div class="book-stack" aria-hidden="true">
 				<div>SECURITIES<br />ANALYSIS</div>
@@ -526,21 +1153,13 @@
 				<div>OPTIONS<br />STRATEGIES</div>
 				<div>INTELLIGENT<br />INVESTOR</div>
 			</div>
-			<div class="wsj">
-				<header>THE WALL STREET JOURNAL</header>
-				<b>Markets Watch<br />AI Optimism</b><i></i><i></i><i></i>
-			</div>
-			<div class="legal-pad">
-				<header>POSITIONS:</header>
-				<p>
-					{signal?.bias === 'LONG' ? 'LONG' : signal?.bias === 'SHORT' ? 'SHORT' : 'FLAT'}
-					{activeDef.label}
-				</p>
-				<p>Conf: {signal?.confluence ?? '—'}/5</p>
-				<p>Risk: {signal?.risk.risk_pct.toFixed(2) ?? '—'}%</p>
-				<span></span>
-			</div>
-			<div class="foreground-monitor">
+			<button
+				type="button"
+				class="foreground-monitor"
+				aria-label="Open desk CRT terminal"
+				title="Desk CRT — chart / quote / signal"
+				onclick={openMonitorPanel}
+			>
 				<div class="monitor-bezel">
 					{#if pinnedTrader && pinnedPosture}
 						<div class="pinned-head">
@@ -568,22 +1187,177 @@
 					{/if}
 				</div>
 				<div class="monitor-foot"></div>
-			</div>
-			<div class="keyboard-main"><i></i></div>
+			</button>
 			<div class="phone-main"><span></span><i></i></div>
-			<div class="calculator">789<br />456<br />123</div>
-			<div class="coffee"><i></i><b></b></div>
-			<!-- Desk pad: secondary diegetic pair switch -->
-			<label class="desk-pair-pad">
-				<span>PAIR</span>
-				<select value={activeDisplay} onchange={onChannelChange} aria-label="Desk pair selector">
-					{#each SYMBOLS as s (s.display)}
-						<option value={s.display}>{s.display}</option>
-					{/each}
-				</select>
-			</label>
 		</section>
-{#if (inspectedTrader && inspectedPosture) || inspectedStaff}
+
+		<div
+			class="wsj desk-prop"
+			class:expanded={wsjExpanded}
+			class:is-dragging={deskProps.wsj.dragging}
+			class:is-ready={deskProps.wsj.ready}
+			class:compact={deskSettings.compactDeskTools}
+			style:left={`${deskProps.wsj.left}px`}
+			style:top={`${deskProps.wsj.top}px`}
+			use:deskPropAction={'wsj'}
+			onpointerdown={(e) => onDeskPropPointerDown('wsj', e)}
+			onpointermove={(e) => onDeskPropPointerMove('wsj', e)}
+			onpointerup={(e) => onDeskPropPointerUp('wsj', e)}
+			onpointercancel={(e) => onDeskPropPointerUp('wsj', e)}
+			role="button"
+			tabindex="0"
+			aria-label="Wall Street Journal — news for active coin"
+			title="Drag to move · click for more headlines"
+			onclick={() => deskPropClick('wsj', () => (wsjExpanded = !wsjExpanded))}
+			onkeydown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					deskPropClick('wsj', () => (wsjExpanded = !wsjExpanded));
+				}
+			}}
+		>
+			<header>THE WALL STREET JOURNAL</header>
+			{#if newsHeadlines[0]}
+				<b class="wsj-hed"
+					>{activeDef.label}: {newsHeadlines[0].title.slice(0, 48)}{newsHeadlines[0].title
+						.length > 48
+						? '…'
+						: ''}</b
+				>
+			{:else}
+				<b class="wsj-hed">Markets Watch<br />{activeDef.label}</b>
+			{/if}
+			{#if newsSample}<em class="wsj-sample">SAMPLE</em>{/if}
+			{#if wsjExpanded}
+				<ul class="wsj-more">
+					{#each newsHeadlines as h, i (i)}
+						<li>{h.source}: {h.title}</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+		<div
+			class="legal-pad desk-prop"
+			class:is-dragging={deskProps.legal.dragging}
+			class:is-ready={deskProps.legal.ready}
+			class:compact={deskSettings.compactDeskTools}
+			style:left={`${deskProps.legal.left}px`}
+			style:top={`${deskProps.legal.top}px`}
+			use:deskPropAction={'legal'}
+			onpointerdown={(e) => onDeskPropPointerDown('legal', e)}
+			onpointermove={(e) => onDeskPropPointerMove('legal', e)}
+			onpointerup={(e) => onDeskPropPointerUp('legal', e)}
+			onpointercancel={(e) => onDeskPropPointerUp('legal', e)}
+			role="group"
+			aria-label="Positions pad"
+			title="Drag to move"
+		>
+			<header>POSITIONS:</header>
+			{#if deskPosNote}
+				<p class="pos-note">{deskPosNote}</p>
+			{/if}
+			{#if deskPosLines.length}
+				{#each deskPosLines.slice(0, 4) as line, i (i)}
+					<p>{line.venue} {line.text}</p>
+				{/each}
+			{:else}
+				<p>FLAT — no open positions</p>
+			{/if}
+			<p class="pos-ta">
+				TA {signal?.bias === 'LONG' ? 'LONG' : signal?.bias === 'SHORT' ? 'SHORT' : 'FLAT'}
+				{activeDef.label} · {signal?.confluence ?? '—'}/5
+			</p>
+			<span></span>
+		</div>
+		<button
+			type="button"
+			class="keyboard-main desk-prop"
+			class:is-dragging={deskProps.keyboard.dragging}
+			class:is-ready={deskProps.keyboard.ready}
+			class:compact={deskSettings.compactDeskTools}
+			style:left={`${deskProps.keyboard.left}px`}
+			style:top={`${deskProps.keyboard.top}px`}
+			use:deskPropAction={'keyboard'}
+			onpointerdown={(e) => onDeskPropPointerDown('keyboard', e)}
+			onpointermove={(e) => onDeskPropPointerMove('keyboard', e)}
+			onpointerup={(e) => onDeskPropPointerUp('keyboard', e)}
+			onpointercancel={(e) => onDeskPropPointerUp('keyboard', e)}
+			aria-label="Open desk console"
+			title="Desk console (BloFin live) — drag to move"
+			onclick={() => deskPropClick('keyboard', openDeskConsole)}
+		><i></i></button>
+		<button
+			type="button"
+			class="mouse-pad desk-prop"
+			class:is-dragging={deskProps.pad.dragging}
+			class:is-ready={deskProps.pad.ready}
+			class:compact={deskSettings.compactDeskTools}
+			style:left={`${deskProps.pad.left}px`}
+			style:top={`${deskProps.pad.top}px`}
+			use:deskPropAction={'pad'}
+			onpointerdown={(e) => onDeskPropPointerDown('pad', e)}
+			onpointermove={(e) => onDeskPropPointerMove('pad', e)}
+			onpointerup={(e) => onDeskPropPointerUp('pad', e)}
+			onpointercancel={(e) => onDeskPropPointerUp('pad', e)}
+			aria-label="Open quick trade preview"
+			title="Quick trade — drag to move"
+			onclick={() => deskPropClick('pad', openQuickTrade)}
+		>
+			<span class="pad-target" aria-hidden="true"></span>
+		</button>
+		<button
+			type="button"
+			class="calculator desk-prop"
+			class:is-dragging={deskProps.calc.dragging}
+			class:is-ready={deskProps.calc.ready}
+			class:compact={deskSettings.compactDeskTools}
+			style:left={`${deskProps.calc.left}px`}
+			style:top={`${deskProps.calc.top}px`}
+			use:deskPropAction={'calc'}
+			onpointerdown={(e) => onDeskPropPointerDown('calc', e)}
+			onpointermove={(e) => onDeskPropPointerMove('calc', e)}
+			onpointerup={(e) => onDeskPropPointerUp('calc', e)}
+			onpointercancel={(e) => onDeskPropPointerUp('calc', e)}
+			aria-label="Open profit calculator"
+			title="P&L calculator — drag to move"
+			onclick={() => deskPropClick('calc', openProfitCalc)}
+		>789<br />456<br />123</button>
+		<button
+			type="button"
+			class="coffee desk-prop"
+			class:is-dragging={deskProps.coffee.dragging}
+			class:is-ready={deskProps.coffee.ready}
+			class:compact={deskSettings.compactDeskTools}
+			class:is-tripping={coffeeTripActive}
+			style:left={`${deskProps.coffee.left}px`}
+			style:top={`${deskProps.coffee.top}px`}
+			use:deskPropAction={'coffee'}
+			onpointerdown={(e) => onDeskPropPointerDown('coffee', e)}
+			onpointermove={(e) => onDeskPropPointerMove('coffee', e)}
+			onpointerup={(e) => onDeskPropPointerUp('coffee', e)}
+			onpointercancel={(e) => onDeskPropPointerUp('coffee', e)}
+			aria-label="Sip coffee — brief trip"
+			title="Coffee — drag to move"
+			onclick={() => deskPropClick('coffee', triggerCoffeeTrip)}
+		><i></i><b></b></button>
+		<button
+			type="button"
+			class="desk-settings-btn desk-prop"
+			class:is-dragging={deskProps.set.dragging}
+			class:is-ready={deskProps.set.ready}
+			class:compact={deskSettings.compactDeskTools}
+			style:left={`${deskProps.set.left}px`}
+			style:top={`${deskProps.set.top}px`}
+			use:deskPropAction={'set'}
+			onpointerdown={(e) => onDeskPropPointerDown('set', e)}
+			onpointermove={(e) => onDeskPropPointerMove('set', e)}
+			onpointerup={(e) => onDeskPropPointerUp('set', e)}
+			onpointercancel={(e) => onDeskPropPointerUp('set', e)}
+			aria-label="Open desk settings"
+			title="Desk settings — drag to move"
+			onclick={() => deskPropClick('set', openDeskSettings)}
+		>⚙<b>SET</b></button>
+{#if deskSettings.showClipboard && !deskSettings.hideAllDraggables && ((inspectedTrader && inspectedPosture) || inspectedStaff)}
 	<aside
 		bind:this={clipboardRoot}
 		class="clipboard-panel"
@@ -687,28 +1461,113 @@
 			{/if}
 	</aside>
 {/if}
+		{#if deskSettings.showPricePad && !deskSettings.hideAllDraggables}
+		<aside
+			bind:this={pricePadRoot}
+			class="wire-status price-pad"
+			class:is-dragging={pricePadDragging}
+			class:is-ready={pricePadReady}
+			role="group"
+			aria-label="Draggable price widget"
+			title="Drag price pad"
+			style:left={`${pricePadLeft}px`}
+			style:top={`${pricePadTop}px`}
+			onpointerdown={onPricePadPointerDown}
+			onpointermove={onPricePadPointerMove}
+			onpointerup={stopPricePadDragging}
+			onpointercancel={stopPricePadDragging}
+			onlostpointercapture={stopPricePadDragging}
+		>
+			<div class="clip"></div>
+			<div>
+				<span class:dot-live={!quote?.sample}></span>{quote?.sample
+					? 'SAMPLE TAPE'
+					: `KRAKEN · ${activeDef.kraken}`}
+			</div>
+			<strong>{quote?.price?.toFixed(priceDecimals) ?? 'CONNECTING'}</strong>
+			<small
+				>{clock.label} · {clock.phase.toUpperCase()}{clock.raining ? ' · RAIN' : ''}{kong.active
+					? ' · KONG!'
+					: ''}{mariachi.active ? ' · MARIACHI!' : ''}</small
+			>
+		</aside>
+		{/if}
 	</div>
 
 
 </main>
 
-<ViewportDrag defaultLeft={18} defaultBottom={18} ariaLabel="Draggable price widget">
-	<div class="wire-status" title="Drag price widget">
-		<div class="clip"></div>
-		<div>
-			<span class:dot-live={!quote?.sample}></span>{quote?.sample
-				? 'SAMPLE TAPE'
-				: `KRAKEN · ${activeDef.kraken}`}
+{#if coffeeTripActive}
+	<div class="coffee-trip" aria-hidden="true"></div>
+{/if}
+
+<DeskConsole
+	bind:open={deskConsoleOpen}
+	onAssignmentsChange={(a) => (blofinAssignments = a)}
+	onOverlayChange={(o) => (blofinOverlay = o)}
+/>
+<MonitorPanel
+	bind:open={monitorPanelOpen}
+	{bars}
+	{quote}
+	{signal}
+	{tapeQuotes}
+	{activeDisplay}
+	{priceDecimals}
+	onSelectSymbol={setSymbol}
+/>
+<QuickTradePanel
+	bind:open={quickTradeOpen}
+	{activeDisplay}
+	{quote}
+	{priceDecimals}
+	onSelectSymbol={setSymbol}
+/>
+<ProfitCalcPanel
+	bind:open={profitCalcOpen}
+	{quote}
+	{priceDecimals}
+	{activeDisplay}
+/>
+
+	
+{#if settingsOpen}
+	<div class="settings-backdrop" role="presentation" onclick={() => (settingsOpen = false)}></div>
+	<div class="desk-settings-panel" role="dialog" aria-modal="true" aria-label="Desk settings">
+		<header>
+			<strong>DESK SETTINGS</strong>
+			<button type="button" class="x" onclick={() => (settingsOpen = false)} aria-label="Close settings">×</button>
+		</header>
+		<div class="settings-body">
+			<section>
+				<h4>DRAGGABLES</h4>
+				<label><input type="checkbox" checked={deskSettings.showClipboard} onchange={(e) => updateDeskSetting('showClipboard', e.currentTarget.checked)} /> Clipboard</label>
+				<label><input type="checkbox" checked={deskSettings.showPricePad} onchange={(e) => updateDeskSetting('showPricePad', e.currentTarget.checked)} /> Price pad</label>
+				<label><input type="checkbox" checked={deskSettings.showFax} onchange={(e) => updateDeskSetting('showFax', e.currentTarget.checked)} /> Fax</label>
+				<label><input type="checkbox" checked={deskSettings.showPet} onchange={(e) => updateDeskSetting('showPet', e.currentTarget.checked)} /> Pet</label>
+				<label><input type="checkbox" checked={deskSettings.showTrash} onchange={(e) => updateDeskSetting('showTrash', e.currentTarget.checked)} /> Trash</label>
+				<button type="button" class="ghost" onclick={toggleHideAllDraggables}>
+					{deskSettings.hideAllDraggables ? 'SHOW ALL DRAGGABLES' : 'HIDE ALL DRAGGABLES'}
+				</button>
+			</section>
+			<section>
+				<h4>MOTION / DESK</h4>
+				<label><input type="checkbox" checked={deskSettings.reduceMotion} onchange={(e) => updateDeskSetting('reduceMotion', e.currentTarget.checked)} /> Reduce motion</label>
+				<label><input type="checkbox" checked={deskSettings.disableCoffeeTrip} onchange={(e) => updateDeskSetting('disableCoffeeTrip', e.currentTarget.checked)} /> Disable coffee trip</label>
+				<label><input type="checkbox" checked={deskSettings.compactDeskTools} onchange={(e) => updateDeskSetting('compactDeskTools', e.currentTarget.checked)} /> Compact desk tools</label>
+				<label><input type="checkbox" checked={deskSettings.showBlofinBadges} onchange={(e) => updateDeskSetting('showBlofinBadges', e.currentTarget.checked)} /> Show BloFin BF badges</label>
+				<label><input type="checkbox" checked={deskSettings.soundOff} onchange={(e) => updateDeskSetting('soundOff', e.currentTarget.checked)} /> Sound off (stub)</label>
+				<label><input type="checkbox" checked={deskSettings.nightModeTint} onchange={(e) => updateDeskSetting('nightModeTint', e.currentTarget.checked)} /> Night mode tint</label>
+				<label><input type="checkbox" checked={deskSettings.crtScanlines} onchange={(e) => updateDeskSetting('crtScanlines', e.currentTarget.checked)} /> CRT scanlines</label>
+			</section>
+			<p class="hint">Saved in localStorage <code>phf-desk-settings</code>.</p>
 		</div>
-		<strong>{quote?.price?.toFixed(priceDecimals) ?? 'CONNECTING'}</strong>
-		<small
-			>{clock.label} · {clock.phase.toUpperCase()}{clock.raining ? ' · RAIN' : ''}{kong.active
-				? ' · KONG!'
-				: ''}{mariachi.active ? ' · MARIACHI!' : ''}</small
-		>
 	</div>
-</ViewportDrag>
-	{#if err}<div class="error-note">TAPE WIRE: {err}</div>{/if}
+{/if}
+
+<ToastStack />
+
+{#if err}<div class="error-note">TAPE WIRE: {err}</div>{/if}
 
 <style>
 	:global(:root) {
@@ -729,7 +1588,7 @@
 		position: relative;
 		width: min(1440px, 100%);
 		min-width: 0;
-		min-height: 900px;
+		min-height: 1040px;
 		margin: 0 auto;
 		overflow: hidden;
 		background: #21130e;
@@ -992,9 +1851,11 @@
 
 	.office-floor {
 		position: relative;
-		height: 435px;
-		padding: 7px 10px 0;
-		background: linear-gradient(170deg, #6a412c 0 6%, #34231c 6% 100%);
+		height: auto;
+		min-height: 580px;
+		padding: 12px 14px 64px;
+		box-sizing: border-box;
+		background: linear-gradient(170deg, #4a3226 0 3%, #34231c 12% 100%);
 		overflow: visible;
 	}
 	.office-floor:before {
@@ -1016,29 +1877,79 @@
 	.back-staff {
 		position: relative;
 		z-index: 4;
-		height: 148px;
+		box-sizing: border-box;
+		min-height: 220px;
+		margin: 4px 12px 12px;
+		padding: 24px 16px 12px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		border: 2px solid rgba(114, 74, 47, 0.75);
+		background: rgba(31, 20, 16, 0.36);
+		/* Sit on the carpet — no divider “perch” line under feet */
+		overflow: visible;
+	}
+	.staff-zone-sign {
+		position: absolute;
+		left: 9px;
+		top: 4px;
+		right: 9px;
+		display: flex;
+		justify-content: space-between;
+		font-size: 7px;
+		letter-spacing: 0.12em;
+		color: #d1b16a;
+		pointer-events: none;
+	}
+	.staff-zone-sign b {
+		font-size: 6px;
+		color: #9d886f;
+	}
+	.staff-row {
 		display: flex;
 		justify-content: center;
-		gap: 17px;
-		padding-top: 2px;
-		border-bottom: 3px solid rgba(103, 66, 43, 0.9);
+		align-items: flex-end;
+		gap: 14px;
+		min-width: 0;
+		width: 100%;
+		max-width: 100%;
+		padding: 10px 8px 6px;
+		margin: 0 auto;
+		overflow: visible;
+		box-sizing: border-box;
+	}
+	.staff-row :global(.character) {
+		flex: 0 0 auto;
+		width: 128px;
+		min-width: 118px;
+		max-width: 132px;
+	}
+	.staff-row :global(.character:nth-child(even)) {
+		transform: translateY(6px);
 	}
 	.desk-zones {
 		position: relative;
 		z-index: 7;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr);
-		height: 260px;
-		padding: 5px 18px 0 12px;
+		height: auto;
+		min-height: 280px;
+		margin: 0 0 8px;
+		padding: 8px 18px 28px 12px;
 		gap: 4px;
+		box-sizing: border-box;
+		overflow: visible;
 	}
 	.desk-zone {
 		position: relative;
 		min-width: 0;
-		padding: 15px 4px 4px;
+		padding: 18px 6px 18px;
 		border: 2px solid rgba(114, 74, 47, 0.75);
 		background: rgba(31, 20, 16, 0.36);
 		transition: box-shadow 0.4s;
+		overflow: visible;
+		box-sizing: border-box;
 	}
 	.desk-zone.active {
 		box-shadow: inset 0 0 28px rgba(72, 217, 137, 0.11);
@@ -1070,7 +1981,9 @@
 		align-items: flex-end;
 		gap: 0;
 		min-width: 0;
-		padding-top: 15px;
+		padding: 18px 0 8px;
+		box-sizing: border-box;
+		overflow: visible;
 	}
 	.trader-row :global(.character) {
 		flex: 1 1 0;
@@ -1082,7 +1995,7 @@
 		max-width: min(115px, calc(100% + 8px));
 	}
 	.trader-row :global(.character:nth-child(even)) {
-		transform: translateY(10px);
+		transform: none;
 	}
 	.aisle {
 		display: flex;
@@ -1313,6 +2226,7 @@
 		box-shadow:
 			0 -12px 24px rgba(24, 9, 3, 0.45),
 			inset 0 5px #c57c3c;
+		overflow: visible;
 	}
 	.desk-edge {
 		position: absolute;
@@ -1359,25 +2273,29 @@
 		width: 130px;
 		height: 94px;
 		padding: 6px;
+		box-sizing: border-box;
 		background: #d8d1bb;
 		color: #2d2a25;
 		border: 2px solid #554d41;
 		transform: rotate(-2deg);
+		overflow: hidden;
 	}
 	.wsj header {
 		font: 7px Georgia, serif;
 		border-bottom: 2px solid #333;
+		white-space: nowrap;
+		overflow: hidden;
 	}
-	.wsj b {
-		display: block;
-		margin: 5px 0;
-		font: 11px Georgia, serif;
-	}
-	.wsj i {
-		display: block;
-		height: 3px;
-		margin: 3px 0;
-		background: #8b867a;
+	.wsj b,
+	.wsj .wsj-hed {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 4;
+		line-clamp: 4;
+		overflow: hidden;
+		margin: 4px 0 0;
+		font: 9px/1.15 Georgia, serif;
+		word-break: break-word;
 	}
 	.legal-pad {
 		position: absolute;
@@ -1415,12 +2333,20 @@
 		bottom: 4px;
 		width: 325px;
 		height: 176px;
+		padding: 0;
 		background: #a99e82;
 		border: 5px solid #403a31;
 		border-radius: 8px 8px 3px 3px;
 		box-shadow:
 			inset 4px 4px #d4c9a6,
 			6px 6px 0 rgba(32, 14, 6, 0.45);
+		cursor: pointer;
+		z-index: 5;
+	}
+	.foreground-monitor:hover,
+	.foreground-monitor:focus-visible {
+		outline: 2px solid #efc870;
+		outline-offset: 3px;
 	}
 	.monitor-bezel {
 		position: absolute;
@@ -1465,10 +2391,22 @@
 		top: 52px;
 		width: 180px;
 		height: 57px;
+		padding: 0;
 		background: #b3a88d;
 		border: 4px solid #474139;
 		transform: skewX(-12deg);
 		box-shadow: 5px 5px 0 rgba(40, 17, 7, 0.38);
+		cursor: pointer;
+		z-index: 6;
+	}
+	.keyboard-main:hover,
+	.keyboard-main:focus-visible {
+		background: #cfc3a4;
+		outline: 2px solid #efc870;
+		outline-offset: 2px;
+	}
+	.keyboard-main:active {
+		transform: skewX(-12deg) translateY(1px);
 	}
 	.keyboard-main i {
 		position: absolute;
@@ -1477,115 +2415,363 @@
 			repeating-linear-gradient(90deg, #776f5e 0 3px, transparent 3px 10px),
 			repeating-linear-gradient(0deg, #776f5e 0 3px, transparent 3px 10px);
 	}
+	/* Phone tucked small — reduces desk clutter */
 	.phone-main {
 		position: absolute;
-		left: 990px;
-		top: 40px;
-		width: 103px;
-		height: 67px;
+		left: 720px;
+		top: 18px;
+		width: 56px;
+		height: 38px;
 		background: #a59c83;
-		border: 4px solid #3b3731;
-		border-radius: 8px;
+		border: 3px solid #3b3731;
+		border-radius: 6px;
+		opacity: 0.9;
+		z-index: 4;
 	}
 	.phone-main span {
 		position: absolute;
-		left: 5px;
-		top: -10px;
-		width: 90px;
-		height: 19px;
+		left: 4px;
+		top: -7px;
+		width: 48px;
+		height: 11px;
 		background: #797365;
-		border: 4px solid #3a3630;
-		border-radius: 10px;
+		border: 3px solid #3a3630;
+		border-radius: 8px;
 	}
 	.phone-main i {
 		position: absolute;
-		left: 28px;
-		top: 23px;
-		width: 45px;
-		height: 30px;
-		background: repeating-radial-gradient(#4c4940 0 2px, #aaa085 2px 6px);
+		left: 14px;
+		top: 12px;
+		width: 26px;
+		height: 16px;
+		background: repeating-radial-gradient(#4c4940 0 2px, #aaa085 2px 5px);
+	}
+	/* Individually draggable desk props — scene-frame absolute coords */
+	.desk-prop {
+		position: absolute;
+		z-index: 60;
+		pointer-events: auto;
+		touch-action: none;
+		user-select: none;
+		/* Stay visible — never gate on is-ready (expand/reflow races were blanking props) */
+		visibility: visible;
+		opacity: 1;
+	}
+	/* Force absolute over later .calculator/.coffee/.mouse-pad/.desk-settings-btn relative rules */
+	.calculator.desk-prop,
+	.coffee.desk-prop,
+	.mouse-pad.desk-prop,
+	.desk-settings-btn.desk-prop,
+	.keyboard-main.desk-prop,
+	.wsj.desk-prop,
+	.legal-pad.desk-prop {
+		position: absolute;
+	}
+	.desk-prop.is-dragging {
+		visibility: visible;
+	}
+	.desk-prop.is-dragging {
+		cursor: grabbing;
+		z-index: 80;
+	}
+	.desk-prop.compact {
+		transform: scale(0.86);
+		transform-origin: center bottom;
+	}
+	.wsj.desk-prop.compact {
+		transform: rotate(-2deg) scale(0.86);
+		transform-origin: center bottom;
+	}
+	.legal-pad.desk-prop.compact {
+		transform: rotate(1deg) scale(0.86);
+		transform-origin: center bottom;
+	}
+	.keyboard-main.desk-prop.compact {
+		transform: skewX(-12deg) scale(0.86);
+		transform-origin: center bottom;
+	}
+	.wsj.desk-prop,
+	.legal-pad.desk-prop {
+		cursor: grab;
+	}
+	.wsj.desk-prop.is-dragging,
+	.legal-pad.desk-prop.is-dragging {
+		cursor: grabbing;
+	}
+	.wsj-sample {
+		display: inline-block;
+		margin-top: 2px;
+		padding: 0 3px;
+		font: 6px var(--mono);
+		color: #7a3a2a;
+		border: 1px solid #7a3a2a;
+	}
+	.wsj.expanded,
+	.wsj:has(.wsj-more) {
+		height: auto;
+		max-height: 240px;
+		min-height: 94px;
+		/* Must stay above .foreground-desk (z 55) — old z-index:18 hid the paper under the wood */
+		z-index: 90;
+		overflow: hidden;
+		box-shadow: 4px 6px 0 rgba(20, 10, 4, 0.45);
+	}
+	.wsj-more {
+		margin: 4px 0 0;
+		padding: 0 0 0 8px;
+		font: 6px Georgia, serif;
+		line-height: 1.25;
+		max-height: 110px;
+		overflow: auto;
+		box-sizing: border-box;
+	}
+	.wsj-more li {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.pos-note {
+		color: #7a3a2a !important;
+		font-weight: 700;
+	}
+	.pos-ta {
+		opacity: 0.75;
+		font-size: 6px !important;
+	}
+	.wire-cats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 3px;
+		margin: 5px 0 4px;
+	}
+	.wire-cat {
+		padding: 2px 5px;
+		font: 6px var(--mono);
+		letter-spacing: 0.06em;
+		color: #9d886f;
+		background: #1a1c16;
+		border: 1px solid #5a5134;
+		cursor: pointer;
+	}
+	.wire-cat.active {
+		color: #0c0e0a;
+		background: #efc870;
+		border-color: #efc870;
+	}
+	.wire-note {
+		margin: 0 0 4px;
+		font: 6px var(--mono);
+		color: #9d886f;
+	}
+
+	.mouse-pad {
+		flex: 0 0 auto;
+		width: 88px;
+		height: 54px;
+		padding: 0;
+		background: #777973;
+		border: 3px solid #3f413f;
+		border-radius: 8px 8px 10px 10px;
+		transform: rotate(-2deg);
+		cursor: pointer;
+		box-shadow: 4px 4px 0 rgba(40, 17, 7, 0.35), inset 2px 2px 0 rgba(224, 224, 211, 0.14);
+	}
+	.mouse-pad:hover,
+	.mouse-pad:focus-visible {
+		outline: 2px solid #efc870;
+		outline-offset: 2px;
+		background: #858780;
+	}
+	.mouse-pad:active {
+		transform: rotate(-2deg) translateY(1px);
+	}
+	.pad-target {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		width: 34px;
+		height: 34px;
+		transform: translate(-50%, -50%);
+		border: 2px solid #4b4d4b;
+		border-radius: 50%;
+		background:
+			radial-gradient(circle, #b7b8ae 0 4px, #545753 5px 7px, #9c9e96 8px 11px, #595c58 12px 14px, #8d9089 15px 18px, transparent 19px),
+			#73766f;
+		box-shadow: inset 0 0 0 1px rgba(218, 220, 207, 0.22);
+	}
+	.pad-target::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		width: 5px;
+		height: 5px;
+		transform: translate(-50%, -50%);
+		border: 1px solid #3f423f;
+		border-radius: 50%;
 	}
 	.calculator {
-		position: absolute;
-		left: 1110px;
-		top: 42px;
-		width: 56px;
-		height: 69px;
-		padding: 7px;
+		flex: 0 0 auto;
+		width: 40px;
+		height: 50px;
+		padding: 4px 2px;
 		background: #343733;
 		color: #b8e0be;
 		border: 3px solid #171a17;
-		font-size: 8px;
-		line-height: 1.7;
-		letter-spacing: 8px;
+		font-size: 6px;
+		line-height: 1.55;
+		letter-spacing: 4px;
+		cursor: pointer;
+		box-shadow: 3px 3px 0 rgba(40, 17, 7, 0.35);
+	}
+	.calculator:hover,
+	.calculator:focus-visible {
+		outline: 2px solid #efc870;
+		outline-offset: 2px;
+		background: #3e433d;
 	}
 	.coffee {
-		position: absolute;
-		left: 1186px;
-		top: 42px;
-		width: 52px;
-		height: 61px;
+		flex: 0 0 auto;
+		width: 36px;
+		height: 44px;
+		padding: 0;
 		background: #2b2623;
-		border: 4px solid #15110f;
-		border-radius: 3px 3px 12px 12px;
+		border: 3px solid #15110f;
+		border-radius: 3px 3px 10px 10px;
+		box-sizing: border-box;
+		overflow: visible;
+		cursor: pointer;
+	}
+	.coffee:hover,
+	.coffee:focus-visible {
+		outline: 2px solid #efc870;
+		outline-offset: 2px;
+	}
+	.coffee.is-tripping {
+		cursor: wait;
+		opacity: 0.9;
 	}
 	.coffee i {
 		position: absolute;
-		right: -19px;
-		top: 10px;
-		width: 22px;
-		height: 29px;
-		border: 5px solid #211b18;
-		border-left: 0;
-		border-radius: 0 14px 14px 0;
+		left: -10px;
+		top: 8px;
+		width: 11px;
+		height: 18px;
+		border: 3px solid #211b18;
+		border-right: 0;
+		border-radius: 10px 0 0 10px;
+		box-sizing: border-box;
 	}
 	.coffee b {
 		position: absolute;
-		left: 12px;
-		top: -24px;
-		width: 3px;
-		height: 20px;
+		left: 8px;
+		top: -12px;
+		width: 2px;
+		height: 10px;
 		background: rgba(235, 225, 205, 0.45);
-		box-shadow: 10px -5px rgba(235, 225, 205, 0.35);
+		box-shadow: 6px -2px rgba(235, 225, 205, 0.35);
 		animation: steam 2s ease-in-out infinite;
 	}
 	@keyframes steam {
 		50% {
-			transform: translateY(-5px);
+			transform: translateY(-4px);
 			opacity: 0.3;
 		}
 	}
-	.desk-pair-pad {
+	/* Coffee sip — short full-scene trip, always clears */
+	.coffee-trip {
+		position: fixed;
+		inset: 0;
+		z-index: 300000;
+		pointer-events: none;
+		background:
+			repeating-linear-gradient(
+				0deg,
+				transparent 0 2px,
+				rgba(0, 0, 0, 0.18) 2px 3px
+			),
+			radial-gradient(ellipse at 50% 40%, rgba(255, 100, 180, 0.12), transparent 60%);
+		mix-blend-mode: color-dodge;
+		animation: coffee-trip-fx 3s ease-in-out forwards;
+		filter: hue-rotate(0deg) saturate(1.4);
+	}
+	.coffee-trip::before,
+	.coffee-trip::after {
+		content: '';
 		position: absolute;
-		left: 790px;
-		top: 12px;
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 3px 6px;
-		background: #3a2a1c;
-		border: 2px solid #6a4a2e;
-		font-size: 6px;
-		color: #c9a878;
-		transform: rotate(-1deg);
-		z-index: 2;
+		inset: 0;
+		pointer-events: none;
 	}
-	.desk-pair-pad select {
-		background: #1a120e;
-		color: #79dfa0;
-		border: 1px solid #5a3b27;
-		font: 7px var(--mono);
-		padding: 1px 2px;
-		cursor: pointer;
+	.coffee-trip::before {
+		background: linear-gradient(90deg, rgba(255, 0, 80, 0.12), transparent 40%, rgba(0, 255, 200, 0.1));
+		mix-blend-mode: screen;
+		animation: coffee-chroma 0.4s steps(2) infinite;
 	}
-	.wire-status {
-		position: relative;
+	.coffee-trip::after {
+		box-shadow: inset 0 0 80px rgba(20, 0, 40, 0.45);
+		animation: coffee-wobble 0.35s ease-in-out infinite alternate;
+	}
+	@keyframes coffee-trip-fx {
+		0% {
+			opacity: 0;
+			filter: hue-rotate(0deg) saturate(1);
+		}
+		12% {
+			opacity: 1;
+		}
+		50% {
+			filter: hue-rotate(160deg) saturate(2.2) contrast(1.15);
+		}
+		88% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 0;
+			filter: hue-rotate(320deg) saturate(1);
+		}
+	}
+	@keyframes coffee-chroma {
+		0% {
+			transform: translate(0, 0);
+		}
+		50% {
+			transform: translate(2px, -1px);
+		}
+		100% {
+			transform: translate(-2px, 1px);
+		}
+	}
+	@keyframes coffee-wobble {
+		from {
+			transform: rotate(-0.6deg) scale(1.01);
+		}
+		to {
+			transform: rotate(0.6deg) scale(1.02);
+		}
+	}
+	.wire-status.price-pad {
+		/* Same in-scene absolute drag pattern as clipboard / fax / pet / trash */
+		position: absolute;
+		z-index: 72;
 		box-sizing: border-box;
 		width: 170px;
+		margin: 0;
 		padding: 17px 8px 8px;
 		background: #241914;
 		border: 3px solid #5a3b27;
-		box-shadow: inset 0 0 9px #000;
+		box-shadow:
+			inset 0 0 9px #000,
+			6px 6px 0 rgba(25, 10, 4, 0.42);
+		touch-action: none;
+		user-select: none;
+		cursor: grab;
+		visibility: hidden;
+	}
+	.wire-status.price-pad.is-ready {
+		visibility: visible;
+	}
+	.wire-status.price-pad.is-dragging,
+	.wire-status.price-pad.is-dragging .clip {
+		cursor: grabbing;
 	}
 	.wire-status .clip {
 		left: 50%;
@@ -1638,7 +2824,7 @@
 			height: 260px;
 		}
 		.desk-zones {
-			padding: 5px 10px 0;
+			padding: 5px 10px 20px;
 		}
 		.clipboard-panel {
 			max-width: calc(100vw - 16px);
@@ -1648,19 +2834,23 @@
 			width: 300px;
 		}
 		.keyboard-main {
-			left: 700px;
-		}
-		.desk-pair-pad {
-			left: 700px;
+			left: 640px;
+			width: 150px;
 		}
 		.phone-main {
-			left: 900px;
+			left: 580px;
+		}
+		.mouse-pad {
+			width: 78px;
+			height: 48px;
 		}
 		.calculator {
-			left: 1020px;
+			width: 36px;
+			height: 46px;
 		}
 		.coffee {
-			left: 1090px;
+			width: 32px;
+			height: 40px;
 		}
 	}
 
@@ -1747,22 +2937,37 @@
 
 		.office-floor {
 			height: auto;
-			min-height: 0;
-			padding: 8px 8px 16px;
+			min-height: 420px;
+			padding: 8px 8px 56px;
 			overflow: visible;
 		}
 		.back-staff {
+			min-height: 0;
 			height: auto;
+			margin: 4px 4px 8px;
+			padding: 22px 6px 10px;
+		}
+		.staff-row {
 			flex-wrap: wrap;
 			justify-content: center;
+			align-items: flex-end;
 			gap: 8px 10px;
-			padding: 8px 4px 12px;
+		}
+		.staff-row :global(.character) {
+			flex: 0 0 auto;
+			width: 128px;
+			max-width: 140px;
+			min-width: 118px;
+		}
+		.staff-row :global(.character:nth-child(even)) {
+			transform: none;
 		}
 		.desk-zones {
 			display: flex;
 			flex-direction: column;
 			height: auto;
-			padding: 4px 4px 0;
+			min-height: 0;
+			padding: 4px 4px 24px;
 			gap: 10px;
 		}
 		.desk-zone {
@@ -1831,7 +3036,8 @@
 		.coffee {
 			display: none;
 		}
-		.legal-pad {
+		.legal-pad,
+		.legal-pad.desk-prop {
 			position: relative;
 			left: auto;
 			top: auto;
@@ -1856,23 +3062,20 @@
 			left: 50%;
 			transform: translateX(-50%);
 		}
-		.desk-pair-pad {
+		.mouse-pad,
+		.mouse-pad.desk-prop {
 			position: relative;
 			left: auto;
 			top: auto;
 			width: 100%;
-			max-width: 280px;
+			max-width: 200px;
+			height: 48px;
 			margin: 0 auto;
 			transform: none;
-			justify-content: space-between;
-			padding: 8px 10px;
-			font-size: 9px;
 		}
-		.desk-pair-pad select {
-			font-size: 12px;
-			padding: 6px 8px;
-			min-height: 36px;
-			flex: 1;
+		.mouse-pad .pad-target {
+			width: 32px;
+			height: 32px;
 		}
 
 		.clipboard-panel {
@@ -1941,9 +3144,11 @@
 			max-width: 100%;
 			font-size: 12px;
 		}
-		.back-staff :global(.character) {
-			width: 88px;
-			max-width: 96px;
+		.staff-row :global(.character) {
+			flex: 0 0 auto;
+			width: 112px;
+			max-width: 120px;
+			min-width: 100px;
 		}
 		.trader-row :global(.character) {
 			width: 72px;
@@ -1975,8 +3180,147 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.coffee-trip,
+		.coffee-trip::before,
+		.coffee-trip::after {
+			animation: none !important;
+			opacity: 0 !important;
+		}
 		.coffee b {
 			animation: none;
 		}
 	}
+
+	.desk-settings-btn {
+		flex: 0 0 auto;
+		width: 54px;
+		height: 48px;
+		padding: 4px 2px 2px;
+		background: #3a3428;
+		border: 3px solid #1e1810;
+		border-radius: 4px;
+		color: #efc870;
+		font: 700 9px/1 var(--mono, monospace);
+		cursor: pointer;
+		box-shadow: 3px 3px 0 rgba(0,0,0,0.4);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2px;
+		transform: rotate(2deg);
+	}
+	.desk-settings-btn b {
+		font-size: 7px;
+		letter-spacing: 0.08em;
+	}
+	.desk-settings-btn:hover,
+	.desk-settings-btn:focus-visible {
+		outline: 2px solid #efc870;
+		outline-offset: 2px;
+		background: #4a4030;
+	}
+	.settings-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 300000;
+		background: rgba(8, 4, 2, 0.55);
+	}
+	.desk-settings-panel {
+		position: fixed;
+		z-index: 300001;
+		left: 50%;
+		top: 50%;
+		right: auto;
+		bottom: auto;
+		transform: translate(-50%, -50%);
+		width: min(360px, calc(100vw - 32px));
+		max-height: min(70vh, calc(100vh - 48px));
+		overflow-x: hidden;
+		overflow-y: auto;
+		padding-bottom: 4px;
+		background: #120e06;
+		color: #e3d072;
+		border: 4px solid #5a4a2f;
+		box-shadow: 6px 6px 0 rgba(0,0,0,0.55);
+		font-family: var(--mono, monospace);
+	}
+	.desk-settings-panel header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 10px;
+		background: #1f180c;
+		border-bottom: 2px solid #5a4a2f;
+		font-size: 10px;
+		letter-spacing: 0.08em;
+	}
+	.desk-settings-panel .x {
+		background: transparent;
+		border: 1px solid #5a4a2f;
+		color: #e3d072;
+		width: 24px;
+		height: 24px;
+		cursor: pointer;
+	}
+	.settings-body {
+		padding: 10px 10px 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.settings-body h4 {
+		margin: 0 0 6px;
+		font-size: 9px;
+		letter-spacing: 0.1em;
+		color: #efc870;
+	}
+	.settings-body label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 9px;
+		margin: 0 0 5px;
+		cursor: pointer;
+	}
+	.settings-body .ghost {
+		margin-top: 6px;
+		width: 100%;
+		padding: 8px;
+		background: #2a2010;
+		border: 2px dashed #6a5a30;
+		color: #c8b870;
+		font: 8px var(--mono, monospace);
+		letter-spacing: 0.06em;
+		cursor: pointer;
+	}
+	.settings-body .hint {
+		margin: 0;
+		font-size: 8px;
+		opacity: 0.7;
+	}
+	.scene.night-tint .scene-frame {
+		filter: saturate(0.85) brightness(0.92) hue-rotate(-8deg);
+	}
+	.scene.crt-scan .scene-frame::after {
+		content: '';
+		pointer-events: none;
+		position: absolute;
+		inset: 0;
+		z-index: 50;
+		background: repeating-linear-gradient(
+			to bottom,
+			rgba(0, 0, 0, 0.06) 0 1px,
+			transparent 1px 3px
+		);
+		mix-blend-mode: multiply;
+	}
+	.scene.reduce-motion :global(*),
+	.scene.reduce-motion :global(*::before),
+	.scene.reduce-motion :global(*::after) {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+
 </style>

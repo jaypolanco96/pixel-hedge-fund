@@ -1,10 +1,18 @@
 /**
  * Public Kraken Futures helpers (server-only).
- * See `$lib/data/symbols` for Display → PF_* perpetual mapping.
+ * Bybit-only symbols are filled via `$lib/data/bybit` public tickers.
  */
 import type { Bar, CandlesResponse, QuoteResponse, Tf } from './types';
 import { sampleCandles, sampleQuote } from './sample';
-import { resolveSymbol, SYMBOLS, type SymbolDef } from './symbols';
+import {
+	DEFAULT_DISPLAY,
+	hasKraken,
+	resolveSymbol,
+	SYMBOLS,
+	TAPE_DISPLAYS,
+	type SymbolDef
+} from './symbols';
+import { fetchBybitQuote, fetchBybitQuotesFor } from './bybit';
 
 export { resolveSymbol, SYMBOLS, DEFAULT_DISPLAY, TAPE_DISPLAYS } from './symbols';
 
@@ -71,7 +79,14 @@ function quoteFromTick(def: SymbolDef, tick: TickRow): QuoteResponse {
 
 export async function fetchQuote(symbolInput?: string | null): Promise<QuoteResponse> {
 	const def = resolveSymbol(symbolInput);
-	const hit = quoteCache.get(def.kraken);
+
+	// Bybit-primary (no Kraken map) → public linear ticker
+	if (!hasKraken(def) || def.quoteVenue === 'bybit') {
+		return fetchBybitQuote(def.display);
+	}
+
+	const cacheKey = def.kraken;
+	const hit = quoteCache.get(cacheKey);
 	if (hit && Date.now() - hit.at < TTL_MS) return hit.data;
 
 	try {
@@ -79,33 +94,53 @@ export async function fetchQuote(symbolInput?: string | null): Promise<QuoteResp
 		const tick = rows.find((t) => t.symbol === def.kraken);
 		if (!tick || tick.last == null) throw new Error(`${def.kraken} missing from tickers`);
 		const data = quoteFromTick(def, tick);
-		quoteCache.set(def.kraken, { at: Date.now(), data });
+		quoteCache.set(cacheKey, { at: Date.now(), data });
 		return data;
 	} catch (err) {
 		if (hit) return { ...hit.data };
+		// Secondary: try Bybit public ticker before SAMPLE
+		try {
+			const bybitQ = await fetchBybitQuote(def.display);
+			if (!bybitQ.sample) return bybitQ;
+		} catch {
+			/* ignore */
+		}
 		console.warn(`[Tape Wire] quote ${def.display} fallback → SAMPLE`, err);
 		return sampleQuote(def.display);
 	}
 }
 
-/** Live quotes for the multi-crypto ticker tape — SAMPLE-labeled per miss. */
+/** Live quotes for multi-crypto tape — Kraken batch + Bybit fill-in. SAMPLE per miss. */
 export async function fetchTapeQuotes(): Promise<QuoteResponse[]> {
+	const krakenDefs = SYMBOLS.filter((d) => hasKraken(d) && d.quoteVenue === 'kraken');
+	const bybitDefs = SYMBOLS.filter((d) => !hasKraken(d) || d.quoteVenue === 'bybit');
+
+	let krakenRows: TickRow[] = [];
 	try {
-		const rows = await loadTickers();
-		return SYMBOLS.map((def) => {
-			const tick = rows.find((t) => t.symbol === def.kraken);
-			if (!tick || tick.last == null) {
-				console.warn(`[Tape Wire] tape ${def.display} missing → SAMPLE`);
-				return sampleQuote(def.display);
-			}
-			const data = quoteFromTick(def, tick);
-			quoteCache.set(def.kraken, { at: Date.now(), data });
-			return data;
-		});
+		krakenRows = await loadTickers();
 	} catch (err) {
-		console.warn('[Tape Wire] tape batch fallback → SAMPLE per symbol', err);
-		return SYMBOLS.map((def) => sampleQuote(def.display));
+		console.warn('[Tape Wire] Kraken tickers failed', err);
 	}
+
+	const bybitMap = await fetchBybitQuotesFor(bybitDefs.length ? bybitDefs : SYMBOLS.filter((d) => !hasKraken(d)));
+
+	return SYMBOLS.map((def) => {
+		if (hasKraken(def) && def.quoteVenue === 'kraken') {
+			const tick = krakenRows.find((t) => t.symbol === def.kraken);
+			if (tick && tick.last != null) {
+				const data = quoteFromTick(def, tick);
+				quoteCache.set(def.kraken, { at: Date.now(), data });
+				return data;
+			}
+			// fill from Bybit if available
+			const fill = bybitMap.get(def.display);
+			if (fill && !fill.sample) return fill;
+			console.warn(`[Tape Wire] tape ${def.display} missing → SAMPLE`);
+			return sampleQuote(def.display);
+		}
+		const q = bybitMap.get(def.display);
+		return q ?? sampleQuote(def.display);
+	});
 }
 
 export async function fetchCandles(
@@ -114,6 +149,12 @@ export async function fetchCandles(
 	limit = 300
 ): Promise<CandlesResponse> {
 	const def = resolveSymbol(symbolInput);
+
+	// No Kraken instrument → SAMPLE candles (Bybit klines not wired yet)
+	if (!hasKraken(def)) {
+		return sampleCandles(tf, limit, def.display);
+	}
+
 	const resolution = TF_MAP[tf] ?? '15m';
 	const key = `${def.kraken}:${resolution}:${limit}`;
 	const hit = candleCache.get(key);

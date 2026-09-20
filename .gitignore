@@ -21,3 +21,10 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+# Local exchange API secrets (never commit)
+.secrets/
+!.secrets/.gitkeep
+
+# Live exchange snapshot cache (may contain account equity)
+static/blofin-snapshot.json
+
