@@ -11,6 +11,7 @@
 	import StickyNotes from './StickyNotes.svelte';
 	import FloorPet from './FloorPet.svelte';
 	import TrashCan from './TrashCan.svelte';
+	import CrtPnlCart from './CrtPnlCart.svelte';
 	import MariachiBand from './MariachiBand.svelte';
 	import DeskConsole from './DeskConsole.svelte';
 	import ToastStack from '$lib/ui/ToastStack.svelte';
@@ -249,7 +250,8 @@
 			showPricePad: !hide,
 			showFax: !hide,
 			showPet: !hide,
-			showTrash: !hide
+			showTrash: !hide,
+			showCrtCart: !hide
 		};
 		saveDeskSettings(deskSettings);
 	}
@@ -1146,6 +1148,15 @@
 				sceneFrame={sceneFrame}
 			/>
 		{/if}
+		{#if deskSettings.showCrtCart && !deskSettings.hideAllDraggables}
+			<CrtPnlCart
+				{legs}
+				sceneFrame={sceneFrame}
+				compact={deskSettings.compactDeskTools}
+				crtScanlines={deskSettings.crtScanlines}
+				reduceMotion={deskSettings.reduceMotion}
+			/>
+		{/if}
 
 		<section class="foreground-desk" bind:this={foregroundDesk}>
 			<div class="desk-edge"></div>
@@ -1548,6 +1559,7 @@
 				<label><input type="checkbox" checked={deskSettings.showFax} onchange={(e) => updateDeskSetting('showFax', e.currentTarget.checked)} /> Fax</label>
 				<label><input type="checkbox" checked={deskSettings.showPet} onchange={(e) => updateDeskSetting('showPet', e.currentTarget.checked)} /> Pet</label>
 				<label><input type="checkbox" checked={deskSettings.showTrash} onchange={(e) => updateDeskSetting('showTrash', e.currentTarget.checked)} /> Trash</label>
+				<label><input type="checkbox" checked={deskSettings.showCrtCart} onchange={(e) => updateDeskSetting('showCrtCart', e.currentTarget.checked)} /> CRT P&amp;L cart</label>
 				<button type="button" class="ghost" onclick={toggleHideAllDraggables}>
 					{deskSettings.hideAllDraggables ? 'SHOW ALL DRAGGABLES' : 'HIDE ALL DRAGGABLES'}
 				</button>

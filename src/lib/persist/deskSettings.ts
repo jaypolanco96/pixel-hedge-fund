@@ -9,6 +9,7 @@ export interface DeskSettings {
 	showFax: boolean;
 	showPet: boolean;
 	showTrash: boolean;
+	showCrtCart: boolean;
 	hideAllDraggables: boolean;
 	reduceMotion: boolean;
 	disableCoffeeTrip: boolean;
@@ -27,6 +28,7 @@ export const DEFAULT_DESK_SETTINGS: DeskSettings = {
 	showFax: true,
 	showPet: true,
 	showTrash: true,
+	showCrtCart: true,
 	hideAllDraggables: false,
 	reduceMotion: false,
 	disableCoffeeTrip: false,
