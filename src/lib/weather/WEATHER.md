@@ -23,3 +23,7 @@ Respects `prefers-reduced-motion` and desk `reduceMotion` (static birds).
 
 ## Festive accents (while snowing)
 - Brighter warm window lights, soft rooftop/ground snow tint, tiny string lights + wreath on far buildings.
+
+
+## Force Christmas snow
+Desk **SET → Force Christmas snow** sets continuous snow + holiday accents regardless of calendar (for streams).

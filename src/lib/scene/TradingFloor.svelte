@@ -36,7 +36,7 @@
 		loadScenePosition,
 		saveScenePosition
 	} from '$lib/persist/scenePositions';
-	import { initialSimClock, tickSimClock, SIM_MINUTES_PER_REAL_SECOND } from '$lib/weather/timeCycle';
+	import { initialSimClock, tickSimClock, applyForcedChristmasSnow, SIM_MINUTES_PER_REAL_SECOND } from '$lib/weather/timeCycle';
 	import { initialKong, tickKong } from '$lib/weather/kongEvent';
 	import { initialMariachi, tickMariachi } from '$lib/weather/mariachiEvent';
 	import { DEFAULT_DISPLAY, SYMBOLS, SYMBOL_CATEGORIES, resolveSymbol, symbolsInCategory, type SymbolCategory } from '$lib/data/symbols';
@@ -896,7 +896,7 @@
 			const dt = Math.min(0.05, (now - last) / 1000);
 			last = now;
 			totalSimMinutes += dt * SIM_MINUTES_PER_REAL_SECOND;
-			clock = tickSimClock(clock, dt, totalSimMinutes);
+			clock = applyForcedChristmasSnow(tickSimClock(clock, dt, totalSimMinutes), deskSettings.forceChristmasSnow);
 			const pulse = Math.floor(now / 350);
 			const animPulse = pulse !== lastKongPulse;
 			if (animPulse) lastKongPulse = pulse;
@@ -1530,7 +1530,9 @@
 					? ' · RAIN'
 					: ''}{clock.snowing
 					? ' · XMAS · SNOW'
-					: ''}{kong.active
+					: clock.holidayWindow
+						? ' · XMAS'
+						: ''}{kong.active
 					? ' · KONG!'
 					: ''}{mariachi.active ? ' · MARIACHI!' : ''}</small
 			>
@@ -1605,6 +1607,7 @@
 				<label><input type="checkbox" checked={deskSettings.soundOff} onchange={(e) => updateDeskSetting('soundOff', e.currentTarget.checked)} /> Sound off (stub)</label>
 				<label><input type="checkbox" checked={deskSettings.nightModeTint} onchange={(e) => updateDeskSetting('nightModeTint', e.currentTarget.checked)} /> Night mode tint</label>
 				<label><input type="checkbox" checked={deskSettings.crtScanlines} onchange={(e) => updateDeskSetting('crtScanlines', e.currentTarget.checked)} /> CRT scanlines</label>
+				<label><input type="checkbox" checked={deskSettings.forceChristmasSnow} onchange={(e) => updateDeskSetting('forceChristmasSnow', e.currentTarget.checked)} /> Force Christmas snow</label>
 			</section>
 			<p class="hint">Saved in localStorage <code>phf-desk-settings</code>.</p>
 		</div>

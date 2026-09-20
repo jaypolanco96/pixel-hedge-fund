@@ -20,6 +20,8 @@ export interface DeskSettings {
 	nightModeTint: boolean;
 	/** Soft CRT scanlines over the floor. */
 	crtScanlines: boolean;
+	/** Force Christmas snow on the skyline (for streams / demos). */
+	forceChristmasSnow: boolean;
 }
 
 export const DEFAULT_DESK_SETTINGS: DeskSettings = {
@@ -36,7 +38,8 @@ export const DEFAULT_DESK_SETTINGS: DeskSettings = {
 	showBlofinBadges: true,
 	soundOff: true,
 	nightModeTint: false,
-	crtScanlines: false
+	crtScanlines: false,
+	forceChristmasSnow: false
 };
 
 export function loadDeskSettings(): DeskSettings {

@@ -145,3 +145,16 @@ export function initialSimClock(realHourHint?: number, now: Date = new Date()): 
 		holidayWindow
 	};
 }
+
+/** Stream/demo override: keep holiday accents + continuous snow. */
+export function applyForcedChristmasSnow(clock: SimClockState, force: boolean): SimClockState {
+	if (!force) return clock;
+	return {
+		...clock,
+		holidayWindow: true,
+		snowing: true,
+		snowIntensity: Math.max(0.8, clock.snowIntensity || 0),
+		raining: false,
+		rainIntensity: 0
+	};
+}
