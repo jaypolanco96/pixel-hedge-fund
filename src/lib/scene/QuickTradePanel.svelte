@@ -7,6 +7,7 @@
 		BloFinHealth,
 		BloFinMarginMode,
 		BloFinOrderType,
+		BloFinPositionsResponse,
 		BloFinTradeWriteResponse
 	} from '$lib/data/blofinTypes';
 	import {
@@ -18,25 +19,59 @@
 		type BloFinTradeIntent
 	} from '$lib/data/blofinTrade';
 	import { removeTradeIntent, upsertTradeIntent } from '$lib/persist/blofinTradeIntents';
-	import { formatExchangeError, toastErr, toastInfo, toastOk } from '$lib/ui/toast';
+	import {
+		assignPosition,
+		loadBloFinAssignments,
+		saveBloFinAssignments,
+		type BloFinAssignments
+	} from '$lib/persist/blofinAssignments';
+	import { loadLeverageOverrides } from '$lib/persist/leverage';
+	import { formatExchangeError, toastErr, toastOk } from '$lib/ui/toast';
 	import { exchangeFetch } from '$lib/client/exchangeHeaders';
+
+	const FUNDS_PCT_KEY = 'phf-quick-funds-pct';
+
+	function loadFundsPct(): number {
+		try {
+			const raw = localStorage.getItem(FUNDS_PCT_KEY);
+			if (raw == null) return 5;
+			const n = Number(raw);
+			if (Number.isFinite(n) && n >= 0 && n <= 100) return n;
+		} catch {
+			/* private mode */
+		}
+		return 5;
+	}
+
+	function persistFundsPct(n: number) {
+		try {
+			localStorage.setItem(FUNDS_PCT_KEY, String(n));
+		} catch {
+			/* ignore */
+		}
+	}
 
 	let {
 		open = $bindable(false),
 		activeDisplay = 'SOLUSDT',
 		quote = null,
 		priceDecimals = 2,
-		onSelectSymbol = (_d: string) => {}
+		presetTraderId = null as string | null,
+		onSelectSymbol = (_d: string) => {},
+		onAssignmentsChange = (_a: BloFinAssignments) => {}
 	}: {
 		open?: boolean;
 		activeDisplay?: string;
 		quote?: QuoteResponse | null;
 		priceDecimals?: number;
+		/** When set (floor click), apply trader side + leverage on open. */
+		presetTraderId?: string | null;
 		onSelectSymbol?: (display: string) => void;
+		onAssignmentsChange?: (a: BloFinAssignments) => void;
 	} = $props();
 
 	let side = $state<Side>('long');
-	let fundsPct = $state(5);
+	let fundsPct = $state(loadFundsPct());
 	let leverage = $state(10);
 	let traderId = $state('L10');
 	let marginMode = $state<BloFinMarginMode>('isolated');
@@ -44,6 +79,7 @@
 	let limitPrice = $state<number | null>(null);
 	let reduceOnly = $state(false);
 	let overrideLev = $state(false);
+	let lastAppliedPreset = $state<string | null>(null);
 
 	let health = $state<BloFinHealth | null>(null);
 	let balance = $state<BloFinBalanceResponse | null>(null);
@@ -109,12 +145,64 @@
 
 	function onTraderChange(e: Event) {
 		const id = (e.currentTarget as HTMLSelectElement).value;
-		traderId = id;
+		applyTrader(id);
+	}
+
+	/** Resolve desk leverage (floor override wins over cast default). */
+	function leverageForTrader(id: string, castLev: number): number {
+		const ov = loadLeverageOverrides()[id];
+		return ov != null ? ov : castLev;
+	}
+
+	function applyTrader(id: string) {
 		const t = TRADERS.find((x) => x.id === id);
-		if (t) {
-			side = t.side;
-			if (!overrideLev) leverage = t.leverage;
+		if (!t) return;
+		traderId = t.id;
+		side = t.side;
+		if (!overrideLev) leverage = leverageForTrader(t.id, t.leverage);
+	}
+
+	function positionIdFromOrderData(data: unknown): string | null {
+		if (data == null) return null;
+		const rows = Array.isArray(data) ? data : [data];
+		for (const row of rows) {
+			if (!row || typeof row !== 'object') continue;
+			const r = row as Record<string, unknown>;
+			const pid = r.positionId ?? r.posId;
+			if (typeof pid === 'string' && pid) return pid;
+			if (typeof pid === 'number' && Number.isFinite(pid)) return String(pid);
 		}
+		return null;
+	}
+
+	async function maybeAssignToTrader(
+		trader: string,
+		instId: string,
+		positionSide: string,
+		orderData: unknown
+	) {
+		let posId = positionIdFromOrderData(orderData);
+		if (!posId) {
+			try {
+				const pRes = await exchangeFetch('/api/blofin/positions');
+				const pos = (await pRes.json()) as BloFinPositionsResponse;
+				if (pos?.ok && Array.isArray(pos.positions)) {
+					const match = pos.positions.find(
+						(p) =>
+							p.instId === instId &&
+							(p.positionSide === positionSide || p.side === positionSide) &&
+							p.size > 0
+					);
+					posId = match?.positionId ?? null;
+				}
+			} catch {
+				/* assignment is optional */
+			}
+		}
+		if (!posId) return;
+		const next = assignPosition(loadBloFinAssignments(), posId, trader);
+		saveBloFinAssignments(next);
+		onAssignmentsChange(next);
 	}
 
 	async function loadAccount() {
@@ -207,7 +295,10 @@
 			return;
 		}
 		if (networkBlocked) {
-			toastInfo('Network warning', 'BloFin may be unreachable (403) — still attempting');
+			statusErr = true;
+			statusMsg = 'BloFin network blocked — cannot place live order';
+			toastErr('Network blocked', statusMsg);
+			return;
 		}
 		confirmOpen = true;
 	}
@@ -260,12 +351,21 @@
 			const ord = (await oRes.json()) as BloFinTradeWriteResponse;
 			if (!ord.ok) throw new Error(formatExchangeError(ord));
 
+			const placed = pending;
 			removeTradeIntent(pending.id);
 			statusMsg = `LIVE OK · ${pending.instId} ${pending.side} · ${fmt(pending.estSize, 4)}`;
 			toastOk('Order live', statusMsg);
 			statusErr = false;
 			confirmOpen = false;
 			pending = null;
+			if (placed.traderId) {
+				await maybeAssignToTrader(
+					placed.traderId,
+					placed.instId,
+					placed.positionSide,
+					ord.data
+				);
+			}
 			await loadAccount();
 		} catch (e) {
 			statusErr = true;
@@ -277,8 +377,20 @@
 	}
 
 	$effect(() => {
-		if (!open) return;
-		if (!TRADERS.some((t) => t.id === traderId)) {
+		persistFundsPct(fundsPct);
+	});
+
+	$effect(() => {
+		if (!open) {
+			lastAppliedPreset = null;
+			return;
+		}
+		const preset = presetTraderId;
+		if (preset && preset !== lastAppliedPreset) {
+			applyTrader(preset);
+			lastAppliedPreset = preset;
+			overrideLev = false;
+		} else if (!TRADERS.some((t) => t.id === traderId)) {
 			traderId = side === 'long' ? 'L10' : 'S10';
 		}
 		void loadAccount();
@@ -289,14 +401,14 @@
 
 {#if open}
 	<div class="backdrop" role="presentation" onclick={close}></div>
-	<div class="console" role="dialog" aria-modal="true" aria-label="Quick trade live panel">
+	<div class="console" role="dialog" aria-modal="true" aria-label="Create position — fund trader with percent equity">
 		<header class="titlebar">
 			<div class="leds">
 				<i class:on={writesReady} class:warn={!writesReady}></i>
 				<i class:live={health?.mode === 'live'}></i>
 				<i class:ok={!!health?.ok}></i>
 			</div>
-			<strong>QUICK TRADE · {health?.mode === 'live' ? 'LIVE' : (health?.mode ?? '—').toUpperCase()}</strong>
+			<strong>CREATE POSITION · {health?.mode === 'live' ? 'LIVE' : (health?.mode ?? '—').toUpperCase()}</strong>
 			<button type="button" class="x" onclick={close} aria-label="Close quick trade">×</button>
 		</header>
 
@@ -305,20 +417,27 @@
 		{:else if health?.fromSnapshot}
 			<div class="banner cache">SNAPSHOT / CACHE — offline desk copy (not demo)</div>
 		{:else if writesReady}
-			<div class="banner live">LIVE WIRE · Store intent first · Confirm required before POST</div>
+			<div class="banner live">FUND TRADER WITH % EQUITY · Confirm LIVE required before POST</div>
 		{:else}
 			<div class="banner warn">KEYS NOT SET · open Desk LOGIN (browser session)</div>
 		{/if}
 
 		<div class="body">
+			<p class="cta-sub">Fund trader with % available USDT equity · {activeDisplay}</p>
+
+			<label class="field hero-funds">
+				<span class="hero-label">% OF FUNDS</span>
+				<div class="hero-pct">{fmt(fundsPct, 0)}%</div>
+				<input type="range" min="0" max="100" step="1" bind:value={fundsPct} aria-label="Percent of funds" />
+				<input type="number" min="0" max="100" step="0.1" bind:value={fundsPct} aria-label="Percent of funds number" />
+				<em class="hero-hint">0% = no order · sizes from available equity × leverage ÷ mark</em>
+			</label>
+
 			<label class="field">
-				<span>SYMBOL</span>
-				<select
-					value={activeDisplay}
-					onchange={(e) => onSelectSymbol((e.currentTarget as HTMLSelectElement).value)}
-				>
-					{#each SYMBOLS as s (s.display)}
-						<option value={s.display}>{s.display}</option>
+				<span>FLOOR TRADER</span>
+				<select value={traderId} onchange={onTraderChange}>
+					{#each sideTraders as t (t.id)}
+						<option value={t.id}>{t.id} {t.name} ({t.leverage}× {t.side})</option>
 					{/each}
 				</select>
 			</label>
@@ -331,9 +450,15 @@
 			</div>
 
 			<label class="field">
-				<span>% OF FUNDS ({fmt(fundsPct, 0)}%)</span>
-				<input type="range" min="0" max="100" step="1" bind:value={fundsPct} aria-label="Percent of funds" />
-				<input type="number" min="0" max="100" step="0.1" bind:value={fundsPct} aria-label="Percent of funds number" />
+				<span>SYMBOL</span>
+				<select
+					value={activeDisplay}
+					onchange={(e) => onSelectSymbol((e.currentTarget as HTMLSelectElement).value)}
+				>
+					{#each SYMBOLS as s (s.display)}
+						<option value={s.display}>{s.display}</option>
+					{/each}
+				</select>
 			</label>
 
 			<label class="field">
@@ -345,7 +470,7 @@
 			</label>
 
 			<label class="field">
-				<span>LEVERAGE {overrideLev ? '(override)' : '(desk default)'}</span>
+				<span>LEVERAGE {overrideLev ? '(override)' : '(from trader)'}</span>
 				<input type="number" min="1" max="125" step="1" bind:value={leverage} aria-label="Leverage" />
 				<label class="check">
 					<input type="checkbox" bind:checked={overrideLev} />
@@ -373,15 +498,6 @@
 				reduce-only
 			</label>
 
-			<label class="field">
-				<span>FLOOR TRADER (assign on intent)</span>
-				<select value={traderId} onchange={onTraderChange}>
-					{#each sideTraders as t (t.id)}
-						<option value={t.id}>{t.id} {t.name} ({t.leverage}×)</option>
-					{/each}
-				</select>
-			</label>
-
 			<dl class="preview">
 				<div><dt>INST</dt><dd class="mono">{instId}</dd></div>
 				<div><dt>MARK</dt><dd>{mark ? fmt(mark, priceDecimals) : '—'}</dd></div>
@@ -404,16 +520,16 @@
 				<button
 					type="button"
 					class="send"
-					disabled={!writesReady || sizing.size <= 0 || sending}
+					disabled={!writesReady || sizing.size <= 0 || fundsPct <= 0 || sending}
 					onclick={requestSend}
 				>
-					SEND ORDER
+					CREATE POSITION
 				</button>
 			</div>
-			<p class="hint">Store never POSTs. Send arms confirm. Esc / × closes.</p>
+			<p class="hint">Store never POSTs. Create arms CONFIRM LIVE. Esc / × closes.</p>
 		</div>
 		<footer>
-			{networkBlocked ? 'NETWORK BLOCKED' : writesReady ? 'LIVE READY' : 'KEYS MISSING'} · confirm gate required · never auto-fires
+			{networkBlocked ? 'NETWORK BLOCKED' : writesReady ? 'LIVE READY' : 'KEYS MISSING'} · CONFIRM LIVE required · never auto-fires · key {FUNDS_PCT_KEY}
 		</footer>
 	</div>
 
@@ -499,6 +615,17 @@
 	.banner.cache { background: #1a2a22; border-color: #3d6b52; color: #8fd4a8; }
 	.banner.warn { background: #2a2410; border-color: #5a4a28; color: #e8c976; }
 	.body { padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+	.cta-sub { margin: 0; font-size: 8px; letter-spacing: 0.06em; opacity: 0.75; color: #efc870; }
+	.hero-funds {
+		padding: 10px; background: #1a140a; border: 2px solid #8a6a30;
+		box-shadow: inset 0 0 20px rgba(255, 200, 80, 0.08);
+	}
+	.hero-label { font-size: 9px; letter-spacing: 0.12em; color: #ffe0a0; }
+	.hero-pct {
+		font-size: 28px; font-weight: 900; line-height: 1.1; color: #ffe9a8;
+		text-shadow: 0 0 12px rgba(255, 200, 80, 0.35);
+	}
+	.hero-hint { font-size: 7px; opacity: 0.65; font-style: normal; letter-spacing: 0.03em; }
 	.field { display: flex; flex-direction: column; gap: 4px; font-size: 8px; letter-spacing: 0.06em; }
 	.field select,
 	.field input[type='number'],

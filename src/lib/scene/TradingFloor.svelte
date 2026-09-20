@@ -83,6 +83,7 @@
 	let deskBookId = $state<DeskBookId | null>(null);
 	let monitorPanelOpen = $state(false);
 	let quickTradeOpen = $state(false);
+	let quickTradePresetTraderId = $state<string | null>(null);
 	let profitCalcOpen = $state(false);
 	let coffeeTripActive = $state(false);
 	let coffeeTripTimer: ReturnType<typeof setTimeout> | null = null;
@@ -242,6 +243,15 @@
 	}
 
 	function openQuickTrade() {
+		quickTradePresetTraderId = null;
+		quickTradeOpen = true;
+	}
+
+	/** Floor trader click → fund panel preset to that desk (also pins). */
+	function openQuickTradeFor(traderId: string) {
+		quickTradePresetTraderId = traderId;
+		inspectedId = traderId;
+		pinnedId = traderId;
 		quickTradeOpen = true;
 	}
 	function openProfitCalc() {
@@ -1095,7 +1105,7 @@
 								pinned={pinnedId === t.id}
 								blofinBadge={blofinBadgeFor(t.id)}
 								onInspect={() => (inspectedId = t.id)}
-								onPin={() => pin(t.id)}
+								onPin={() => openQuickTradeFor(t.id)}
 								onLeverageCommit={(value) => setTraderLeverage(t.id, value)}
 							/>
 						{/each}
@@ -1118,7 +1128,7 @@
 								pinned={pinnedId === t.id}
 								blofinBadge={blofinBadgeFor(t.id)}
 								onInspect={() => (inspectedId = t.id)}
-								onPin={() => pin(t.id)}
+								onPin={() => openQuickTradeFor(t.id)}
 								onLeverageCommit={(value) => setTraderLeverage(t.id, value)}
 							/>
 						{/each}
@@ -1339,8 +1349,8 @@
 			onpointermove={(e) => onDeskPropPointerMove('pad', e)}
 			onpointerup={(e) => onDeskPropPointerUp('pad', e)}
 			onpointercancel={(e) => onDeskPropPointerUp('pad', e)}
-			aria-label="Open quick trade preview"
-			title="Quick trade — drag to move"
+			aria-label="Create position — fund trader with percent equity"
+			title="CREATE POSITION — fund trader with % equity — drag to move"
 			onclick={() => deskPropClick('pad', openQuickTrade)}
 		>
 			<span class="pad-target" aria-hidden="true"></span>
@@ -1567,7 +1577,9 @@
 	{activeDisplay}
 	{quote}
 	{priceDecimals}
+	presetTraderId={quickTradePresetTraderId}
 	onSelectSymbol={setSymbol}
+	onAssignmentsChange={(a) => (blofinAssignments = a)}
 />
 <DeskBookReader bind:open={deskBookOpen} bind:bookId={deskBookId} />
 <ProfitCalcPanel
