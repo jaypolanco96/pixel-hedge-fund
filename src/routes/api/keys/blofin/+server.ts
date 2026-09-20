@@ -1,5 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { upsertBloFinSecrets } from '$lib/server/exchangeSecrets';
+import {
+	isVercelEnv,
+	upsertBloFinSecrets,
+	validateBloFinSecretsInput
+} from '$lib/server/exchangeSecrets';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -13,26 +17,38 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ ok: false, error: 'Body must be an object' }, { status: 400 });
 	}
 
-	const status = await upsertBloFinSecrets({
+	const input = {
 		apiKey: body.apiKey != null ? String(body.apiKey) : undefined,
 		apiSecret: body.apiSecret != null ? String(body.apiSecret) : undefined,
 		passphrase: body.passphrase != null ? String(body.passphrase) : undefined,
 		baseUrl: body.baseUrl != null ? String(body.baseUrl) : undefined
-	});
+	};
+
+	const vercel = isVercelEnv();
+	// On Vercel: validate only — no writable shared disk. Client persists to sessionStorage.
+	const status = vercel ? validateBloFinSecretsInput(input) : await upsertBloFinSecrets(input);
 
 	if (!status.configured) {
 		return json(
 			{
 				ok: false,
 				error: 'BloFin requires apiKey, apiSecret, and passphrase',
-				blofin: status
+				blofin: status,
+				persistence: vercel ? 'browser-session' : 'server-file'
 			},
 			{ status: 400, headers: { 'Cache-Control': 'no-store' } }
 		);
 	}
 
 	return json(
-		{ ok: true, blofin: status, message: 'BloFin keys saved (masked)' },
+		{
+			ok: true,
+			blofin: status,
+			message: vercel
+				? 'BloFin keys validated (browser session — not stored on Vercel)'
+				: 'BloFin keys saved (masked)',
+			persistence: vercel ? 'browser-session' : 'server-file'
+		},
 		{ headers: { 'Cache-Control': 'no-store' } }
 	);
 };

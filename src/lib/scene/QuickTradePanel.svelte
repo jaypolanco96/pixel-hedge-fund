@@ -19,6 +19,7 @@
 	} from '$lib/data/blofinTrade';
 	import { removeTradeIntent, upsertTradeIntent } from '$lib/persist/blofinTradeIntents';
 	import { formatExchangeError, toastErr, toastInfo, toastOk } from '$lib/ui/toast';
+	import { exchangeFetch } from '$lib/client/exchangeHeaders';
 
 	let {
 		open = $bindable(false),
@@ -120,8 +121,8 @@
 		loadingBal = true;
 		try {
 			const [hRes, bRes] = await Promise.all([
-				fetch('/api/blofin/health'),
-				fetch('/api/blofin/balance')
+				exchangeFetch('/api/blofin/health'),
+				exchangeFetch('/api/blofin/balance')
 			]);
 			health = (await hRes.json()) as BloFinHealth;
 			balance = (await bRes.json()) as BloFinBalanceResponse;
@@ -217,7 +218,7 @@
 		statusErr = false;
 		statusMsg = 'Sending live order…';
 		try {
-			const mmRes = await fetch('/api/blofin/margin-mode', {
+			const mmRes = await exchangeFetch('/api/blofin/margin-mode', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ marginMode: pending.marginMode })
@@ -225,7 +226,7 @@
 			const mm = (await mmRes.json()) as BloFinTradeWriteResponse;
 			if (!mm.ok) throw new Error(formatExchangeError(mm));
 
-			const levRes = await fetch('/api/blofin/leverage', {
+			const levRes = await exchangeFetch('/api/blofin/leverage', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -251,7 +252,7 @@
 			}
 			if (pending.reduceOnly) orderBody.reduceOnly = true;
 
-			const oRes = await fetch('/api/blofin/order', {
+			const oRes = await exchangeFetch('/api/blofin/order', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(orderBody)
@@ -306,7 +307,7 @@
 		{:else if writesReady}
 			<div class="banner live">LIVE WIRE · Store intent first · Confirm required before POST</div>
 		{:else}
-			<div class="banner warn">KEYS NOT SET · open Desk LOGIN or set BLOFIN_* env</div>
+			<div class="banner warn">KEYS NOT SET · open Desk LOGIN (browser session)</div>
 		{/if}
 
 		<div class="body">

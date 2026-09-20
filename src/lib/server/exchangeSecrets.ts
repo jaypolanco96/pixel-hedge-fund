@@ -162,12 +162,54 @@ export async function upsertBybitSecrets(input: {
 	return bybitStatusFrom({ bybit: nextBybit });
 }
 
-export async function getKeysStatus(): Promise<KeysStatusResponse> {
+export async function getKeysStatus(): Promise<KeysStatusResponse & { persistence: string; vercel: boolean }> {
 	const secrets = await readExchangeSecrets();
+	const vercel = isVercelEnv();
 	return {
 		ok: true,
 		blofin: blofinStatusFrom(secrets),
 		bybit: bybitStatusFrom(secrets),
-		secretsPath: '.secrets/exchanges.json'
+		secretsPath: vercel ? '(ephemeral — use browser session LOGIN)' : '.secrets/exchanges.json',
+		persistence: vercel ? 'browser-session' : 'server-file-or-env',
+		vercel
 	};
+}
+
+/** Validate BloFin body and return masked status without writing disk (Vercel / browser persistence). */
+export function validateBloFinSecretsInput(input: {
+	apiKey?: string;
+	apiSecret?: string;
+	passphrase?: string;
+	baseUrl?: string;
+}): MaskedExchangeStatus {
+	const apiKey = mergeSecretField(input.apiKey, undefined);
+	const apiSecret = mergeSecretField(input.apiSecret, undefined);
+	const passphrase = mergeSecretField(input.passphrase, undefined);
+	const baseUrl =
+		((input.baseUrl ?? LIVE_BLOFIN_BASE) as string).trim().replace(/\/$/, '') || LIVE_BLOFIN_BASE;
+	return blofinStatusFrom({
+		blofin: { apiKey, apiSecret, passphrase, baseUrl }
+	});
+}
+
+/** Validate Bybit body and return masked status without writing disk. */
+export function validateBybitSecretsInput(input: {
+	apiKey?: string;
+	apiSecret?: string;
+	passphrase?: string;
+	baseUrl?: string;
+}): MaskedExchangeStatus {
+	const apiKey = mergeSecretField(input.apiKey, undefined);
+	const apiSecret = mergeSecretField(input.apiSecret, undefined);
+	const passphrase =
+		mergeSecretField(input.passphrase, undefined, { allowBlankClear: true }) || undefined;
+	const baseUrl =
+		((input.baseUrl ?? LIVE_BYBIT_BASE) as string).trim().replace(/\/$/, '') || LIVE_BYBIT_BASE;
+	return bybitStatusFrom({
+		bybit: { apiKey, apiSecret, passphrase, baseUrl }
+	});
+}
+
+export function isVercelEnv(): boolean {
+	return !!process.env.VERCEL;
 }

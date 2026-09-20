@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { exchangeFetch } from '$lib/client/exchangeHeaders';
 	import { onMount } from 'svelte';
 	import Skyline from './Skyline.svelte';
 	import RainLayer from './RainLayer.svelte';
@@ -702,8 +703,8 @@
 		let note: string | null = null;
 		try {
 			const [bfRes, byRes] = await Promise.all([
-				fetch('/api/blofin/positions'),
-				fetch('/api/bybit/positions')
+				exchangeFetch('/api/blofin/positions'),
+				exchangeFetch('/api/bybit/positions')
 			]);
 			if (bfRes.ok) {
 				const bf = (await bfRes.json()) as {
@@ -860,7 +861,7 @@
 			const asg = blofinAssignments;
 			if (!Object.keys(asg).length) return;
 			try {
-				const res = await fetch('/api/blofin/positions');
+				const res = await exchangeFetch('/api/blofin/positions');
 				const data = await res.json();
 				const positions = Array.isArray(data?.positions) ? data.positions : [];
 				const byPos = new Map(positions.map((pos: { positionId: string; instId: string; side: string }) => [pos.positionId, pos]));

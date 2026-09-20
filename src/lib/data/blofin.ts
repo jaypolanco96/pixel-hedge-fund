@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { LIVE_BLOFIN_BASE as SECRETS_LIVE_BLOFIN } from '$lib/server/exchangeSecrets';
+import { getRequestBloFin } from '$lib/server/requestExchangeAuth';
 import { env } from '$env/dynamic/private';
 import type {
 	BloFinBalanceResponse,
@@ -115,7 +116,25 @@ function readBloFinSecretsFile(): {
 	}
 }
 
+/**
+ * Config priority: per-request LOGIN headers → env → local `.secrets` (dev).
+ * On Vercel, visitors supply keys via Desk LOGIN (sessionStorage → request headers).
+ */
 export function getBloFinConfig(): BloFinConfig {
+	const fromReq = getRequestBloFin();
+	if (fromReq?.apiKey && fromReq?.apiSecret && fromReq?.passphrase) {
+		const baseUrl = (fromReq.baseUrl || LIVE_BASE || SECRETS_LIVE_BLOFIN).replace(/\/$/, '');
+		const mode: BloFinMode = /demo/i.test(baseUrl) ? 'demo' : 'live';
+		return {
+			apiKey: fromReq.apiKey.trim(),
+			apiSecret: fromReq.apiSecret.trim(),
+			passphrase: fromReq.passphrase.trim(),
+			baseUrl,
+			mode,
+			configured: true
+		};
+	}
+
 	const file = readBloFinSecretsFile();
 	const apiKey = (env.BLOFIN_API_KEY ?? env.BLOFIN_KEY ?? file.apiKey ?? '').trim();
 	const apiSecret = (env.BLOFIN_API_SECRET ?? env.BLOFIN_SECRET ?? file.apiSecret ?? '').trim();

@@ -11,6 +11,7 @@ import {
 	readExchangeSecrets,
 	type BybitSecrets
 } from '$lib/server/exchangeSecrets';
+import { getRequestBybit } from '$lib/server/requestExchangeAuth';
 import type {
 	BybitBalanceCoin,
 	BybitBalanceResponse,
@@ -43,8 +44,22 @@ function num(v: unknown, fallback = 0): number {
 	return Number.isFinite(n) ? n : fallback;
 }
 
-/** Env first, then `.secrets/exchanges.json`. */
+/**
+ * Config priority: per-request LOGIN headers → env → local `.secrets` (dev).
+ */
 export async function getBybitConfig(): Promise<BybitConfig> {
+	const fromReq = getRequestBybit();
+	if (fromReq?.apiKey && fromReq?.apiSecret) {
+		const baseUrl = (fromReq.baseUrl || LIVE_BYBIT_BASE).replace(/\/$/, '');
+		return {
+			apiKey: fromReq.apiKey.trim(),
+			apiSecret: fromReq.apiSecret.trim(),
+			passphrase: (fromReq.passphrase ?? '').trim(),
+			baseUrl,
+			configured: true
+		};
+	}
+
 	let apiKey = (env.BYBIT_API_KEY ?? env.BYBIT_KEY ?? '').trim();
 	let apiSecret = (env.BYBIT_API_SECRET ?? env.BYBIT_SECRET ?? '').trim();
 	let passphrase = (env.BYBIT_PASSPHRASE ?? env.BYBIT_PASS ?? '').trim();

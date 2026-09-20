@@ -24,6 +24,14 @@
 	} from '$lib/data/blofinTrade';
 	import { loadTradeIntents, removeTradeIntent, upsertTradeIntent } from '$lib/persist/blofinTradeIntents';
 	import { formatExchangeError, toastErr, toastInfo, toastOk } from '$lib/ui/toast';
+	import { exchangeFetch } from '$lib/client/exchangeHeaders';
+	import {
+		blofinStatusFromClient,
+		bybitStatusFromClient,
+		loadExchangeKeys,
+		upsertBloFinClientKeys,
+		upsertBybitClientKeys
+	} from '$lib/client/exchangeKeys';
 
 	type Tab = 'status' | 'account' | 'positions' | 'orders' | 'login';
 
@@ -123,16 +131,26 @@
 		try {
 			const res = await fetch('/api/keys/status');
 			const data = await res.json();
-			keysStatus = data;
-			if (data?.blofin?.baseUrl) blofinBase = data.blofin.baseUrl;
-			if (data?.bybit?.baseUrl) bybitBase = data.bybit.baseUrl;
+			const local = loadExchangeKeys();
+			const localBf = blofinStatusFromClient(local);
+			const localBy = bybitStatusFromClient(local);
+			// Merge: browser session wins for UI configured state (Vercel has no server vault)
+			keysStatus = {
+				ok: true,
+				blofin: localBf.configured ? localBf : (data?.blofin ?? localBf),
+				bybit: localBy.configured ? localBy : (data?.bybit ?? localBy)
+			};
+			const bf = keysStatus.blofin;
+			const by = keysStatus.bybit;
+			if (bf?.baseUrl) blofinBase = bf.baseUrl;
+			if (by?.baseUrl) bybitBase = by.baseUrl;
 			// Prefill masked placeholders so blank submit keeps prior secrets
-			if (data?.blofin?.apiKeyMasked) blofinKey = data.blofin.apiKeyMasked;
-			if (data?.blofin?.secretMasked) blofinSecret = data.blofin.secretMasked;
-			if (data?.blofin?.passphraseMasked) blofinPass = data.blofin.passphraseMasked;
-			if (data?.bybit?.apiKeyMasked) bybitKey = data.bybit.apiKeyMasked;
-			if (data?.bybit?.secretMasked) bybitSecret = data.bybit.secretMasked;
-			if (data?.bybit?.passphraseMasked) bybitPass = data.bybit.passphraseMasked;
+			if (bf?.apiKeyMasked) blofinKey = bf.apiKeyMasked;
+			if (bf?.secretMasked) blofinSecret = bf.secretMasked;
+			if (bf?.passphraseMasked) blofinPass = bf.passphraseMasked;
+			if (by?.apiKeyMasked) bybitKey = by.apiKeyMasked;
+			if (by?.secretMasked) bybitSecret = by.secretMasked;
+			if (by?.passphraseMasked) bybitPass = by.passphraseMasked;
 		} catch (e) {
 			keysErr = true;
 			keysMsg = e instanceof Error ? e.message : String(e);
@@ -141,25 +159,44 @@
 
 	async function saveBloFinKeys() {
 		if (keysBusy) return;
-		if (!confirm('Save BloFin API keys to local .secrets/exchanges.json on this machine?')) return;
+		const confirmMsg = import.meta.env.DEV
+			? 'Save BloFin keys to this browser session (and local .secrets for solo dev)?'
+			: 'Save BloFin keys to this browser session? Keys stay in the browser (not a shared Vercel vault). Clearing site data logs you out.';
+		if (!confirm(confirmMsg)) return;
 		keysBusy = true;
 		keysErr = false;
 		keysMsg = 'Saving BloFin…';
 		try {
+			// Always persist in browser session first (works on Vercel)
+			const localStatus = upsertBloFinClientKeys({
+				apiKey: blofinKey,
+				apiSecret: blofinSecret,
+				passphrase: blofinPass,
+				baseUrl: blofinBase || 'https://openapi.blofin.com'
+			});
+			if (!localStatus.configured) {
+				throw new Error('BloFin requires apiKey, apiSecret, and passphrase');
+			}
+			const stored = loadExchangeKeys().blofin;
 			const res = await fetch('/api/keys/blofin', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					apiKey: blofinKey,
-					apiSecret: blofinSecret,
-					passphrase: blofinPass,
-					baseUrl: blofinBase || 'https://openapi.blofin.com'
+					apiKey: stored?.apiKey,
+					apiSecret: stored?.apiSecret,
+					passphrase: stored?.passphrase,
+					baseUrl: stored?.baseUrl || 'https://openapi.blofin.com'
 				})
 			});
 			const data = await res.json();
-			if (!data.ok) throw new Error(data.error || 'Save failed');
-			keysMsg = 'BloFin keys saved (masked)';
-			toastOk('BloFin keys saved', data.blofin?.apiKeyMasked ?? 'configured');
+			if (!data.ok && data.persistence !== 'browser-session') {
+				throw new Error(data.error || 'Save failed');
+			}
+			keysMsg =
+				data.persistence === 'browser-session'
+					? 'BloFin keys in browser session (not uploaded to a shared vault)'
+					: 'BloFin keys saved (browser + local .secrets)';
+			toastOk('BloFin keys saved', localStatus.apiKeyMasked ?? 'configured');
 			await loadKeysStatus();
 			await refresh();
 		} catch (e) {
@@ -173,28 +210,45 @@
 
 	async function saveBybitKeys() {
 		if (keysBusy) return;
-		if (!confirm('Save Bybit API keys to local .secrets/exchanges.json on this machine?')) return;
+		const confirmMsg = import.meta.env.DEV
+			? 'Save Bybit keys to this browser session (and local .secrets for solo dev)?'
+			: 'Save Bybit keys to this browser session? Keys stay in the browser (not a shared Vercel vault). Clearing site data logs you out.';
+		if (!confirm(confirmMsg)) return;
 		keysBusy = true;
 		keysErr = false;
 		keysMsg = 'Saving Bybit…';
 		try {
+			const localStatus = upsertBybitClientKeys({
+				apiKey: bybitKey,
+				apiSecret: bybitSecret,
+				passphrase: bybitPass || undefined,
+				baseUrl: bybitBase || 'https://api.bybit.com'
+			});
+			if (!localStatus.configured) {
+				throw new Error('Bybit requires apiKey and apiSecret');
+			}
+			const stored = loadExchangeKeys().bybit;
 			const res = await fetch('/api/keys/bybit', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					apiKey: bybitKey,
-					apiSecret: bybitSecret,
-					passphrase: bybitPass || undefined,
-					baseUrl: bybitBase || 'https://api.bybit.com'
+					apiKey: stored?.apiKey,
+					apiSecret: stored?.apiSecret,
+					passphrase: stored?.passphrase,
+					baseUrl: stored?.baseUrl || 'https://api.bybit.com'
 				})
 			});
 			const data = await res.json();
-			if (!data.ok) throw new Error(data.error || 'Save failed');
-			keysMsg = 'Bybit keys saved (masked)';
-			toastOk('Bybit keys saved', data.bybit?.apiKeyMasked ?? 'configured');
+			if (!data.ok && data.persistence !== 'browser-session') {
+				throw new Error(data.error || 'Save failed');
+			}
+			keysMsg =
+				data.persistence === 'browser-session'
+					? 'Bybit keys in browser session (not uploaded to a shared vault)'
+					: 'Bybit keys saved (browser + local .secrets)';
+			toastOk('Bybit keys saved', localStatus.apiKeyMasked ?? 'configured');
 			await loadKeysStatus();
-			// Verify
-			const hRes = await fetch('/api/bybit/health');
+			const hRes = await exchangeFetch('/api/bybit/health');
 			const health = await hRes.json();
 			if (health?.ok) toastOk('Bybit health OK', health.baseUrl);
 			else toastErr('Bybit health', health?.error || health?.msg || 'unreachable');
@@ -213,10 +267,10 @@
 		err = null;
 		try {
 			const [hRes, bRes, pRes, oRes] = await Promise.all([
-				fetch('/api/blofin/health'),
-				fetch('/api/blofin/balance'),
-				fetch('/api/blofin/positions'),
-				fetch('/api/blofin/orders')
+				exchangeFetch('/api/blofin/health'),
+				exchangeFetch('/api/blofin/balance'),
+				exchangeFetch('/api/blofin/positions'),
+				exchangeFetch('/api/blofin/orders')
 			]);
 			health = (await hRes.json()) as BloFinHealth;
 			balance = (await bRes.json()) as BloFinBalanceResponse;
@@ -225,7 +279,7 @@
 			if (health?.fromSnapshot || balance?.fromSnapshot) {
 				err = null;
 			} else if (!health?.configured) {
-				err = 'No BloFin keys in env — see BLOFIN.md';
+				err = 'No BloFin keys — use LOGIN tab (browser session)';
 			} else if (!health.ok) {
 				err = health.error ?? 'BloFin unreachable';
 			}
@@ -329,7 +383,7 @@
 		tradeErr = false;
 		tradeMsg = 'Sending live order…';
 		try {
-			const mmRes = await fetch('/api/blofin/margin-mode', {
+			const mmRes = await exchangeFetch('/api/blofin/margin-mode', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ marginMode: pending.marginMode })
@@ -337,7 +391,7 @@
 			const mm = (await mmRes.json()) as BloFinTradeWriteResponse;
 			if (!mm.ok) throw new Error(formatExchangeError(mm));
 
-			const levRes = await fetch('/api/blofin/leverage', {
+			const levRes = await exchangeFetch('/api/blofin/leverage', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -361,7 +415,7 @@
 			if (pending.orderType === 'limit' && pending.price != null) orderBody.price = String(pending.price);
 			if (pending.reduceOnly) orderBody.reduceOnly = true;
 
-			const oRes = await fetch('/api/blofin/order', {
+			const oRes = await exchangeFetch('/api/blofin/order', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(orderBody)
@@ -720,7 +774,10 @@
 				<section class="panel login-panel">
 					<h3>EXCHANGE LOGIN</h3>
 					<p class="hint">
-						Keys stay on this machine in <code>.secrets/exchanges.json</code> (gitignored).
+						Keys stay in this browser session (not uploaded to a shared Vercel vault). Clearing site data logs you out.
+						{#if import.meta.env.DEV}
+							Locally, SAVE also writes gitignored <code>.secrets/exchanges.json</code>.
+						{/if}
 						Never returned raw by GET — only masked ****. Confirm before save.
 					</p>
 					{#if keysStatus}

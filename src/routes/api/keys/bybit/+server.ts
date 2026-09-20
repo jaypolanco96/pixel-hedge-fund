@@ -1,5 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { upsertBybitSecrets } from '$lib/server/exchangeSecrets';
+import {
+	isVercelEnv,
+	upsertBybitSecrets,
+	validateBybitSecretsInput
+} from '$lib/server/exchangeSecrets';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -13,26 +17,37 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ ok: false, error: 'Body must be an object' }, { status: 400 });
 	}
 
-	const status = await upsertBybitSecrets({
+	const input = {
 		apiKey: body.apiKey != null ? String(body.apiKey) : undefined,
 		apiSecret: body.apiSecret != null ? String(body.apiSecret) : undefined,
 		passphrase: body.passphrase != null ? String(body.passphrase) : undefined,
 		baseUrl: body.baseUrl != null ? String(body.baseUrl) : undefined
-	});
+	};
+
+	const vercel = isVercelEnv();
+	const status = vercel ? validateBybitSecretsInput(input) : await upsertBybitSecrets(input);
 
 	if (!status.configured) {
 		return json(
 			{
 				ok: false,
 				error: 'Bybit requires apiKey and apiSecret',
-				bybit: status
+				bybit: status,
+				persistence: vercel ? 'browser-session' : 'server-file'
 			},
 			{ status: 400, headers: { 'Cache-Control': 'no-store' } }
 		);
 	}
 
 	return json(
-		{ ok: true, bybit: status, message: 'Bybit keys saved (masked)' },
+		{
+			ok: true,
+			bybit: status,
+			message: vercel
+				? 'Bybit keys validated (browser session — not stored on Vercel)'
+				: 'Bybit keys saved (masked)',
+			persistence: vercel ? 'browser-session' : 'server-file'
+		},
 		{ headers: { 'Cache-Control': 'no-store' } }
 	);
 };
