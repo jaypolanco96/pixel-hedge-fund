@@ -12,6 +12,8 @@
 	import FloorPet from './FloorPet.svelte';
 	import TrashCan from './TrashCan.svelte';
 	import CrtPnlCart from './CrtPnlCart.svelte';
+	import DeskBookReader from './DeskBookReader.svelte';
+	import { DESK_LIBRARY, type DeskBookId } from '$lib/books/deskLibrary';
 	import MariachiBand from './MariachiBand.svelte';
 	import DeskConsole from './DeskConsole.svelte';
 	import ToastStack from '$lib/ui/ToastStack.svelte';
@@ -76,6 +78,8 @@
 	let mariachi = $state(initialMariachi());
 	let leverageOverrides = $state<LeverageOverrides>({});
 	let deskConsoleOpen = $state(false);
+	let deskBookOpen = $state(false);
+	let deskBookId = $state<DeskBookId | null>(null);
 	let monitorPanelOpen = $state(false);
 	let quickTradeOpen = $state(false);
 	let profitCalcOpen = $state(false);
@@ -230,6 +234,12 @@
 	function openMonitorPanel() {
 		monitorPanelOpen = true;
 	}
+
+	function openDeskBook(id: DeskBookId) {
+		deskBookId = id;
+		deskBookOpen = true;
+	}
+
 	function openQuickTrade() {
 		quickTradeOpen = true;
 	}
@@ -1160,11 +1170,24 @@
 
 		<section class="foreground-desk" bind:this={foregroundDesk}>
 			<div class="desk-edge"></div>
-			<div class="book-stack" aria-hidden="true">
-				<div>SECURITIES<br />ANALYSIS</div>
-				<div>TECHNICAL<br />ANALYSIS</div>
-				<div>OPTIONS<br />STRATEGIES</div>
-				<div>INTELLIGENT<br />INVESTOR</div>
+			<div class="book-stack" role="group" aria-label="Desk reference books">
+				{#each DESK_LIBRARY as book, i (book.id)}
+					<button
+						type="button"
+						class="book-spine"
+						class:spine-0={i === 0}
+						class:spine-1={i === 1}
+						class:spine-2={i === 2}
+						class:spine-3={i === 3}
+						aria-label={`Open desk primer: ${book.spineTitle}`}
+						title={book.spineTitle}
+						onclick={() => openDeskBook(book.id)}
+					>
+						{#each book.spineTitle.split(' ') as word, wi}
+							{#if wi > 0}<br />{/if}{word}
+						{/each}
+					</button>
+				{/each}
 			</div>
 			<button
 				type="button"
@@ -1536,6 +1559,7 @@
 	{priceDecimals}
 	onSelectSymbol={setSymbol}
 />
+<DeskBookReader bind:open={deskBookOpen} bind:bookId={deskBookId} />
 <ProfitCalcPanel
 	bind:open={profitCalcOpen}
 	{quote}
@@ -2259,7 +2283,9 @@
 		bottom: 13px;
 		width: 155px;
 	}
-	.book-stack div {
+	.book-stack .book-spine {
+		display: block;
+		width: 100%;
 		height: 25px;
 		padding: 4px 8px;
 		border: 2px solid #2f1b11;
@@ -2268,19 +2294,37 @@
 		font-size: 6px;
 		font-weight: 900;
 		letter-spacing: 0.08em;
+		font-family: inherit;
+		text-align: left;
+		cursor: pointer;
+		line-height: 1.15;
+		transition: filter 0.12s ease, transform 0.12s ease;
 	}
-	.book-stack div:nth-child(1) {
+	.book-stack .book-spine:hover,
+	.book-stack .book-spine:focus-visible {
+		filter: brightness(1.18);
+		transform: translateX(3px);
+		outline: none;
+		z-index: 1;
+		position: relative;
+	}
+	.book-stack .book-spine:focus-visible {
+		box-shadow:
+			inset 0 2px rgba(255, 255, 255, 0.12),
+			0 0 0 2px #f0d9a8;
+	}
+	.book-stack .spine-0 {
 		background: #49392d;
 	}
-	.book-stack div:nth-child(2) {
+	.book-stack .spine-1 {
 		width: 145px;
 		background: #7a3430;
 	}
-	.book-stack div:nth-child(3) {
+	.book-stack .spine-2 {
 		width: 135px;
 		background: #284e47;
 	}
-	.book-stack div:nth-child(4) {
+	.book-stack .spine-3 {
 		width: 148px;
 		background: #62513b;
 	}

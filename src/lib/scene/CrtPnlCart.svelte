@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { exchangeFetch } from '$lib/client/exchangeHeaders';
+	import { TRADERS } from '$lib/characters/cast';
 	import type { TraderLeg } from '$lib/data/types';
-	import type { BloFinBalanceResponse, BloFinPositionsResponse } from '$lib/data/blofinTypes';
-	import type { BybitBalanceResponse, BybitPositionsResponse } from '$lib/data/bybitTypes';
+	import type {
+		BloFinBalanceResponse,
+		BloFinPosition,
+		BloFinPositionsResponse
+	} from '$lib/data/blofinTypes';
+	import type {
+		BybitBalanceResponse,
+		BybitPosition,
+		BybitPositionsResponse
+	} from '$lib/data/bybitTypes';
 	import {
 		loadScenePosition,
 		saveScenePosition,
@@ -47,10 +56,18 @@
 	let suppressClick = false;
 
 	let page = $state<Page>('both');
+	let detailOpen = $state(false);
 
 	let bfUpnl = $state<number | null>(null);
 	let byUpnl = $state<number | null>(null);
 	let equityUsdt = $state<number | null>(null);
+	let bfAvailable = $state<number | null>(null);
+	let byAvailable = $state<number | null>(null);
+	let byEquity = $state<number | null>(null);
+	let bfPositions = $state<BloFinPosition[]>([]);
+	let byPositions = $state<BybitPosition[]>([]);
+	let bfConfigured = $state(false);
+	let byConfigured = $state(false);
 	let bfLive = $state(false);
 	let byLive = $state(false);
 	let bfSample = $state(false);
@@ -58,11 +75,14 @@
 	let networkNote = $state(false);
 	let pollBusy = $state(false);
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
+	let lastRefreshAt = $state<number | null>(null);
 
 	const floorUpnl = $derived(
 		legs.reduce((sum, leg) => sum + (Number.isFinite(leg.unrealizedPnlUsd) ? leg.unrealizedPnlUsd : 0), 0)
 	);
 	const floorSample = $derived(legs.length === 0 || legs.some((l) => l.sample));
+
+	const traderName = (id: string) => TRADERS.find((t) => t.id === id)?.name ?? id;
 
 	function fmtSigned(n: number | null | undefined): string {
 		if (n == null || !Number.isFinite(n)) return '—';
@@ -75,6 +95,18 @@
 		return `~${n.toFixed(2)} USDT`;
 	}
 
+	function fmtNum(n: number | null | undefined, d = 4): string {
+		if (n == null || !Number.isFinite(n)) return '—';
+		return n.toFixed(d);
+	}
+
+	function fmtPx(n: number | null | undefined): string {
+		if (n == null || !Number.isFinite(n)) return '—';
+		if (Math.abs(n) >= 1000) return n.toFixed(2);
+		if (Math.abs(n) >= 1) return n.toFixed(4);
+		return n.toFixed(6);
+	}
+
 	const feedLabel = $derived.by(() => {
 		if (networkNote) return 'NETWORK';
 		const exchangeWanted = page !== 'floor';
@@ -82,6 +114,14 @@
 		if (exchangeWanted && (bfSample || bySample)) return 'SAMPLE';
 		if (page === 'floor') return floorSample ? 'SAMPLE' : 'LIVE';
 		return floorSample ? 'SAMPLE' : 'FLOOR';
+	});
+
+	const detailStatus = $derived.by(() => {
+		if (networkNote) return 'NETWORK';
+		if ((bfLive || byLive) && !(bfSample || bySample) && !floorSample) return 'LIVE';
+		if (bfSample || bySample || floorSample) return 'SAMPLE';
+		if (bfLive || byLive) return 'LIVE';
+		return 'SAMPLE';
 	});
 
 	const screenText = $derived.by(() => {
@@ -122,13 +162,18 @@
 		let nextBf: number | null = null;
 		let nextBy: number | null = null;
 		let nextEq: number | null = null;
+		let nextBfAvail: number | null = null;
+		let nextByAvail: number | null = null;
+		let nextByEq: number | null = null;
+		let nextBfPos: BloFinPosition[] = [];
+		let nextByPos: BybitPosition[] = [];
 		let nextBfLive = false;
 		let nextByLive = false;
 		let nextBfSample = false;
 		let nextBySample = false;
 		let nextNetwork = false;
-		let bfConfigured = false;
-		let byConfigured = false;
+		let nextBfConfigured = false;
+		let nextByConfigured = false;
 
 		try {
 			const [pBf, bBf, pBy, bBy] = await Promise.all([
@@ -143,8 +188,9 @@
 				const p = (await pBf.json()) as BloFinPositionsResponse;
 				if (p.sample || p.fromSnapshot) nextBfSample = true;
 				if (p.ok) {
-					bfConfigured = true;
-					nextBf = (p.positions ?? []).reduce(
+					nextBfConfigured = true;
+					nextBfPos = p.positions ?? [];
+					nextBf = nextBfPos.reduce(
 						(s, row) => s + (Number.isFinite(row.unrealizedPnl) ? row.unrealizedPnl : 0),
 						0
 					);
@@ -155,8 +201,15 @@
 			}
 			if (bBf.ok || bBf.status === 503) {
 				const b = (await bBf.json()) as BloFinBalanceResponse;
-				if (b.ok && b.totalEquityUsd != null && Number.isFinite(b.totalEquityUsd)) {
-					nextEq = b.totalEquityUsd;
+				if (b.ok) {
+					if (b.totalEquityUsd != null && Number.isFinite(b.totalEquityUsd)) {
+						nextEq = b.totalEquityUsd;
+					}
+					const availSum = (b.details ?? []).reduce(
+						(s, row) => s + (Number.isFinite(row.available) ? row.available : 0),
+						0
+					);
+					if ((b.details ?? []).length) nextBfAvail = availSum;
 				}
 			}
 
@@ -165,10 +218,11 @@
 				const p = (await pBy.json()) as BybitPositionsResponse;
 				if (p.sample) nextBySample = true;
 				if (p.note) nextNetwork = true;
-				if (p.configured) byConfigured = true;
+				if (p.configured) nextByConfigured = true;
 				if (p.ok) {
-					byConfigured = true;
-					nextBy = (p.positions ?? []).reduce(
+					nextByConfigured = true;
+					nextByPos = p.positions ?? [];
+					nextBy = nextByPos.reduce(
 						(s, row) => s + (Number.isFinite(row.unrealisedPnl) ? row.unrealisedPnl : 0),
 						0
 					);
@@ -177,44 +231,73 @@
 					nextNetwork = true;
 				}
 			}
-			if ((bBy.ok || bBy.status === 503) && nextEq == null) {
+			if (bBy.ok || bBy.status === 503) {
 				const b = (await bBy.json()) as BybitBalanceResponse;
-				if (b.ok && b.totalEquityUsd != null && Number.isFinite(b.totalEquityUsd)) {
-					nextEq = b.totalEquityUsd;
+				if (b.ok) {
+					if (b.totalEquityUsd != null && Number.isFinite(b.totalEquityUsd)) {
+						nextByEq = b.totalEquityUsd;
+						if (nextEq == null) nextEq = b.totalEquityUsd;
+					}
+					const availSum = (b.coins ?? []).reduce(
+						(s, row) => s + (Number.isFinite(row.available) ? row.available : 0),
+						0
+					);
+					if ((b.coins ?? []).length) nextByAvail = availSum;
 				}
 			}
 
-			// Keep dash when venue not configured / no usable book — never invent numbers.
-			if (!bfConfigured) nextBf = null;
-			if (!byConfigured) nextBy = null;
+			if (!nextBfConfigured) nextBf = null;
+			if (!nextByConfigured) nextBy = null;
 		} catch {
 			nextNetwork = true;
 		} finally {
 			bfUpnl = nextBf;
 			byUpnl = nextBy;
 			equityUsdt = nextEq;
+			bfAvailable = nextBfAvail;
+			byAvailable = nextByAvail;
+			byEquity = nextByEq;
+			bfPositions = nextBfPos;
+			byPositions = nextByPos;
+			bfConfigured = nextBfConfigured;
+			byConfigured = nextByConfigured;
 			bfLive = nextBfLive;
 			byLive = nextByLive;
 			bfSample = nextBfSample;
 			bySample = nextBySample;
 			networkNote = nextNetwork;
+			lastRefreshAt = Date.now();
 			pollBusy = false;
 		}
 	}
 
-
-	function cyclePage() {
+	function cyclePage(event?: MouseEvent) {
+		event?.stopPropagation();
 		const i = PAGES.indexOf(page);
 		page = PAGES[(i + 1) % PAGES.length];
 	}
 
-	function handleClick(event: MouseEvent) {
+	function openDetail(event: MouseEvent) {
 		if (suppressClick) {
 			suppressClick = false;
 			event.preventDefault();
+			event.stopPropagation();
 			return;
 		}
-		cyclePage();
+		event.stopPropagation();
+		detailOpen = true;
+	}
+
+	function closeDetail() {
+		detailOpen = false;
+	}
+
+	function onKey(e: KeyboardEvent) {
+		if (!detailOpen) return;
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			closeDetail();
+		}
 	}
 
 	function frameScale() {
@@ -329,9 +412,20 @@
 		activePointer = null;
 		if (root.hasPointerCapture(event.pointerId)) root.releasePointerCapture(event.pointerId);
 	}
+
+	function refreshAgo(): string {
+		if (lastRefreshAt == null) return '—';
+		const s = Math.max(0, Math.round((Date.now() - lastRefreshAt) / 1000));
+		return `${s}s ago`;
+	}
 </script>
 
-<svelte:window onresize={reflow} onpointerup={finishPointer} onpointercancel={finishPointer} />
+<svelte:window
+	onresize={reflow}
+	onpointerup={finishPointer}
+	onpointercancel={finishPointer}
+	onkeydown={onKey}
+/>
 
 <div
 	bind:this={root}
@@ -349,25 +443,35 @@
 	onpointercancel={finishPointer}
 	onlostpointercapture={finishPointer}
 >
-	<button
-		type="button"
-		class="crt-cart"
-		aria-label="CRT P&L cart — click to cycle pages, drag to move"
-		title="CRT · P&L — click cycles EXCHANGE / FLOOR / BOTH"
-		onclick={handleClick}
-	>
+	<div class="crt-cart">
 		<!-- CRT beige monitor -->
 		<div class="crt-monitor">
 			<div class="crt-bezel">
-				<div
+				<button
+					type="button"
 					class="crt-screen"
 					class:scan={crtScanlines && !reduceMotion}
 					class:dim-scan={crtScanlines && reduceMotion}
+					aria-label="Open CRT P&L detail screen"
+					title="Click glass for detail · drag cart to move"
+					onclick={openDetail}
 				>
 					<pre class="crt-text">{screenText}</pre>
-				</div>
+					<span class="page-chip" role="presentation">{page.toUpperCase()}</span>
+				</button>
 			</div>
-			<div class="crt-knobs"><i></i><i></i></div>
+			<div class="crt-knobs">
+				<button
+					type="button"
+					class="page-btn"
+					aria-label="Cycle CRT page"
+					title="Cycle BOTH / EXCHANGE / FLOOR"
+					onclick={cyclePage}
+				>
+					PAGE
+				</button>
+				<i></i><i></i>
+			</div>
 			<div class="crt-vent"></div>
 		</div>
 		<!-- Metal AV cart stand -->
@@ -387,8 +491,146 @@
 			</div>
 		</div>
 		<span class="cart-tag">AV</span>
-	</button>
+	</div>
 </div>
+
+{#if detailOpen}
+	<div class="backdrop" role="presentation" onclick={closeDetail}></div>
+	<div class="detail" role="dialog" aria-modal="true" aria-label="CRT P&L detail">
+		<header class="titlebar">
+			<div class="leds">
+				<i class:on={detailStatus === 'LIVE'}></i>
+				<i class:sample={detailStatus === 'SAMPLE'}></i>
+				<i class:net={detailStatus === 'NETWORK'}></i>
+			</div>
+			<strong>CRT · P&amp;L DETAIL · {detailStatus}</strong>
+			<button type="button" class="refresh" onclick={() => void refreshExchange()} disabled={pollBusy}>
+				{pollBusy ? '…' : '↻'}
+			</button>
+			<button type="button" class="x" onclick={closeDetail} aria-label="Close P&L detail">×</button>
+		</header>
+
+		<div class="body">
+			<section class="venue">
+				<h3>BLOFIN {#if bfConfigured}<span class="tag">{bfSample ? 'SAMPLE' : bfLive ? 'LIVE' : '—'}</span>{:else}<span class="tag muted">NO KEYS / DATA</span>{/if}</h3>
+				{#if bfConfigured}
+					<dl class="summary">
+						<div><dt>Equity</dt><dd>{fmtEq(equityUsdt)}</dd></div>
+						<div><dt>Available</dt><dd>{bfAvailable == null ? '—' : fmtNum(bfAvailable, 2)}</dd></div>
+						<div><dt>Σ uPNL</dt><dd class={bfUpnl != null && bfUpnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(bfUpnl)}</dd></div>
+					</dl>
+					{#if bfPositions.length === 0}
+						<p class="empty">No open BloFin positions.</p>
+					{:else}
+						<table>
+							<thead>
+								<tr>
+									<th>instId</th>
+									<th>side</th>
+									<th>size</th>
+									<th>entry</th>
+									<th>mark</th>
+									<th>uPNL</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each bfPositions as p (p.positionId)}
+									<tr>
+										<td>{p.instId}</td>
+										<td class={p.side}>{p.side}</td>
+										<td>{fmtNum(p.size, 4)}</td>
+										<td>{fmtPx(p.averagePrice)}</td>
+										<td>{fmtPx(p.markPrice)}</td>
+										<td class={p.unrealizedPnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(p.unrealizedPnl)}</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					{/if}
+				{:else}
+					<p class="empty">BloFin keys/data not present — nothing to show.</p>
+				{/if}
+			</section>
+
+			<section class="venue">
+				<h3>BYBIT {#if byConfigured}<span class="tag">{bySample ? 'SAMPLE' : byLive ? 'LIVE' : '—'}</span>{:else}<span class="tag muted">NO KEYS / DATA</span>{/if}</h3>
+				{#if byConfigured}
+					<dl class="summary">
+						<div><dt>Equity</dt><dd>{fmtEq(byEquity ?? equityUsdt)}</dd></div>
+						<div><dt>Available</dt><dd>{byAvailable == null ? '—' : fmtNum(byAvailable, 2)}</dd></div>
+						<div><dt>Σ uPNL</dt><dd class={byUpnl != null && byUpnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(byUpnl)}</dd></div>
+					</dl>
+					{#if byPositions.length === 0}
+						<p class="empty">No open Bybit positions.</p>
+					{:else}
+						<table>
+							<thead>
+								<tr>
+									<th>symbol</th>
+									<th>side</th>
+									<th>size</th>
+									<th>entry</th>
+									<th>mark</th>
+									<th>uPNL</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each byPositions as p (`${p.symbol}-${p.positionIdx}-${p.side}`)}
+									<tr>
+										<td>{p.symbol}</td>
+										<td class={p.deskSide}>{p.deskSide !== 'flat' ? p.deskSide : p.side}</td>
+										<td>{fmtNum(p.size, 4)}</td>
+										<td>{fmtPx(p.avgPrice)}</td>
+										<td>{fmtPx(p.markPrice)}</td>
+										<td class={p.unrealisedPnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(p.unrealisedPnl)}</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					{/if}
+				{:else}
+					<p class="empty">Bybit keys/data not present — nothing to show.</p>
+				{/if}
+			</section>
+
+			<section class="venue">
+				<h3>FLOOR BOOK <span class="tag">{floorSample ? 'SAMPLE' : 'LIVE'}</span></h3>
+				<dl class="summary">
+					<div><dt>Total uPNL</dt><dd class={floorUpnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(floorUpnl)}</dd></div>
+					<div><dt>Legs</dt><dd>{legs.length}</dd></div>
+				</dl>
+				{#if legs.length === 0}
+					<p class="empty">No floor legs.</p>
+				{:else}
+					<table>
+						<thead>
+							<tr>
+								<th>trader</th>
+								<th>id</th>
+								<th>side</th>
+								<th>uPNL</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each legs as leg (leg.traderId)}
+								<tr>
+									<td>{traderName(leg.traderId)}</td>
+									<td>{leg.traderId}</td>
+									<td class={leg.side}>{leg.side}</td>
+									<td class={leg.unrealizedPnlUsd >= 0 ? 'pos' : 'neg'}>{fmtSigned(leg.unrealizedPnlUsd)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{/if}
+			</section>
+		</div>
+
+		<footer>
+			Status {detailStatus} · poll ~12s · refreshed {refreshAgo()} · Esc / × / backdrop closes
+		</footer>
+	</div>
+{/if}
 
 <style>
 	.crt-cart-wrap {
@@ -420,7 +662,7 @@
 		cursor: grabbing;
 	}
 	.crt-cart:hover .crt-bezel,
-	.crt-cart:focus-visible .crt-bezel {
+	.crt-cart:focus-within .crt-bezel {
 		filter: brightness(1.06);
 	}
 
@@ -441,11 +683,26 @@
 	}
 	.crt-screen {
 		position: relative;
+		display: block;
+		width: 100%;
 		height: 54px;
+		padding: 0;
+		margin: 0;
 		background: #020804;
 		border: 2px solid #1a2818;
 		box-shadow: inset 0 0 8px rgba(40, 180, 80, 0.25);
 		overflow: hidden;
+		cursor: pointer;
+		font: inherit;
+		color: inherit;
+		text-align: left;
+	}
+	.crt-screen:hover,
+	.crt-screen:focus-visible {
+		box-shadow:
+			inset 0 0 10px rgba(60, 220, 100, 0.4),
+			0 0 0 1px #5dff8a;
+		outline: none;
 	}
 	.crt-screen.scan::after {
 		content: '';
@@ -486,10 +743,23 @@
 		white-space: pre;
 		overflow: hidden;
 	}
+	.page-chip {
+		position: absolute;
+		right: 2px;
+		bottom: 2px;
+		padding: 0 2px;
+		font-size: 4.5px;
+		letter-spacing: 0.04em;
+		color: #1a2818;
+		background: #5dff8a;
+		opacity: 0.85;
+		pointer-events: none;
+	}
 	.crt-knobs {
 		display: flex;
 		justify-content: flex-end;
-		gap: 4px;
+		align-items: center;
+		gap: 3px;
 		padding: 2px 4px 3px;
 		background: #9a8a68;
 	}
@@ -501,13 +771,29 @@
 		border: 1px solid #1a1510;
 		box-shadow: inset 1px 1px #6a6050;
 	}
+	.page-btn {
+		margin-right: auto;
+		padding: 0 3px;
+		height: 10px;
+		border: 1px solid #1a1510;
+		background: #5a5040;
+		color: #ddd2b0;
+		font-size: 5px;
+		font-family: inherit;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		cursor: pointer;
+		line-height: 1;
+	}
+	.page-btn:hover,
+	.page-btn:focus-visible {
+		background: #7a6a50;
+		color: #fff8e0;
+		outline: none;
+	}
 	.crt-vent {
 		height: 4px;
-		background: repeating-linear-gradient(
-			90deg,
-			#6a5e48 0 2px,
-			#8a7a58 2px 4px
-		);
+		background: repeating-linear-gradient(90deg, #6a5e48 0 2px, #8a7a58 2px 4px);
 		border-top: 1px solid #4a3e2a;
 	}
 
@@ -609,5 +895,192 @@
 		letter-spacing: 0.12em;
 		color: #9b7657;
 		text-shadow: 1px 1px #1a1008;
+	}
+
+	/* Detail modal */
+	.backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 200000;
+		background: rgba(4, 10, 6, 0.72);
+	}
+	.detail {
+		position: fixed;
+		z-index: 200001;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		width: min(560px, calc(100vw - 20px));
+		max-height: min(780px, calc(100vh - 20px));
+		display: flex;
+		flex-direction: column;
+		background: #061208;
+		color: #9fe0a8;
+		border: 4px solid #2a5a34;
+		box-shadow:
+			0 0 0 2px #0a1a0c,
+			10px 10px 0 rgba(0, 0, 0, 0.55),
+			inset 0 0 50px rgba(80, 255, 120, 0.05);
+		font-family: var(--mono, 'Courier New', monospace);
+		image-rendering: auto;
+	}
+	.titlebar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
+		background: #0e1c10;
+		border-bottom: 3px solid #1a3a22;
+		font-size: 11px;
+		letter-spacing: 0.04em;
+	}
+	.titlebar strong {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.leds {
+		display: flex;
+		gap: 4px;
+	}
+	.leds i {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #1a2818;
+		border: 1px solid #0a120a;
+	}
+	.leds i.on {
+		background: #3dff7a;
+		box-shadow: 0 0 6px #3dff7a;
+	}
+	.leds i.sample {
+		background: #d4c04a;
+		box-shadow: 0 0 6px #d4c04a;
+	}
+	.leds i.net {
+		background: #ff6a4a;
+		box-shadow: 0 0 6px #ff6a4a;
+	}
+	.refresh,
+	.x {
+		flex-shrink: 0;
+		width: 28px;
+		height: 28px;
+		border: 2px solid #0a120a;
+		background: #1a3a22;
+		color: #9fe0a8;
+		font-size: 16px;
+		line-height: 1;
+		cursor: pointer;
+		font-family: inherit;
+	}
+	.refresh:hover:not(:disabled),
+	.x:hover,
+	.refresh:focus-visible:not(:disabled),
+	.x:focus-visible {
+		background: #2a5a34;
+		outline: none;
+	}
+	.refresh:disabled {
+		opacity: 0.5;
+		cursor: wait;
+	}
+	.body {
+		flex: 1;
+		overflow: auto;
+		padding: 10px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+	.venue h3 {
+		margin: 0 0 6px;
+		font-size: 12px;
+		letter-spacing: 0.08em;
+		color: #c8f5c8;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.tag {
+		font-size: 9px;
+		padding: 1px 5px;
+		border: 1px solid #3dff7a;
+		color: #3dff7a;
+		letter-spacing: 0.1em;
+	}
+	.tag.muted {
+		border-color: #4a6a4a;
+		color: #6a8a6a;
+	}
+	.summary {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 6px;
+		margin: 0 0 8px;
+	}
+	.summary div {
+		background: #0a160c;
+		border: 1px solid #1a3a22;
+		padding: 5px 6px;
+	}
+	.summary dt {
+		margin: 0;
+		font-size: 8px;
+		letter-spacing: 0.08em;
+		color: #6a9a70;
+	}
+	.summary dd {
+		margin: 2px 0 0;
+		font-size: 12px;
+		font-weight: 700;
+	}
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 10px;
+	}
+	th,
+	td {
+		border: 1px solid #1a3a22;
+		padding: 4px 5px;
+		text-align: left;
+	}
+	th {
+		background: #0e1c10;
+		color: #6a9a70;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		font-size: 9px;
+	}
+	td.long,
+	td.buy {
+		color: #5dff8a;
+	}
+	td.short,
+	td.sell {
+		color: #ff8a7a;
+	}
+	.pos {
+		color: #5dff8a;
+	}
+	.neg {
+		color: #ff8a7a;
+	}
+	.empty {
+		margin: 0;
+		font-size: 11px;
+		color: #6a8a6a;
+		font-style: italic;
+	}
+	footer {
+		padding: 6px 10px;
+		border-top: 2px solid #1a3a22;
+		font-size: 9px;
+		letter-spacing: 0.04em;
+		color: #5a7a5a;
+		background: #0a140c;
 	}
 </style>
