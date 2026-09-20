@@ -1060,6 +1060,8 @@
 					/>
 				{/each}
 				</div>
+				<!-- Serenades Nora Blake (center staff desk) -->
+				<MariachiBand active={mariachi.active} frame={mariachi.frame} anchor="nora" />
 			</div>
 
 			<div class="desk-zones">
@@ -1114,7 +1116,6 @@
 				<div class="plant"><i></i><i></i><i></i></div>
 			</div>
 
-			<MariachiBand active={mariachi.active} frame={mariachi.frame} />
 
 		</section>
 
@@ -1876,6 +1877,7 @@
 		pointer-events: none;
 	}
 	.back-staff {
+		/* Hosts mariachi over Nora (center staff) */
 		position: relative;
 		z-index: 4;
 		box-sizing: border-box;
@@ -1890,6 +1892,9 @@
 		background: rgba(31, 20, 16, 0.36);
 		/* Sit on the carpet — no divider “perch” line under feet */
 		overflow: visible;
+	}
+	.back-staff :global(.mariachi) {
+		z-index: 20;
 	}
 	.staff-zone-sign {
 		position: absolute;

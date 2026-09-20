@@ -1,10 +1,13 @@
 <script lang="ts">
 	let {
 		active = false,
-		frame = 0
+		frame = 0,
+		/** When "nora", perform above Nora Blake (center FLOOR MANAGEMENT desk). */
+		anchor = 'nora'
 	}: {
 		active?: boolean;
 		frame?: number;
+		anchor?: 'nora' | 'floor';
 	} = $props();
 
 	const pose = $derived.by(() => {
@@ -15,8 +18,9 @@
 	});
 
 	const notePhase = $derived(frame % 4);
+	/* Anchored above Nora (center of 5 staff) — enter/exit is a short local sway */
 	const walkX = $derived(
-		pose === 'enter' ? -40 + frame * 14 : pose === 'exit' ? 20 + (frame - 28) * 12 : 18
+		pose === 'enter' ? -28 + frame * 8 : pose === 'exit' ? 8 + (frame - 28) * 10 : 0
 	);
 </script>
 
@@ -25,7 +29,7 @@
 		class="mariachi"
 		data-pose={pose}
 		style:--mx={`${walkX}px`}
-		aria-label="Rare mariachi band performing on the floor"
+		aria-label="Rare mariachi band performing above Nora Blake"
 	>
 		<div class="band">
 			{#each [0, 1, 2] as i}
@@ -51,9 +55,11 @@
 <style>
 	.mariachi {
 		position: absolute;
+		/* Nora is 3rd of 5 centered staff — sit on her desk midline */
 		left: 50%;
-		bottom: 70px;
-		z-index: 14;
+		top: 2px;
+		bottom: auto;
+		z-index: 20;
 		transform: translateX(calc(-50% + var(--mx, 0px)));
 		pointer-events: none;
 		image-rendering: pixelated;

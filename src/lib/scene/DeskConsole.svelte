@@ -1224,4 +1224,73 @@
 	.confirm p { font-size: 9px; line-height: 1.5; margin: 0 0 12px; }
 	.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
+	.login-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.keys-status {
+		margin: 0;
+		font-size: 8px;
+		color: #9fd9b5;
+		letter-spacing: 0.04em;
+	}
+	.login-box {
+		margin: 0;
+		padding: 10px;
+		border: 2px solid #2f5a42;
+		background: #0a1a12;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
+	}
+	.login-box legend {
+		padding: 0 6px;
+		font-size: 8px;
+		letter-spacing: 0.1em;
+		color: #efc870;
+	}
+	.login-box .field {
+		display: grid;
+		grid-template-columns: 108px minmax(0, 1fr);
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		min-width: 0;
+		margin: 0;
+		font-size: 8px;
+		color: #9fd9b5;
+	}
+	.login-box .field span {
+		letter-spacing: 0.06em;
+		opacity: 0.75;
+		white-space: nowrap;
+	}
+	.login-box .field input {
+		width: 100%;
+		min-width: 0;
+		box-sizing: border-box;
+		background: #12251b;
+		color: #b8ffd0;
+		border: 1px solid #3a6a50;
+		padding: 6px 8px;
+		font: 9px/1.2 var(--mono, monospace);
+	}
+	.login-box .field input:focus {
+		outline: 1px solid #efc870;
+		outline-offset: 1px;
+	}
+	.login-box .store {
+		margin-top: 4px;
+		width: fit-content;
+		align-self: flex-start;
+	}
+	@media (max-width: 520px) {
+		.login-box .field {
+			grid-template-columns: 1fr;
+			gap: 3px;
+		}
+	}
+
 </style>
