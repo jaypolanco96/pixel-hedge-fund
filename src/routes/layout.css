@@ -1,0 +1,30 @@
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	min-height: 100%;
+	background: #120b09;
+	color: #f0e4cf;
+	-webkit-font-smoothing: antialiased;
+	overflow-x: hidden;
+}
+
+body {
+	image-rendering: pixelated;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+::selection {
+	background: #e8a04a;
+	color: #1a120c;
+}

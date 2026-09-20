@@ -1,0 +1,120 @@
+# Pixel Hedge Fund
+
+A SvelteKit **lived-in pixel office** — not a dashboard. Warm 90s hedge-fund floor (Apex Capital / sim vibe), panoramic NYC sunset windows, wooden CRT desks, and Chart Desk TA driving real trader behavior.
+
+Art reference: [`static/ref/apex-capital-office.png`](./static/ref/apex-capital-office.png)
+
+## Run
+
+```bash
+cd /workspace/pixel-hedge-fund/app
+npm install
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+```bash
+npm run check
+npm run build
+```
+
+## Scene (office-first)
+
+Camera sits **behind a cluttered foreground desk** looking across the floor:
+
+- Panoramic **NYC sunset windows** (Empire State silhouette, mullions, rain on glass; rare **King Kong** event)
+- Wall **PIXEL HEDGE FUND** sign + values: Discipline / Research / Returns
+- **TODAY** whiteboard, **MARKET WIRE** board with **CHANNEL** pair switch + multi-crypto rows
+- Lounge sofa + Fortune, plants, brass bull on a filing cabinet
+- 10 traders at wooden CRT desks (5 LONG / 5 SHORT, 5×–100×) + CIO, PM, Senior Analyst, Research Analyst, Quant
+- Foreground props: books, WSJ, legal pad, beige CRT, keyboard, corded phone, calculator, coffee, **PAIR** desk pad
+
+HUD lives **in the room** (wall board, LED tape, foreground CRT) — no floating metric cards.
+
+**Desk clipboard** (hover/inspect): pointer-**draggable**, clamped to the floor, slight paper tilt while dragging.
+
+## Active pair switching
+
+Diegetic controls (MARKET WIRE **CHANNEL** select + foreground **PAIR** pad) change the floor’s trading symbol. Selection persists in the URL (`?symbol=ETHUSDT`) and `localStorage`. Quote, signal, candles, and trader positions reload for the chosen pair.
+
+## Cast behavior (Chart Desk)
+
+Positions come from live `/api/market/signal` (Supertrend + EMA21/55 + RSI + MACD + ATR; 15m setup / 4h regime). See `../ta-signal-stack-v1.md` and `../TRADER_TA_POSTURE.md`.
+
+| Tape | Desk mandate | Floor read |
+|------|--------------|------------|
+| Confluence ≥5, or ≥4 with structure / lower leverage | Same side as bias | **OPEN** at live Kraken mark. Stop = Supertrend. TP1 = 1.5R, TP2 = 2.5R |
+| Confluence 2–4, not yet a fill | Same side | **Thinking** + thought cloud |
+| Bias against desk, or ST flipped | Opposite / invalid | **FLAT / Watching** — no invented fill |
+
+Hover / focus a trader → desk **clipboard**. Click to **pin** CRT snippet. Esc unpins.
+
+## Kraken mapping (multi-crypto)
+
+| Display | Kraken Futures | Notes |
+|---------|----------------|-------|
+| **BTCUSDT** | **`PF_XBTUSD`** | BTC listed as XBT |
+| **ETHUSDT** | **`PF_ETHUSD`** | |
+| **XRPUSDT** | **`PF_XRPUSD`** | |
+| **SOLUSDT** | **`PF_SOLUSD`** | Default |
+| **ADAUSDT** | **`PF_ADAUSD`** | |
+| **DOGEUSDT** | **`PF_DOGEUSD`** | |
+| **LINKUSDT** | **`PF_LINKUSD`** | |
+| **AVAXUSDT** | **`PF_AVAXUSD`** | |
+
+- `GET /api/market/quote?symbol=SOLUSDT`
+- `GET /api/market/candles?symbol=ETHUSDT&tf=15m`
+- `GET /api/market/signal?symbol=BTCUSDT`
+- `GET /api/market/tape` — all tape symbols (live where possible)
+- `GET /api/market/health`
+
+If a fetch fails for a symbol, that row/payload sets `"sample": true` and the UI shows **SAMPLE** — never silent fake live prices.
+
+
+## Feature pack (office toys)
+
+### 90s fax / printer
+Pixel fax by the lounge. **Click** to open **PRINT REPORT** options built from live Chart Desk signal + candles (never invents prices; labels **SAMPLE** when needed):
+
+- Bias & confluence desk brief
+- Supertrend / EMA structure sheet
+- Risk card (SL, TP1/TP2, ATR vol state)
+- Multi-timeframe alignment memo
+- Session tape / funding-style summary
+
+After print: on-screen 90s “fax spit”, **Printable HTML**, or **Download .txt**.
+
+### Sticky notes on the window
+**+ NOTE** control on the panoramic glass → type, pick a color, **Stick**. Drag notes on the window; **×** deletes. Persists in `localStorage` (`phf-window-stickies`).
+
+### Change trader leverage
+Click a trader's leverage badge (for example, `5×`) → enter an integer from `1` to `1000`, then press Enter or blur to commit (Escape cancels). Posture gates and P&L margin % update; overrides persist (`phf-leverage-overrides`).
+
+### Bull / bear pets
+When tape bias is **LONG** and confluence is **tradeable/high** → mini **bull** pet on the floor. **SHORT** + tradeable → **bear cub**. **FLAT** → sleeping “zzz” pet (otherwise hidden). Pets are **draggable** (clamped to the scene frame); position persists as `phf-pet-pos`.
+
+### Trash can (busted thesis)
+Pixel trash can on the floor — **draggable**, position in `phf-trash-pos`. **Click** opens a crumpled “busted thesis / wrong call” research note built from live Chart Desk bias (counter-trend idea that failed, confluence that flipped, etc.). Post-mortem narrative only — real signal context, no fake live P&L.
+
+### Rare mariachi
+Same rarity spirit as Kong: eligible in **day** or **golden** sim phases, ≤ once per sim-day, ~**7%** roll. Band enters the aisle, plays with note sprites (~36 frames). Wire status shows `MARIACHI!` while active.
+
+## Rare King Kong event
+
+On the Empire State Building (center window pane):
+
+- Eligible only during **dusk** or **night** sim phases
+- At most **once per sim-day** (1440 sim-minutes)
+- ~**8%** roll on first eligible tick of that day
+- Brief sequence: climb → roar → swipe helicopters → fade (~28 frames)
+- Wire status shows `KONG!` while active — intentionally rare, not every cycle
+
+## Specs (repo root)
+
+- `../PRODUCT_BRIEF.md`
+- `../ta-signal-stack-v1.md`
+- `../FLOOR_ART_DIRECTION.md`
+- `../FLOOR_SIGNAL_DRIVERS.md`
+- `../TRADER_TA_POSTURE.md`
+- `../OFFICE_PROPS.md`
+- `../risk-pit/v1-trader-mtm.md`
+- `../market-data/API_CONTRACT.md`

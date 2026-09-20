@@ -1,0 +1,161 @@
+<script lang="ts">
+	import type { SignalResponse } from '$lib/data/types';
+	import { resolveSymbol } from '$lib/data/symbols';
+
+	let {
+		signal,
+		displaySymbol = 'SOLUSDT'
+	}: { signal: SignalResponse | null; displaySymbol?: string } = $props();
+
+	const kraken = $derived(resolveSymbol(signal?.symbol ?? displaySymbol).kraken);
+	const decimals = $derived(resolveSymbol(signal?.symbol ?? displaySymbol).decimals);
+</script>
+
+<div class="chart-desk" class:sample={signal?.sample}>
+	<div class="crt-topline">
+		<span>CHART DESK / {kraken}</span>
+		<span>{signal?.sample ? 'SAMPLE' : 'KRAKEN LIVE'}</span>
+	</div>
+	{#if signal}
+		<div class="readout">
+			<div class="bias" data-bias={signal.bias}>{signal.bias}</div>
+			<div class="pips" aria-label={`Confluence ${signal.confluence} of 5`}>
+				{#each Array(5) as _, i}<i class:on={i < signal.confluence}></i>{/each}
+			</div>
+			<div class="structure">
+				{signal.structure === 'none' ? 'NO STRUCTURE' : signal.structure.toUpperCase()}
+			</div>
+		</div>
+		<div class="terminal-grid">
+			<span>LAST</span><b>{signal.last.toFixed(decimals)}</b>
+			<span>RSI 14</span><b>{signal.rsi.toFixed(1)}</b>
+			<span>EMA 21 / 55</span
+			><b>{signal.ema['21'].toFixed(decimals)} / {signal.ema['55'].toFixed(decimals)}</b>
+			<span>SUPERTRND</span
+			><b
+				>{signal.supertrend.value.toFixed(decimals)}
+				{signal.supertrend.direction === 1 ? '↑' : '↓'}</b
+			>
+			<span>MACD HIST</span><b>{signal.macd.hist.toFixed(3)}</b>
+			<span>ATR / VOL</span><b>{signal.atr.pct.toFixed(2)}% {signal.atr.state.toUpperCase()}</b>
+		</div>
+		<div class="risk-rail">
+			<span class="stop">SL {signal.risk.stop.toFixed(decimals)}</span>
+			<span>TP1 {signal.risk.tp1.toFixed(decimals)}</span>
+			<span>TP2 {signal.risk.tp2.toFixed(decimals)}</span>
+		</div>
+		<div class="mtf">
+			4H {signal.mtf.regime} / 15M {signal.mtf.setup} · {signal.mtf.aligned ? 'ALIGNED' : 'COUNTER'}
+		</div>
+	{:else}
+		<div class="boot">TAPE WIRE CONNECTING<span>_</span></div>
+	{/if}
+	<div class="scanlines"></div>
+</div>
+
+<style>
+	.chart-desk {
+		position: relative;
+		height: 100%;
+		padding: 9px 11px;
+		overflow: hidden;
+		background: #06120d;
+		color: #72e3a3;
+		font-family: var(--mono, monospace);
+		text-shadow: 0 0 5px rgba(80, 255, 150, 0.32);
+	}
+	.crt-topline {
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+		padding-bottom: 5px;
+		border-bottom: 1px solid rgba(95, 220, 145, 0.35);
+		font-size: 7px;
+		letter-spacing: 0.09em;
+	}
+	.readout {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: center;
+		gap: 8px;
+		margin: 7px 0;
+	}
+	.bias {
+		font-size: 20px;
+		font-weight: 900;
+		letter-spacing: 0.08em;
+	}
+	.bias[data-bias='SHORT'] {
+		color: #ff766a;
+	}
+	.bias[data-bias='FLAT'] {
+		color: #e8c976;
+	}
+	.pips {
+		display: flex;
+		gap: 3px;
+	}
+	.pips i {
+		width: 7px;
+		height: 7px;
+		border: 1px solid #38634e;
+	}
+	.pips i.on {
+		background: #72e3a3;
+		box-shadow: 0 0 5px #72e3a3;
+	}
+	.structure {
+		color: #ecc66f;
+		font-size: 7px;
+		text-align: right;
+	}
+	.terminal-grid {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 3px 10px;
+		font-size: 7px;
+	}
+	.terminal-grid span {
+		opacity: 0.55;
+	}
+	.terminal-grid b {
+		font-weight: 500;
+		text-align: right;
+	}
+	.risk-rail {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 7px;
+		padding-top: 5px;
+		border-top: 1px dotted rgba(95, 220, 145, 0.35);
+		color: #ecc66f;
+		font-size: 6px;
+	}
+	.risk-rail .stop {
+		color: #ff766a;
+	}
+	.mtf {
+		margin-top: 5px;
+		font-size: 6px;
+		opacity: 0.65;
+	}
+	.boot {
+		padding: 32px 0;
+		text-align: center;
+		font-size: 9px;
+	}
+	.scanlines {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		background: repeating-linear-gradient(
+			0deg,
+			transparent 0 2px,
+			rgba(0, 0, 0, 0.22) 2px 3px
+		);
+		box-shadow: inset 0 0 20px rgba(43, 255, 130, 0.13);
+	}
+	.sample {
+		color: #e8c976;
+	}
+</style>
