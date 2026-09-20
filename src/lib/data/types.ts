@@ -117,4 +117,9 @@ export interface SimClockState {
 	outdoorLux: number;
 	raining: boolean;
 	rainIntensity: number;
+	/** Soft white snowfall on the panoramic glass (holiday window). */
+	snowing: boolean;
+	snowIntensity: number;
+	/** Real-calendar Dec 1–Jan 5: snow can replace rain in weather rolls. */
+	holidayWindow: boolean;
 }

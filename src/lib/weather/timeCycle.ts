@@ -3,6 +3,17 @@ import type { DayPhase, SimClockState } from '$lib/data/types';
 /** One real second ≈ 2 sim minutes → full day ~12 real minutes */
 export const SIM_MINUTES_PER_REAL_SECOND = 2;
 
+/**
+ * Real-calendar holiday window for Christmas / winter snow.
+ * Dec 1 – Jan 5 inclusive (local timezone).
+ * Outside this window snow is off; birds still run year-round.
+ */
+export function isHolidaySnowWindow(date: Date = new Date()): boolean {
+	const month = date.getMonth(); // 0 = Jan, 11 = Dec
+	const day = date.getDate();
+	return (month === 11 && day >= 1) || (month === 0 && day <= 5);
+}
+
 export function phaseFromHour(hour: number): DayPhase {
 	if (hour >= 5 && hour < 7) return 'dawn';
 	if (hour >= 7 && hour < 16) return 'day';
@@ -27,12 +38,56 @@ export function formatSimClock(hour: number): string {
 	return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
+/** Legacy rain-only helper (kept for callers / tests). */
 export function rainFromSimMinutes(totalSimMinutes: number): { raining: boolean; intensity: number } {
-	const cycle = totalSimMinutes % 135;
-	if (cycle < 90) return { raining: false, intensity: 0 };
+	const w = weatherFromSimMinutes(totalSimMinutes, false);
+	return { raining: w.raining, intensity: w.rainIntensity };
+}
+
+/**
+ * Precipitation bout every 135 sim-minutes: 90 clear, then ~45 precip with ramp.
+ * During holidayWindow, ~2/3 of precip bouts are snow (rest rain).
+ * Outside holiday: snow never rolls (rain only).
+ */
+export function weatherFromSimMinutes(
+	totalSimMinutes: number,
+	holidayWindow: boolean
+): {
+	raining: boolean;
+	rainIntensity: number;
+	snowing: boolean;
+	snowIntensity: number;
+} {
+	const cycleLen = 135;
+	const cycle = ((totalSimMinutes % cycleLen) + cycleLen) % cycleLen;
+	const cycleIndex = Math.floor(Math.max(0, totalSimMinutes) / cycleLen);
+
+	if (cycle < 90) {
+		return { raining: false, rainIntensity: 0, snowing: false, snowIntensity: 0 };
+	}
+
 	const into = cycle - 90;
 	const intensity = into < 8 ? into / 8 : into > 37 ? Math.max(0, (45 - into) / 8) : 1;
-	return { raining: intensity > 0.05, intensity };
+	const active = intensity > 0.05;
+
+	// Deterministic per bout: cycleIndex % 3 !== 0 → snow (2/3) when holiday
+	const preferSnow = holidayWindow && cycleIndex % 3 !== 0;
+
+	if (preferSnow) {
+		return {
+			raining: false,
+			rainIntensity: 0,
+			snowing: active,
+			snowIntensity: intensity
+		};
+	}
+
+	return {
+		raining: active,
+		rainIntensity: intensity,
+		snowing: false,
+		snowIntensity: 0
+	};
 }
 
 export function skyColors(phase: DayPhase): { top: string; mid: string; bottom: string; wash: string } {
@@ -51,29 +106,42 @@ export function skyColors(phase: DayPhase): { top: string; mid: string; bottom: 
 	}
 }
 
-export function tickSimClock(prev: SimClockState, dtSec: number, totalSimMinutes: number): SimClockState {
+export function tickSimClock(
+	prev: SimClockState,
+	dtSec: number,
+	totalSimMinutes: number,
+	now: Date = new Date()
+): SimClockState {
 	const hour = (prev.hour + (dtSec * SIM_MINUTES_PER_REAL_SECOND) / 60) % 24;
 	const phase = phaseFromHour(hour);
-	const rain = rainFromSimMinutes(totalSimMinutes);
+	const holidayWindow = isHolidaySnowWindow(now);
+	const weather = weatherFromSimMinutes(totalSimMinutes, holidayWindow);
 	return {
 		hour,
 		phase,
 		label: formatSimClock(hour),
 		outdoorLux: outdoorLux(hour),
-		raining: rain.raining,
-		rainIntensity: rain.intensity
+		raining: weather.raining,
+		rainIntensity: weather.rainIntensity,
+		snowing: weather.snowing,
+		snowIntensity: weather.snowIntensity,
+		holidayWindow
 	};
 }
 
-export function initialSimClock(realHourHint?: number): SimClockState {
+export function initialSimClock(realHourHint?: number, now: Date = new Date()): SimClockState {
 	const hour = realHourHint ?? 17.35; // golden sunset — Apex Capital vibe
 	const phase = phaseFromHour(hour);
+	const holidayWindow = isHolidaySnowWindow(now);
 	return {
 		hour,
 		phase,
 		label: formatSimClock(hour),
 		outdoorLux: outdoorLux(hour),
 		raining: false,
-		rainIntensity: 0
+		rainIntensity: 0,
+		snowing: false,
+		snowIntensity: 0,
+		holidayWindow
 	};
 }

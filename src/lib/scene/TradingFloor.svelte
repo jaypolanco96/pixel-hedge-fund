@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import Skyline from './Skyline.svelte';
 	import RainLayer from './RainLayer.svelte';
+	import SnowLayer from './SnowLayer.svelte';
 	import TickerTape from './TickerTape.svelte';
 	import TaHud from './TaHud.svelte';
 	import CharacterSprite from './CharacterSprite.svelte';
@@ -981,10 +982,13 @@
 						phase={clock.phase}
 						outdoorLux={clock.outdoorLux}
 						raining={clock.raining}
+						snowing={clock.snowing}
 						kongActive={kong.active}
 						kongFrame={kong.frame}
+						reduceMotion={deskSettings.reduceMotion}
 					/>
 					<RainLayer intensity={clock.rainIntensity} />
+					<SnowLayer intensity={clock.snowIntensity} reduceMotion={deskSettings.reduceMotion} />
 				</div>
 				{#each [0, 1, 2] as pane}
 					<div class="window-pane">
@@ -1522,7 +1526,11 @@
 			</div>
 			<strong>{quote?.price?.toFixed(priceDecimals) ?? 'CONNECTING'}</strong>
 			<small
-				>{clock.label} · {clock.phase.toUpperCase()}{clock.raining ? ' · RAIN' : ''}{kong.active
+				>{clock.label} · {clock.phase.toUpperCase()}{clock.raining
+					? ' · RAIN'
+					: ''}{clock.snowing
+					? ' · XMAS · SNOW'
+					: ''}{kong.active
 					? ' · KONG!'
 					: ''}{mariachi.active ? ' · MARIACHI!' : ''}</small
 			>

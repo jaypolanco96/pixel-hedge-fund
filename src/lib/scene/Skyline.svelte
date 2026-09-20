@@ -6,14 +6,18 @@
 		phase,
 		outdoorLux,
 		raining,
+		snowing = false,
 		kongActive = false,
-		kongFrame = 0
+		kongFrame = 0,
+		reduceMotion = false
 	}: {
 		phase: DayPhase;
 		outdoorLux: number;
 		raining: boolean;
+		snowing?: boolean;
 		kongActive?: boolean;
 		kongFrame?: number;
+		reduceMotion?: boolean;
 	} = $props();
 
 	const sky = $derived(skyColors(phase));
@@ -22,6 +26,26 @@
 	const sunPhase = $derived(
 		phase === 'dawn' ? 'dawn' : phase === 'golden' ? 'golden' : phase === 'dusk' ? 'dusk' : 'off'
 	);
+
+	/** Birds fly in dawn/day/golden; roost sparsely at dusk; hide at night & when Kong is up. */
+	const birdMode = $derived.by((): 'fly' | 'roost' | 'hidden' => {
+		if (kongActive) return 'hidden';
+		if (phase === 'night') return 'hidden';
+		if (phase === 'dusk') return 'roost';
+		return 'fly'; // dawn, day, golden
+	});
+
+	const flyingBirds = $derived.by(() => {
+		if (birdMode !== 'fly') return [] as { id: number; y: number; delay: number; dur: number; scale: number; v: boolean }[];
+		// Sparse V-formation + a couple of loners
+		return [
+			{ id: 0, y: 22, delay: 0, dur: 28, scale: 1, v: false },
+			{ id: 1, y: 36, delay: 4, dur: 32, scale: 0.85, v: true },
+			{ id: 2, y: 48, delay: 9, dur: 26, scale: 0.9, v: false },
+			{ id: 3, y: 28, delay: 14, dur: 34, scale: 0.75, v: true },
+			{ id: 4, y: 55, delay: 18, dur: 30, scale: 0.8, v: false }
+		];
+	});
 
 	/** Helicopters: positions cycle; when Kong swipes, they tumble. */
 	const helis = $derived.by(() => {
@@ -41,11 +65,15 @@
 		if (kongFrame < 22) return 'swipe';
 		return 'fade';
 	});
+
+	const festive = $derived(snowing);
 </script>
 
 <div
 	class="sky"
 	class:raining
+	class:snowing
+	class:reduce-motion={reduceMotion}
 	data-sun={sunPhase}
 	style:--sky-top={sky.top}
 	style:--sky-mid={sky.mid}
@@ -67,6 +95,35 @@
 	{/if}
 
 	<div class="haze"></div>
+
+	<!-- Pixel birds in the sky (diegetic, not UI chrome) -->
+	{#if birdMode === 'fly'}
+		<div class="birds-layer" aria-hidden="true">
+			{#each flyingBirds as b (b.id)}
+				<div
+					class="bird-flight"
+					class:static={reduceMotion}
+					style:--y="{b.y}%"
+					style:--delay="{b.delay}s"
+					style:--dur="{b.dur}s"
+					style:--sc={b.scale}
+				>
+					{#if b.v}
+						<!-- Tiny V-formation -->
+						<svg class="bird-svg vform" viewBox="0 0 24 10" width="24" height="10">
+							<path d="M2 6 L5 3 L8 6" fill="none" stroke="#1a2030" stroke-width="1.4" />
+							<path d="M8 5 L11 2 L14 5" fill="none" stroke="#121820" stroke-width="1.5" />
+							<path d="M14 6 L17 3 L20 6" fill="none" stroke="#1a2030" stroke-width="1.4" />
+						</svg>
+					{:else}
+						<svg class="bird-svg" viewBox="0 0 10 6" width="10" height="6">
+							<path d="M1 4 L5 1 L9 4" fill="none" stroke="#151c28" stroke-width="1.5" />
+						</svg>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{/if}
 
 	<svg class="skyline" viewBox="0 0 640 180" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
 		<g class="far" fill="#0a1018" opacity="0.55">
@@ -99,15 +156,28 @@
 			<rect x="335" y="0" width="2" height="4" class="antenna" />
 		</g>
 
-		{#if night}
-			<g class="lights" fill="#f0c674">
+		<!-- Roosted birds on antenna / ledge at dusk -->
+		{#if birdMode === 'roost'}
+			<g class="roost-birds" fill="#1a2030" opacity="0.85">
+				<!-- on ESB antenna ledge -->
+				<rect x="330" y="6" width="2" height="2" />
+				<rect x="337" y="5" width="2" height="2" />
+				<!-- on mid building ledge -->
+				<rect x="218" y="28" width="2" height="2" />
+				<rect x="224" y="29" width="2" height="2" />
+				<rect x="428" y="40" width="2" height="2" />
+			</g>
+		{/if}
+
+		{#if night || festive}
+			<g class="lights" fill="#f0c674" class:festive-bright={festive}>
 				{#each Array(18) as _, i}
 					<rect
 						x={118 + (i % 6) * 6}
 						y={70 + Math.floor(i / 6) * 14}
 						width="3"
 						height="4"
-						opacity={0.4 + (i % 3) * 0.2}
+						opacity={(festive ? 0.65 : 0.4) + (i % 3) * 0.2}
 					/>
 				{/each}
 				{#each Array(24) as _, i}
@@ -116,7 +186,7 @@
 						y={55 + Math.floor(i / 8) * 16}
 						width="3"
 						height="4"
-						opacity={0.35 + (i % 4) * 0.15}
+						opacity={(festive ? 0.55 : 0.35) + (i % 4) * 0.15}
 					/>
 				{/each}
 				<rect x="322" y="22" width="28" height="6" fill="#f5d78e" opacity="0.9" class="crown-glow" />
@@ -127,7 +197,7 @@
 						y={105 + Math.floor(i / 10) * 20}
 						width="3"
 						height="5"
-						opacity={0.5}
+						opacity={festive ? 0.7 : 0.5}
 						fill="#e8d48a"
 					/>
 				{/each}
@@ -137,10 +207,44 @@
 						y={60 + Math.floor(i / 6) * 18}
 						width="3"
 						height="4"
-						opacity={0.45}
+						opacity={festive ? 0.65 : 0.45}
 					/>
 				{/each}
 			</g>
+		{/if}
+
+		<!-- Tasteful festive accents while snowing: string lights + tiny wreath -->
+		{#if festive}
+			<g class="festive-accents" opacity="0.9">
+				<!-- string lights on far-left building -->
+				{#each Array(6) as _, i}
+					<rect
+						x={24 + i * 4}
+						y={92}
+						width="2"
+						height="2"
+						fill={i % 3 === 0 ? '#e06050' : i % 3 === 1 ? '#60c070' : '#e8c060'}
+						opacity="0.85"
+					/>
+				{/each}
+				<!-- tiny wreath silhouette on mid building -->
+				<rect x="176" y="82" width="5" height="5" fill="#2a5030" opacity="0.75" />
+				<rect x="177" y="83" width="3" height="3" fill="#3a6840" opacity="0.9" />
+				<rect x="178" y="84" width="1" height="1" fill="#c05040" />
+				<!-- warm glow line on ESB setback -->
+				<rect x="314" y="44" width="44" height="2" fill="#e8a860" opacity="0.55" />
+			</g>
+		{/if}
+
+		<!-- Soft snow ground tint -->
+		{#if snowing}
+			<rect x="0" y="168" width="640" height="12" fill="#d8e8f8" opacity="0.22" class="snow-ground" />
+			<!-- rooftop dusting -->
+			<rect x="110" y="54" width="42" height="2" fill="#e8f0f8" opacity="0.35" />
+			<rect x="205" y="39" width="50" height="2" fill="#e8f0f8" opacity="0.3" />
+			<rect x="300" y="94" width="72" height="2" fill="#e8f0f8" opacity="0.28" />
+			<rect x="420" y="49" width="48" height="2" fill="#e8f0f8" opacity="0.32" />
+			<rect x="555" y="59" width="40" height="2" fill="#e8f0f8" opacity="0.3" />
 		{/if}
 
 		<!-- Rare King Kong event on ESB -->
@@ -358,6 +462,48 @@
 	.raining .skyline {
 		filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8)) brightness(0.92);
 	}
+	.snowing .skyline {
+		filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8)) brightness(1.04) saturate(0.92);
+	}
+	.snowing .haze {
+		background: linear-gradient(transparent, rgba(200, 220, 240, calc(0.18 * var(--lux, 0.5))));
+	}
+
+	/* Birds */
+	.birds-layer {
+		position: absolute;
+		inset: 0;
+		z-index: 3;
+		pointer-events: none;
+		overflow: hidden;
+	}
+	.bird-flight {
+		position: absolute;
+		top: var(--y);
+		left: -8%;
+		transform: scale(var(--sc));
+		animation: fly-across var(--dur) linear var(--delay) infinite;
+		will-change: transform;
+	}
+	.bird-flight.static {
+		animation: none;
+		left: calc(12% + var(--delay) * 3%);
+		opacity: 0.7;
+	}
+	.bird-svg {
+		display: block;
+		image-rendering: pixelated;
+		opacity: 0.75;
+	}
+	@keyframes fly-across {
+		0% {
+			transform: translateX(0) scale(var(--sc));
+		}
+		100% {
+			transform: translateX(120vw) scale(var(--sc));
+		}
+	}
+
 	.rotor {
 		animation: spin 0.15s steps(2) infinite;
 	}
@@ -387,21 +533,41 @@
 			width: 28px;
 			height: 28px;
 		}
+		/* Fewer visual birds on small screens via opacity on later ones */
+		.bird-flight:nth-child(n + 4) {
+			display: none;
+		}
 	}
 	@media (max-width: 480px) {
 		.skyline {
 			height: 92%;
 		}
-		/* Keep single ESB readable when panes are short */
 		.sun-wrap.golden {
 			right: 12%;
 			bottom: 18%;
 		}
+		.bird-flight:nth-child(n + 3) {
+			display: none;
+		}
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.crown-glow,
-		.rotor {
+		.rotor,
+		.bird-flight {
 			animation: none;
 		}
+		.bird-flight {
+			left: calc(12% + var(--delay) * 3%);
+			opacity: 0.7;
+		}
+	}
+	.sky.reduce-motion .crown-glow,
+	.sky.reduce-motion .rotor,
+	.sky.reduce-motion .bird-flight {
+		animation: none;
+	}
+	.sky.reduce-motion .bird-flight {
+		left: calc(12% + var(--delay) * 3%);
+		opacity: 0.7;
 	}
 </style>
