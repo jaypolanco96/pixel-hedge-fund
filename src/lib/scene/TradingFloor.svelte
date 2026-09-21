@@ -31,7 +31,6 @@
 	import ProfitCalcPanel from './ProfitCalcPanel.svelte';
 	import { TRADERS, STAFF } from '$lib/characters/cast';
 	import { DEFAULT_OFFICE_FLAG, OFFICE_FLAGS } from '$lib/data/officeFlags';
-	import { loadTraderTimeOverrides, saveTraderTimeOverrides } from '$lib/persist/traderTime';
 	import {
 		loadBloFinAssignments,
 		type BloFinAssignments
@@ -54,7 +53,7 @@
 		TraderDef,
 		TraderLeg,
 	} from '$lib/data/types';
-	import { bookExposure, postureForTrader, reconcileBook, staffNote, statusLabel, type OpenBook } from '$lib/ta/posture';
+	import { bookExposure, forceBookEntry, postureForTrader, priceAt, reconcileBook, staffNote, statusLabel, type OpenBook } from '$lib/ta/posture';
 	import {
 		loadLeverageOverrides,
 		saveLeverageOverrides,
@@ -101,8 +100,9 @@
 	let deskSettings = $state(loadDeskSettings());
 	let settingsOpen = $state(false);
 	const selectedOfficeFlag = $derived(OFFICE_FLAGS.find((flag) => flag.id === deskSettings.officeFlag) ?? DEFAULT_OFFICE_FLAG);
-	let traderOpenedAt = $state<Record<string, number>>({});
-	let traderTimeOverrides = $state<Record<string, number>>({});
+	let wallNow = $state(Date.now());
+	// Last successful market read. The TIME field prices entries from it so a dropped poll does not block editing.
+	let lastMarket = $state<{ signal: SignalResponse; quote: QuoteResponse; bars: Bar[]; sample: boolean } | null>(null);
 	let blofinAssignments = $state<BloFinAssignments>({});
 	let blofinOverlay = $state<Record<string, string>>({});
 	let sceneFrame = $state<HTMLDivElement>();
@@ -484,33 +484,48 @@
 		return legs.find((l) => l.traderId === id) ?? null;
 	}
 	function tradeDurationFor(id: string): number | null {
-		if (!legFor(id)) return null;
-		const openedAt = traderOpenedAt[id] ?? totalSimMinutes;
-		const elapsed = Math.max(0, Math.floor(totalSimMinutes - openedAt));
-		return (traderTimeOverrides[id] ?? 0) + elapsed;
+		const entry = book[id];
+		if (!entry || !legFor(id)) return null;
+		return Math.max(0, Math.floor((wallNow - entry.openedAt) / 60_000));
 	}
+	// Typing N minutes places the trader in a position opened N minutes ago, priced
+	// at the tape then. It works whether or not the trader already holds a position.
 	function setTraderTradeDuration(traderId: string, minutes: number) {
+		const trader = traders.find((t) => t.id === traderId);
+		const market = lastMarket;
+		if (!trader || !market) return;
 		if (!Number.isInteger(minutes) || minutes < 0 || minutes > 100000) return;
-		// Reset the elapsed-time anchor so a manual duration keeps counting up.
-		traderOpenedAt = { ...traderOpenedAt, [traderId]: totalSimMinutes };
-		traderTimeOverrides = { ...traderTimeOverrides, [traderId]: minutes };
-		saveTraderTimeOverrides(traderTimeOverrides);
+		const now = Date.now();
+		const mark = market.quote.mark || market.quote.price;
+		const historyMinutes = Math.max(0, Math.floor((now - market.bars[0].t) / 60_000));
+		const openedAt = now - Math.min(minutes, historyMinutes) * 60_000;
+		const forced = forceBookEntry(trader, market.signal, book[traderId], priceAt(market.bars, openedAt, mark, now), mark, openedAt);
+		const def = resolveSymbol(activeDisplay);
+		wallNow = now;
+		applyBookResult(
+			reconcileBook({ ...book, [traderId]: forced }, market.signal, traders, mark, market.sample, def.display, def.bybit, false, { cooldown: activeCooldowns(now), now }),
+			now
+		);
 	}
-	function reconcileTraderTimes(nextBook: OpenBook) {
-		const nextOpened = { ...traderOpenedAt };
-		const nextOverrides = { ...traderTimeOverrides };
-		for (const id of Object.keys(nextBook)) {
-			if (nextOpened[id] == null) nextOpened[id] = totalSimMinutes;
+	function activeCooldowns(now: number): Set<string> {
+		return new Set(traders.filter((trader) => (reentryCooldowns[trader.id] ?? 0) > now).map((trader) => trader.id));
+	}
+	function applyBookResult(result: ReturnType<typeof reconcileBook>, now: number) {
+		book = result.book;
+		riskDenied = result.riskDenied;
+		legs = result.legs;
+		for (const profit of result.takeProfits) {
+			showTakeProfit(profit.traderId, profit.pnlUsd, profit.target);
+			reentryCooldowns = { ...reentryCooldowns, [profit.traderId]: now + 90_000 };
 		}
-		for (const id of Object.keys(nextOpened)) {
-			if (nextBook[id] == null) {
-				delete nextOpened[id];
-				delete nextOverrides[id];
-			}
+		// Desks sit out after a stop-out instead of re-firing into the same tape.
+		for (const traderId of result.stopOuts) {
+			reentryCooldowns = { ...reentryCooldowns, [traderId]: now + 240_000 };
 		}
-		traderOpenedAt = nextOpened;
-		traderTimeOverrides = nextOverrides;
-		saveTraderTimeOverrides(nextOverrides);
+		// A timed-out fade sits out a full candle before trying the idea again.
+		for (const traderId of result.timeStops) {
+			reentryCooldowns = { ...reentryCooldowns, [traderId]: now + 900_000 };
+		}
 	}
 	function blofinBadgeFor(traderId: string): string | null {
 		if (!deskSettings.showBlofinBadges) return null;
@@ -1204,9 +1219,8 @@
 		book = {};
 		riskDenied = [];
 		legs = [];
-		traderOpenedAt = {};
-		traderTimeOverrides = {};
 		lastDecisionCandle = 0;
+		lastMarket = null;
 		quote = null;
 		signal = null;
 		bars = [];
@@ -1245,7 +1259,7 @@
 			const decisionCandle = completedBars(bars, 15 * 60_000).at(-1)?.t ?? 0;
 			const decisionPoint = decisionCandle !== 0 && decisionCandle !== lastDecisionCandle;
 			const now = Date.now();
-			const cooldown = new Set(traders.filter((trader) => (reentryCooldowns[trader.id] ?? 0) > now).map((trader) => trader.id));
+			lastMarket = candles.bars.length ? { signal: s, quote: q, bars: candles.bars, sample: q.sample || s.sample || candles.sample } : null;
 			const result = reconcileBook(
 				book,
 				s,
@@ -1255,31 +1269,18 @@
 				def.display,
 				def.bybit,
 				decisionPoint,
-				{ cooldown, now }
+				{ cooldown: activeCooldowns(now), now }
 			);
 			if (decisionPoint) lastDecisionCandle = decisionCandle;
-			book = result.book;
-			riskDenied = result.riskDenied;
-			legs = result.legs;
-			for (const profit of result.takeProfits) {
-				showTakeProfit(profit.traderId, profit.pnlUsd, profit.target);
-				reentryCooldowns = { ...reentryCooldowns, [profit.traderId]: now + 90_000 };
-			}
-			// Desks sit out after a stop-out instead of re-firing into the same tape.
-			for (const traderId of result.stopOuts) {
-				reentryCooldowns = { ...reentryCooldowns, [traderId]: now + 240_000 };
-			}
-			// A timed-out fade sits out a full candle before trying the idea again.
-			for (const traderId of result.timeStops) {
-				reentryCooldowns = { ...reentryCooldowns, [traderId]: now + 900_000 };
-			}
-			reconcileTraderTimes(result.book);
+			applyBookResult(result, now);
+			wallNow = now;
 			err = null;
 		} catch (e) {
 			if (request !== marketRequest || sym !== activeDisplay) return;
 			quote = null;
 			signal = null;
 			bars = [];
+			wallNow = Date.now();
 			// Keep the last known cast legs through a transient tape failure. A
 			// missing poll is not a closed-candle invalidation and should not
 			// turn open traders into thinking or watching traders.
@@ -1316,7 +1317,6 @@
 		let last = performance.now();
 		let pollAcc = 0;
 		leverageOverrides = loadLeverageOverrides();
-		traderTimeOverrides = loadTraderTimeOverrides();
 		blofinAssignments = loadBloFinAssignments();
 		pricePadSaved = loadScenePosition(PRICE_PAD_KEY);
 		for (const id of Object.keys(WIRE_DECOR_KEYS) as WireDecorId[]) {
@@ -1635,6 +1635,7 @@
 								leg={legFor(t.id)}
 								posture={postureFor(t)}
 								tradeDurationMinutes={tradeDurationFor(t.id)}
+								tradeDurationEnabled={lastMarket != null}
 								takeProfit={takeProfitFlashes[t.id] ? { pnlUsd: takeProfitFlashes[t.id].pnlUsd, target: takeProfitFlashes[t.id].target } : null}
 								{bars}
 								lampBoost={signal?.bias === 'LONG' ? 0.22 : 0}
@@ -1661,6 +1662,7 @@
 								leg={legFor(t.id)}
 								posture={postureFor(t)}
 								tradeDurationMinutes={tradeDurationFor(t.id)}
+								tradeDurationEnabled={lastMarket != null}
 								takeProfit={takeProfitFlashes[t.id] ? { pnlUsd: takeProfitFlashes[t.id].pnlUsd, target: takeProfitFlashes[t.id].target } : null}
 								{bars}
 								lampBoost={signal?.bias === 'SHORT' ? 0.22 : 0}

@@ -250,6 +250,53 @@ try {
 		assert.equal(posture.staffNote(cio, tape(), risk), 'net cap hit . 1 desk held');
 		assert.equal(posture.staffNote(pm, tape({ bias: 'FLAT' }), { longUsd: 0, shortUsd: 0, netUsd: 0, grossUsd: 0, denied: 0 }), 'alloc: stay balanced');
 	});
+	await test('TIME backdates a position: entry is the tape price N minutes ago', () => {
+		const bar = 15 * 60_000;
+		const T0 = 1_000_000_000_000 - (1_000_000_000_000 % bar);
+		const hist = [
+			{ t: T0 - 2 * bar, o: 100, h: 101, l: 99, c: 101, v: 1 },
+			{ t: T0 - bar, o: 101, h: 103, l: 100, c: 103, v: 1 },
+			{ t: T0, o: 103, h: 106, l: 103, c: 105, v: 1 }
+		];
+		const now = T0 + 5 * 60_000;
+		assert.equal(posture.priceAt(hist, now, 105, now), 105, 'zero minutes is the current mark');
+		assert.equal(posture.priceAt(hist, T0 - bar, 105, now), 101, 'candle open');
+		assert.equal(posture.priceAt(hist, T0 - bar / 2, 105, now), 102, 'halfway through a closed candle');
+		assert.equal(posture.priceAt(hist, T0, 105, now), 103, 'open of the forming candle');
+		assert.ok(Math.abs(posture.priceAt(hist, T0 + 2.5 * 60_000, 105, now) - 104) < 1e-9, 'forming candle interpolates to the live mark');
+		assert.equal(posture.priceAt(hist, T0 - 10 * bar, 105, now), 100, 'before history clamps to the first open');
+	});
+	await test('a forced position survives creation, even when the tape already ran through its stop', () => {
+		const trader = cast.TRADERS.find((t) => t.id === 'L100');
+		const signal = tape();
+		const now = 1_000_000_000_000;
+		const stopped = posture.forceBookEntry(trader, signal, undefined, 110, 100, now - 900_000);
+		assert.ok(stopped.stop < 100, 'stop re-laid below the current mark so a long is not stopped instantly');
+		assert.ok(stopped.tp1 > 110 && stopped.manual && stopped.openedAt === now - 900_000);
+		const winner = posture.forceBookEntry(trader, signal, undefined, 90, 100, now - 900_000);
+		assert.ok(winner.tp1 > 100, 'targets re-laid above the mark once passed');
+		const res = posture.reconcileBook({ L100: stopped }, signal, [trader], 100, false, 'SOLUSDT', 'SOLUSDT', true, { now });
+		assert.ok(res.book.L100 && res.stopOuts.length === 0 && res.takeProfits.length === 0);
+		assert.equal(res.legs[0].entryMark, 110);
+		assert.ok(res.legs[0].unrealizedPnlUsd < 0);
+	});
+	await test('manual positions skip thesis and time exits; trend or fade strategy follows the tape', () => {
+		const now = 1_000_000_000_000;
+		const shortTrader = cast.TRADERS.find((t) => t.id === 'S10');
+		const longTrader = cast.TRADERS.find((t) => t.id === 'L10');
+		const up = tape();
+		assert.equal(posture.forceBookEntry(longTrader, up, undefined, 100, 100, now).strategy, 'trend');
+		const fade = posture.forceBookEntry(shortTrader, up, undefined, 100, 100, now - 10 * 60 * 60_000);
+		assert.equal(fade.strategy, 'hedge');
+		const held = posture.reconcileBook({ S10: fade }, up, [shortTrader], 100, false, 'SOLUSDT', 'SOLUSDT', true, { now });
+		assert.ok(held.book.S10 && held.timeStops.length === 0, 'a 10-hour-old manual fade is not time-stopped');
+		assert.equal(held.legs[0].notionalUsd, cast.traderNotional(10) * posture.HEDGE_SIZE_SCALE);
+		const flipped = tape({ bias: 'SHORT', supertrend: { value: 103, direction: -1 } });
+		const trendLong = posture.forceBookEntry(longTrader, up, undefined, 100, 100, now);
+		assert.ok(posture.reconcileBook({ L10: trendLong }, flipped, [longTrader], 100, false, 'SOLUSDT', 'SOLUSDT', true, { now }).book.L10, 'a manual trend leg is not closed by a Supertrend flip');
+		const overwritten = posture.forceBookEntry(longTrader, up, trendLong, 99, 100, now - 60_000);
+		assert.equal(overwritten.strategy, 'trend', 're-timing an open trader keeps its strategy and size');
+	});
 	console.log(`${passed} regression groups passed; all exchange requests mocked.`);
 } finally {
 	globalThis.fetch = originalFetch; Date.now = originalNow; console.warn = originalWarn;

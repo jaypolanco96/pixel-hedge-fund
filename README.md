@@ -93,6 +93,9 @@ After print: on-screen 90s “fax spit”, **Printable HTML**, or **Download .tx
 ### Change trader leverage
 Click a trader's leverage badge (for example, `5×`) → enter an integer from `1` to `1000`, then press Enter or blur to commit (Escape cancels). Posture gates and P&L margin % update; overrides persist (`phf-leverage-overrides`).
 
+### Set how long a trader has been in
+Each trader's **TIME** field is in **minutes** (900 seconds is `15`). Type the total time and press Enter or click away: the trader gets a position opened that long ago, priced at the tape then (linear inside the 15m candle), so P&L reflects the real move since. It works on a flat trader (it forces a position) and on one already in a trade (it re-times and re-prices it, keeping its strategy and size). A forced position is a long or short by the trader's book and full or half size by the current tape, just as an organic entry would be. History is capped at the loaded candles (about 20 hours). Forced positions skip thesis and time-stop exits, and if the tape already ran through the stop or target, those are re-laid around the current mark so the position is not closed the instant it is created. The counter runs in real minutes and is not persisted across reloads.
+
 ### Bull / bear pets
 When tape bias is **LONG** and confluence is **tradeable/high** → mini **bull** pet on the floor. **SHORT** + tradeable → **bear cub**. **FLAT** → sleeping “zzz” pet (otherwise hidden). Pets are **draggable** (clamped to the scene frame); position persists as `phf-pet-pos`.
 

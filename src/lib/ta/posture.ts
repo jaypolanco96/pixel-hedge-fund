@@ -1,4 +1,5 @@
 import type {
+	Bar,
 	Bias,
 	FloorStatus,
 	SignalResponse,
@@ -47,6 +48,8 @@ export interface BookEntry {
 	rrTp1: number;
 	rrTp2: number;
 	openedAt: number;
+	/** Placed by the user through the TIME field: exempt from thesis and time exits. */
+	manual?: boolean;
 }
 export type OpenBook = Record<string, BookEntry>;
 export interface TakeProfitEvent {
@@ -73,6 +76,46 @@ const BAR_MS = 15 * 60_000;
 function fadeMaxHoldMs(trader: TraderDef): number {
 	const bars = trader.leverage <= 10 ? 12 : trader.leverage <= 25 ? 8 : trader.leverage <= 50 ? 6 : 4;
 	return bars * BAR_MS;
+}
+
+/** Approximate tape price at time `t`: linear inside the candle that contains it. */
+export function priceAt(bars: Bar[], t: number, latest: number, now: number, barMs = BAR_MS): number {
+	if (!bars.length || t >= now) return latest;
+	if (t <= bars[0].t) return bars[0].o;
+	for (let i = bars.length - 1; i >= 0; i--) {
+		const b = bars[i];
+		if (t < b.t) continue;
+		const forming = i === bars.length - 1 && now < b.t + barMs;
+		const span = forming ? Math.max(now - b.t, 1) : barMs;
+		const close = forming ? latest : b.c;
+		return b.o + (close - b.o) * Math.min(1, (t - b.t) / span);
+	}
+	return bars[0].o;
+}
+
+/** A position placed by hand as if opened at `entryMark` at `openedAt`. Stops and
+ * targets are laid out from that entry, then moved to the current mark if the
+ * tape has already run through them so the position is not stopped out the
+ * instant it is created. */
+export function forceBookEntry(
+	trader: TraderDef,
+	signal: SignalResponse,
+	existing: BookEntry | undefined,
+	entryMark: number,
+	mark: number,
+	openedAt: number
+): BookEntry {
+	const strategy = existing?.strategy ?? (mandateMatch(trader.side, signal.bias) ? 'trend' : 'hedge');
+	const plan = riskPlan(trader, signal, entryMark, strategy);
+	const long = trader.side === 'long';
+	const risk = Math.abs(entryMark - plan.stop);
+	let { stop, tp1, tp2 } = plan;
+	if (long ? mark <= stop : mark >= stop) stop = long ? mark - risk : mark + risk;
+	if (long ? mark >= tp1 : mark <= tp1) {
+		tp1 = long ? mark + risk * plan.rrTp1 : mark - risk * plan.rrTp1;
+		tp2 = long ? mark + risk * plan.rrTp2 : mark - risk * plan.rrTp2;
+	}
+	return { entryMark, stop, tp1, tp2, strategy, rrTp1: plan.rrTp1, rrTp2: plan.rrTp2, openedAt, manual: true };
 }
 
 export interface BookExposure {
@@ -318,8 +361,8 @@ export function reconcileBook(
 		let strategy: 'trend' | 'hedge';
 		if (existing) {
 			strategy = existing.strategy;
-			if (decisionPoint && thesisBroken(t, strategy, signal)) continue;
-			if (decisionPoint && strategy === 'hedge' && now - existing.openedAt >= fadeMaxHoldMs(t)) {
+			if (decisionPoint && !existing.manual && thesisBroken(t, strategy, signal)) continue;
+			if (decisionPoint && !existing.manual && strategy === 'hedge' && now - existing.openedAt >= fadeMaxHoldMs(t)) {
 				timeStops.push(t.id);
 				continue;
 			}
@@ -373,7 +416,7 @@ export function reconcileBook(
 			stopOuts.push(t.id);
 			continue;
 		}
-		next[t.id] = { entryMark: entry, stop: leg.stop!, tp1: leg.tp1!, tp2: leg.tp2!, strategy, rrTp1: leg.rrTp1!, rrTp2: leg.rrTp2!, openedAt: existing?.openedAt ?? now };
+		next[t.id] = { entryMark: entry, stop: leg.stop!, tp1: leg.tp1!, tp2: leg.tp2!, strategy, rrTp1: leg.rrTp1!, rrTp2: leg.rrTp2!, openedAt: existing?.openedAt ?? now, ...(existing?.manual ? { manual: true } : {}) };
 		legs.push(leg);
 		net += (t.side === 'long' ? 1 : -1) * leg.notionalUsd;
 	}

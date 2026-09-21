@@ -19,6 +19,7 @@
 		pinned = false,
 		blofinBadge = null as string | null,
 		tradeDurationMinutes = null as number | null,
+		tradeDurationEnabled = false,
 		takeProfit = null as { pnlUsd: number; target: 'TP1' | 'TP2' } | null,
 		onInspect = () => {},
 		onPin = () => {},
@@ -38,6 +39,7 @@
 		/** Short BloFin overlay label when a live position is assigned to this desk. */
 		blofinBadge?: string | null;
 		tradeDurationMinutes?: number | null;
+		tradeDurationEnabled?: boolean;
 		takeProfit?: { pnlUsd: number; target: 'TP1' | 'TP2' } | null;
 		onInspect?: () => void;
 		onPin?: () => void;
@@ -47,6 +49,7 @@
 
 	const name = $derived(trader?.name ?? staff?.name ?? '');
 	const skin = $derived(trader?.skin ?? staff?.skin ?? 'maya');
+	const female = $derived(!!trader?.female);
 	const postureKind = $derived(posture?.posture ?? null);
 	const roleLabel = $derived(trader ? `${trader.side.toUpperCase()} DESK` : staff?.title ?? '');
 	const status = $derived(posture?.status ?? 'watching');
@@ -155,6 +158,7 @@
 	class:pinned
 	class:dim={postureKind === 'counter' || postureKind === 'watching'}
 	data-skin={skin}
+	data-gender={female ? 'f' : 'm'}
 	data-side={trader?.side ?? 'staff'}
 	data-anim={anim}
 	data-status={status}
@@ -214,17 +218,19 @@
 		<div class="activity">
 			<span>{activity}</span>
 			{#if trader}
-				<label class="trade-duration">TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={durationDraft ?? tradeDurationMinutes ?? ''} disabled={tradeDurationMinutes == null} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} onfocus={startDurationEdit} oninput={(event) => { durationDraft = (event.currentTarget as HTMLInputElement).value; }} onblur={commitTradeDuration} onkeydown={durationKeydown} />m</label>
+				<label class="trade-duration" title={tradeDurationEnabled ? undefined : 'Waiting for market data'}>TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={durationDraft ?? tradeDurationMinutes ?? ''} placeholder="--" disabled={!tradeDurationEnabled} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} onfocus={startDurationEdit} oninput={(event) => { durationDraft = (event.currentTarget as HTMLInputElement).value; }} onblur={commitTradeDuration} onkeydown={durationKeydown} />m</label>
 			{/if}
 		</div>
 	</div>
 
 	<div class="person" role="button" tabindex="0" aria-label={`Inspect ${name}`} onclick={pin} onkeydown={(event) => { if (event.key === 'Enter' || event.key === ' ') pin(); }}>
+		{#if female}<div class="hair-back"></div>{/if}
 		<div class="hair"></div>
 		<div class="head"><i></i></div>
 		<div class="torso"><i></i></div>
 		<div class="arm left"></div>
 		<div class="arm right"></div>
+		{#if female}<div class="lock left"></div><div class="lock right"></div>{/if}
 		<div class="legs"><i></i></div>
 		{#if anim === 'phone'}<div class="receiver"></div>{/if}
 		{#if staff?.role === 'pm'}<div class="pm-pad"></div>{/if}
@@ -346,6 +352,12 @@
 	.torso i { position:absolute; left:10px; top:0; width:7px; height:16px; background:var(--shirt); clip-path:polygon(0 0,100% 0,65% 100%,35% 100%); }
 	.arm { position:absolute; top:28px; width:7px; height:25px; background:var(--suit); border:2px solid #1f2d38; transform-origin:top; }
 	.arm.left { left:1px; transform:rotate(13deg); }.arm.right { right:-1px; transform:rotate(-14deg); }
+	.character[data-gender='f'] .hair { height:16px; clip-path:polygon(0 12%,20% 0,80% 0,100% 16%,100% 92%,84% 100%,74% 58%,30% 44%,20% 100%,0 92%); }
+	.hair-back { position:absolute; top:5px; left:7px; width:27px; height:27px; background:var(--hair); border:2px solid #21140f; clip-path:polygon(12% 0,88% 0,100% 100%,0 100%); }
+	.lock { position:absolute; top:22px; width:6px; height:14px; background:var(--hair); border:2px solid #21140f; z-index:3; }
+	.lock.left { left:6px; transform:rotate(6deg); }.lock.right { right:5px; transform:rotate(-6deg); }
+	.character[data-gender='f'] .head::after { content:''; position:absolute; left:4px; bottom:2px; width:5px; height:2px; background:#b5484f; }
+	.character[data-gender='f'] .torso { clip-path:polygon(14% 0,86% 0,100% 100%,0 100%); }
 	.legs { position:absolute; left:9px; bottom:0; width:23px; height:15px; background:#202937; }
 	.legs i { position:absolute; left:10px; width:3px; height:15px; background:#111720; }
 	.receiver { position:absolute; right:-2px; top:6px; width:5px; height:15px; background:#262c31; border:1px solid #0e1112; }
@@ -391,7 +403,7 @@
 	.leverage-input:focus { outline:1px solid #fff0aa; }
 	.activity { position:absolute; right:1px; top:49px; z-index:12; min-width:65px; padding:3px 4px; color:#d9ccb6; background:#211815; border:2px solid #6c4935; box-shadow:2px 2px 0 rgba(0,0,0,.4); font:7px var(--mono, monospace); text-align:center; line-height:1.2; }
 	.activity span { display:block; white-space:nowrap; }
-	.pnl-headline { position:absolute; left:50%; top:17px; z-index:24; display:flex; align-items:center; justify-content:center; gap:4px; min-width:76px; padding:3px 5px; transform:translateX(-50%); color:#c9b999; background:#211815; border:2px solid #6c4935; box-shadow:2px 2px 0 rgba(0,0,0,.4); font:900 8px var(--mono, monospace); line-height:1; white-space:nowrap; text-align:center; }
+	.pnl-headline { position:absolute; left:50%; top:14px; z-index:24; display:flex; align-items:center; justify-content:center; gap:4px; min-width:76px; padding:3px 5px; transform:translateX(-50%); color:#c9b999; background:#211815; border:2px solid #6c4935; box-shadow:2px 2px 0 rgba(0,0,0,.4); font:900 8px var(--mono, monospace); line-height:1; white-space:nowrap; text-align:center; }
 	.pnl-headline.positive { color:#8bdc9a; }
 	.pnl-headline.negative { color:#ff9b8e; }
 	.pnl-stack { position:relative; display:inline-block; width:10px; height:8px; flex:none; transform:translateY(-1px); }
@@ -403,8 +415,8 @@
 	.trade-duration input { width:30px; box-sizing:border-box; padding:1px; color:#fff0b0; background:#100b09; border:1px solid #9e7047; font:6px var(--mono, monospace); text-align:center; }
 	.trade-duration input:disabled { color:#8f8169; opacity:.7; }
 
-	.status-badge { position:absolute; left:1px; top:31px; z-index:15; padding:2px 4px; background:#33433b; color:#e6d9bf; border:2px solid #201713; font:6px var(--mono, monospace); text-transform:uppercase; letter-spacing:.05em; box-shadow:2px 2px 0 rgba(20,10,5,.45); }
-	.blofin-badge { position:absolute; left:1px; top:48px; z-index:16; max-width:calc(100% - 4px); padding:2px 4px; background:#0c2a1c; color:#7dffb0; border:2px solid #1a5a3a; font:5px/1.1 var(--mono, monospace); letter-spacing:.04em; box-shadow:2px 2px 0 rgba(10,40,25,.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+	.status-badge { position:absolute; left:50%; top:0; transform:translateX(-50%); white-space:nowrap; z-index:15; padding:2px 4px; background:#33433b; color:#e6d9bf; border:2px solid #201713; font:6px var(--mono, monospace); text-transform:uppercase; letter-spacing:.05em; box-shadow:2px 2px 0 rgba(20,10,5,.45); }
+	.blofin-badge { position:absolute; left:50%; top:-13px; transform:translateX(-50%); z-index:16; max-width:calc(100% - 4px); padding:2px 4px; background:#0c2a1c; color:#7dffb0; border:2px solid #1a5a3a; font:5px/1.1 var(--mono, monospace); letter-spacing:.04em; box-shadow:2px 2px 0 rgba(10,40,25,.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 	.blofin-badge::before { content:'BF '; opacity:.7; }
 	.status-badge[data-status='open'] { background:#2e6d4d; color:#d6ffe2; }
 	.status-badge[data-status='thinking'] { background:#8a682c; color:#fff2bd; }
@@ -413,7 +425,7 @@
 	.status-badge[data-status='celebrating'] { background:#2e7958; color:#edffb8; }
 	.staff-note { position:absolute; top:14px; left:1px; right:1px; z-index:24; min-height:24px; padding:4px 5px; box-sizing:border-box; background:#fff0bf; color:#24170e; border:2px solid #5c4129; box-shadow:3px 3px 0 rgba(30,15,7,.55); font:700 8px/1.25 var(--pixel,var(--mono,monospace)); letter-spacing:.01em; text-align:center; transform:rotate(-1deg); }
 
-	.thought { position:absolute; left:50%; bottom:118px; transform:translateX(-50%); z-index:30; min-width:0; max-width:min(115px, 96%); padding:5px 7px; color:#2e241c; background:#fff8da; border:2px solid #4c3827; box-shadow:3px 3px 0 rgba(38,20,10,.35); border-radius:11px; text-align:center; font:7px/1.2 var(--pixel,monospace); animation:float 1.9s ease-in-out infinite; }
+	.thought { position:absolute; left:50%; bottom:158px; transform:translateX(-50%); z-index:30; min-width:0; max-width:min(115px, 96%); padding:5px 7px; color:#2e241c; background:#fff8da; border:2px solid #4c3827; box-shadow:3px 3px 0 rgba(38,20,10,.35); border-radius:11px; text-align:center; font:7px/1.2 var(--pixel,monospace); animation:float 1.9s ease-in-out infinite; }
 	.thought i,.thought b { position:absolute; border:2px solid #4c3827; background:#fff8da; border-radius:50%; }
 	.thought i { left:32px; bottom:-8px; width:8px; height:8px; }.thought b { left:27px; bottom:-14px; width:5px; height:5px; }
 	@keyframes float { 50% { transform:translate(-50%,-2px); } }

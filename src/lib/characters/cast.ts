@@ -1,13 +1,13 @@
 import type { StaffDef, TraderDef, TraderLeg, Leverage, Side } from '$lib/data/types';
 
 export const TRADERS: TraderDef[] = [
-	{ id: 'L05', name: 'Maya Chen', role: 'trader', side: 'long', leverage: 5, skin: 'maya', row: 'long', col: 0 },
+	{ id: 'L05', name: 'Maya Chen', role: 'trader', side: 'long', leverage: 5, skin: 'maya', female: true, row: 'long', col: 0 },
 	{ id: 'L10', name: 'Jamal Brooks', role: 'trader', side: 'long', leverage: 10, skin: 'jamal', row: 'long', col: 1 },
-	{ id: 'L25', name: 'Sofia Alvarez', role: 'trader', side: 'long', leverage: 25, skin: 'sofia', row: 'long', col: 2 },
+	{ id: 'L25', name: 'Sofia Alvarez', role: 'trader', side: 'long', leverage: 25, skin: 'sofia', female: true, row: 'long', col: 2 },
 	{ id: 'L50', name: 'Kenji Sato', role: 'trader', side: 'long', leverage: 50, skin: 'kenji', row: 'long', col: 3 },
-	{ id: 'L100', name: 'Aisha Okonkwo', role: 'trader', side: 'long', leverage: 100, skin: 'aisha', row: 'long', col: 4 },
+	{ id: 'L100', name: 'Aisha Okonkwo', role: 'trader', side: 'long', leverage: 100, skin: 'aisha', female: true, row: 'long', col: 4 },
 	{ id: 'S05', name: 'Erik Lindqvist', role: 'trader', side: 'short', leverage: 5, skin: 'erik', row: 'short', col: 0 },
-	{ id: 'S10', name: 'Priya Sharma', role: 'trader', side: 'short', leverage: 10, skin: 'priya', row: 'short', col: 1 },
+	{ id: 'S10', name: 'Priya Sharma', role: 'trader', side: 'short', leverage: 10, skin: 'priya', female: true, row: 'short', col: 1 },
 	{ id: 'S25', name: 'Marcus Webb', role: 'trader', side: 'short', leverage: 25, skin: 'marcus', row: 'short', col: 2 },
 	{ id: 'S50', name: 'Yuki Tanaka', role: 'trader', side: 'short', leverage: 50, skin: 'yuki', row: 'short', col: 3 },
 	{ id: 'S100', name: 'Diego Morales', role: 'trader', side: 'short', leverage: 100, skin: 'diego', row: 'short', col: 4 }

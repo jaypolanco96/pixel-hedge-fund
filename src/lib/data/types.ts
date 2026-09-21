@@ -82,6 +82,7 @@ export interface TraderDef {
 	side: Side;
 	leverage: Leverage;
 	skin: string;
+	female?: boolean;
 	row: 'long' | 'short';
 	col: number;
 }
