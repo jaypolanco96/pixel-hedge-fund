@@ -1,4 +1,5 @@
 /** Bybit-first public market data with BloFin as the only exchange fallback. */
+import { env } from '$env/dynamic/private';
 import type { CandlesResponse, QuoteResponse, Tf } from './types';
 import {
 	fetchBybitCandles,
@@ -14,15 +15,23 @@ import {
 	fetchBloFinTopVolumeQuotes
 } from './blofin';
 import { DEFAULT_DISPLAY, SYMBOLS, resolveSymbol, spotWireSymbol } from './symbols';
-import { sampleQuote } from './sample';
 
 export type TapeMarket = 'futures' | 'spot';
+
+/** Local dev keeps the labeled fallback; production always requires live exchange data. */
+const productionRuntime = process.env.NODE_ENV === 'production' || env.VERCEL === '1' || env.VERCEL === 'true';
+export const MARKET_LIVE_ONLY = productionRuntime || String(env.PHF_LIVE_ONLY ?? '').toLowerCase() === 'true';
+
+function requireLive<T extends { sample: boolean }>(data: T, label: string): T {
+	if (MARKET_LIVE_ONLY && data.sample) throw new Error(`${label} live data unavailable`);
+	return data;
+}
 
 export async function fetchQuote(symbolInput?: string | null): Promise<QuoteResponse> {
 	const bybit = await fetchBybitQuote(symbolInput);
 	if (!bybit.sample) return bybit;
 	const blofin = await fetchBloFinPublicQuote(symbolInput);
-	return blofin.sample ? bybit : blofin;
+	return requireLive(blofin.sample ? bybit : blofin, 'Quote');
 }
 
 export async function fetchCandles(
@@ -33,7 +42,7 @@ export async function fetchCandles(
 	const bybit = await fetchBybitCandles(symbolInput, tf, limit);
 	if (!bybit.sample) return bybit;
 	const blofin = await fetchBloFinPublicCandles(symbolInput, tf, limit);
-	return blofin.sample ? bybit : blofin;
+	return requireLive(blofin.sample ? bybit : blofin, 'Candle');
 }
 
 /** Merge the two permitted public venues by symbol and retain the strongest quote. */
@@ -43,7 +52,10 @@ export async function fetchTapeQuotes(market: TapeMarket = 'futures'): Promise<Q
 			fetchBybitSpotQuotesFor(SYMBOLS),
 			fetchBybitSpotLeveragedQuotes()
 		]);
-		return [...SYMBOLS.map((def) => bybitBase.get(def.display) ?? sampleQuote(def.display)), ...leveraged];
+		const base = MARKET_LIVE_ONLY
+			? [...bybitBase.values()].filter((quote) => !quote.sample)
+			: SYMBOLS.map((def) => bybitBase.get(def.display));
+		return [...base, ...leveraged].filter((quote): quote is QuoteResponse => !!quote && (!MARKET_LIVE_ONLY || !quote.sample));
 	}
 
 	const [bybitBase, bybitTop, blofinTop] = await Promise.all([
@@ -52,13 +64,16 @@ export async function fetchTapeQuotes(market: TapeMarket = 'futures'): Promise<Q
 		fetchBloFinTopVolumeQuotes(20)
 	]);
 	const top = new Map<string, QuoteResponse>();
-	for (const quote of [...bybitTop, ...blofinTop]) {
+	for (const quote of [...bybitTop, ...blofinTop].filter((item) => !MARKET_LIVE_ONLY || !item.sample)) {
 		const previous = top.get(quote.display);
 		if (!previous || (quote.volume24h ?? 0) > (previous.volume24h ?? 0)) top.set(quote.display, quote);
 	}
+	const base = MARKET_LIVE_ONLY
+		? [...bybitBase.values()].filter((quote) => !quote.sample)
+		: SYMBOLS.map((def) => bybitBase.get(def.display)).filter((quote): quote is QuoteResponse => !!quote);
 	return [
 		...([...top.values()].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))),
-		...SYMBOLS.map((def) => bybitBase.get(def.display) ?? sampleQuote(def.display)).filter((quote) => !top.has(quote.display))
+		...base.filter((quote) => !top.has(quote.display))
 	];
 }
 
@@ -71,7 +86,10 @@ export async function healthCheck(): Promise<{
 		const quote = await fetchQuote(DEFAULT_DISPLAY);
 		return {
 			ok: !quote.sample,
-			providers: { bybit: quote.provider === 'bybit' && !quote.sample ? 'up' : 'fallback' },
+			providers: {
+				bybit: quote.provider === 'bybit' && !quote.sample ? 'up' : 'fallback',
+				blofin: quote.provider === 'blofin' && !quote.sample ? 'up' : 'fallback'
+			},
 			cache: 'public'
 		};
 	} catch {

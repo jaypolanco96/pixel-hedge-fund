@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dev } from '$app/environment';
 	import type { Bias, QuoteResponse } from '$lib/data/types';
 	import { SYMBOLS, resolveSymbol, spotWireSymbol } from '$lib/data/symbols';
 
@@ -33,8 +34,7 @@
 		const rows =
 			quotes.length > 0
 				? quotes.map((q) => {
-						const tag = q.sample ? ' SAMPLE' : '';
-						return `${label(q)} ${fmtPrice(q)} ${fmtChg(q)}${tag}`.trim();
+						return `${label(q)} ${fmtPrice(q)} ${fmtChg(q)}`.trim();
 					})
 				: [`${activeDisplay} -`];
 		const active = quotes.find((q) => q.display === activeDisplay);
@@ -45,17 +45,15 @@
 				? spotWireSymbol(activeDisplay)
 				: activeDef.bybit;
 		const markLine = active
-			? `${activeLabel} MARK ${active.mark.toFixed(active.decimals ?? activeDef.decimals)}${active.sample ? ' SAMPLE' : ''}`
+			? `${activeLabel} MARK ${active.mark.toFixed(active.decimals ?? activeDef.decimals)}`
 			: `${market === 'spot' ? spotWireSymbol(activeDisplay) : activeDef.bybit} MARK -`;
-		const anySample = quotes.some((q) => q.sample);
-		const allSample = quotes.length > 0 && quotes.every((q) => q.sample);
 		return [
 			...rows,
 			markLine,
 			`DESK ${activeDisplay} . BIAS ${bias}`,
 			'RESEARCH / DISCIPLINE / RETURNS',
 			'RISK FIRST . SIZE SECOND',
-			!quotes.length ? 'CONNECTING' : allSample ? 'SAMPLE DATA' : anySample ? 'MIXED LIVE / SAMPLE' : market === 'spot' ? 'BYBIT SPOT LIVE' : `${[...new Set(quotes.map((q) => q.provider.toUpperCase()))].join(' / ')} LIVE`
+			dev ? 'SAMPLE' : 'LIVE'
 		];
 	});
 </script>

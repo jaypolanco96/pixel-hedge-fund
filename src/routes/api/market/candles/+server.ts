@@ -19,7 +19,12 @@ export const GET: RequestHandler = async ({ url }) => {
 		error(400, { message: 'UNSUPPORTED_TF' });
 	}
 
-	const data = await fetchCandles(symbol, tf, limit);
+	let data;
+	try {
+		data = await fetchCandles(symbol, tf, limit);
+	} catch (cause) {
+		error(503, new Error(`LIVE_MARKET_UNAVAILABLE: ${cause instanceof Error ? cause.message : 'Bybit and BloFin did not return live candle data'}`));
+	}
 
 	if (format === 'columns') {
 		return json({
@@ -37,6 +42,6 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 
 	return json(data, {
-		headers: { 'Cache-Control': 'public, max-age=10' }
+		headers: { 'Cache-Control': 'no-store' }
 	});
 };

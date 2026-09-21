@@ -8,10 +8,16 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ url }) => {
 	const symbol = url.searchParams.get('symbol') ?? 'SOLUSDT';
 	const def = resolveSymbol(symbol);
-	const [setup, regime] = await Promise.all([
-		fetchCandles(def.display, '15m', 300),
-		fetchCandles(def.display, '4h', 200)
-	]);
+	let setup;
+	let regime;
+	try {
+		[setup, regime] = await Promise.all([
+			fetchCandles(def.display, '15m', 300),
+			fetchCandles(def.display, '4h', 200)
+		]);
+	} catch (cause) {
+		error(503, new Error(`LIVE_SIGNAL_UNAVAILABLE: ${cause instanceof Error ? cause.message : 'Bybit and BloFin did not return live candle data'}`));
+	}
 
 	// The final exchange candle is still forming. Build the desk signal from
 	// completed candles so posture decisions do not churn intrabar.
@@ -29,6 +35,6 @@ export const GET: RequestHandler = async ({ url }) => {
 	});
 
 	return json(signal, {
-		headers: { 'Cache-Control': 'public, max-age=10' }
+		headers: { 'Cache-Control': 'no-store' }
 	});
 };

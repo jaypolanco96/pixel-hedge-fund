@@ -50,6 +50,7 @@ export type {
 /** Live production root - demo URL is never the default. */
 const LIVE_BASE = 'https://openapi.blofin.com';
 const DEMO_BASE = 'https://demo-trading-openapi.blofin.com';
+const PUBLIC_BASE = normalizeExchangeBase(env.BLOFIN_BASE_URL ?? env.BLOFIN_BASE ?? LIVE_BASE, 'blofin');
 
 let publicTickerCache: { at: number; rows: QuoteResponse[] } | null = null;
 const publicCandleCache = new Map<string, { at: number; data: CandlesResponse }>();
@@ -79,7 +80,7 @@ async function loadBloFinPublicQuotes(): Promise<QuoteResponse[]> {
 		return publicTickerCache.rows;
 	}
 	try {
-		const res = await fetch(`${LIVE_BASE}/api/v1/market/tickers`, {
+		const res = await fetch(`${PUBLIC_BASE}/api/v1/market/tickers`, {
 			headers: { Accept: 'application/json' },
 			signal: AbortSignal.timeout(10_000)
 		});
@@ -150,7 +151,7 @@ export async function fetchBloFinPublicCandles(
 	if (hit && Date.now() - hit.at < PUBLIC_TICKER_TTL_MS) return hit.data;
 	try {
 		const params = new URLSearchParams({ instId, bar, limit: String(boundedLimit) });
-		const res = await fetch(`${LIVE_BASE}/api/v1/market/candles?${params}`, {
+		const res = await fetch(`${PUBLIC_BASE}/api/v1/market/candles?${params}`, {
 			headers: { Accept: 'application/json' },
 			signal: AbortSignal.timeout(12_000)
 		});

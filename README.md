@@ -64,10 +64,10 @@ Hover / focus a trader → desk **clipboard**. Click to **pin** CRT snippet. Esc
 - `GET /api/market/quote?symbol=SOLUSDT`
 - `GET /api/market/candles?symbol=ETHUSDT&tf=15m`
 - `GET /api/market/signal?symbol=BTCUSDT`
-- `GET /api/market/tape` — all tape symbols (live where possible)
+- `GET /api/market/tape` - all live tape symbols from Bybit and BloFin
 - `GET /api/market/health`
 
-If a fetch fails for a symbol, that row/payload sets `"sample": true` and the UI shows **SAMPLE** — never silent fake live prices.
+Production is always live-only: Bybit is tried first, BloFin is the permitted public-data fallback, and unavailable exchange data returns an empty or `503` response. Local `npm run dev` keeps the labeled SAMPLE fallback for offline work; set `PHF_LIVE_ONLY=true` locally when you want to test the live-only behavior.
 
 
 ## Feature pack (office toys)

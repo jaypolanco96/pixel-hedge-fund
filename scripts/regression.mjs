@@ -126,6 +126,28 @@ try {
 			await assert.rejects(() => candlesRoute.GET({ url: new URL(`http://localhost/api/market/candles?limit=${limit}`) }), (error) => error.status === 400);
 		}
 	});
+	const cast = await load('lib/characters/cast.ts');
+	await test('cast trader PNL scales with leverage', () => {
+		const fiveX = cast.TRADERS.find((trader) => trader.id === 'L05');
+		const tenX = cast.TRADERS.find((trader) => trader.id === 'L10');
+		const hundredX = cast.TRADERS.find((trader) => trader.id === 'L100');
+		assert.ok(fiveX && tenX && hundredX);
+
+		const fiveLeg = cast.markLeg(fiveX, 100, 101, false);
+		const tenLeg = cast.markLeg(tenX, 100, 101, false);
+		const hundredLeg = cast.markLeg(hundredX, 100, 101, false);
+		assert.deepEqual(
+			[fiveLeg.notionalUsd, tenLeg.notionalUsd, hundredLeg.notionalUsd],
+			[500_000, 1_000_000, 10_000_000]
+		);
+		assert.ok(Math.abs(fiveLeg.unrealizedPnlUsd - 5_000) < 1e-6);
+		assert.ok(Math.abs(tenLeg.unrealizedPnlUsd - 10_000) < 1e-6);
+		assert.ok(Math.abs(hundredLeg.unrealizedPnlUsd - 100_000) < 1e-6);
+		assert.equal(hundredLeg.unrealizedPnlUsd / fiveLeg.unrealizedPnlUsd, 20);
+		assert.equal(fiveLeg.unrealizedPnlPctMargin, 0.05);
+		assert.equal(tenLeg.unrealizedPnlPctMargin, 0.1);
+		assert.equal(hundredLeg.unrealizedPnlPctMargin, 1);
+	});
 	console.log(`${passed} regression groups passed; all exchange requests mocked.`);
 } finally {
 	globalThis.fetch = originalFetch; Date.now = originalNow; console.warn = originalWarn;

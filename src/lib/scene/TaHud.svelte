@@ -15,7 +15,7 @@
 <div class="chart-desk" class:sample={signal?.sample}>
 	<div class="crt-topline">
 		<span>CHART DESK / {marketLabel}</span>
-		<span>{!signal ? 'CONNECTING' : signal.sample ? 'SAMPLE' : `${signal.provider.toUpperCase()} LIVE`}</span>
+		<span>{!signal ? 'LIVE DATA UNAVAILABLE' : signal.sample ? 'SAMPLE' : `${signal.provider.toUpperCase()} LIVE`}</span>
 	</div>
 	{#if signal}
 		<div class="readout">
@@ -49,7 +49,7 @@
 			4H {signal.mtf.regime} / 15M {signal.mtf.setup} . {signal.mtf.aligned ? 'ALIGNED' : 'COUNTER'}
 		</div>
 	{:else}
-		<div class="boot">TAPE WIRE CONNECTING<span>_</span></div>
+		<div class="boot">TAPE WIRE LIVE DATA UNAVAILABLE<span>_</span></div>
 	{/if}
 	<div class="scanlines"></div>
 </div>

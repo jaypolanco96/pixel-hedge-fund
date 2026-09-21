@@ -136,7 +136,7 @@
 						<MiniChart
 							{bars}
 							{bias}
-							label={`${activeDisplay} . ${!signal ? 'CONNECTING' : signal.sample ? 'SAMPLE' : 'LIVE DESK'}`}
+							label={`${activeDisplay} . ${!signal ? 'LIVE DATA UNAVAILABLE' : signal.sample ? 'SAMPLE' : 'LIVE DESK'}`}
 							showLevels={!!signal}
 							stop={signal?.risk.stop}
 							tp1={signal?.risk.tp1}
@@ -149,7 +149,7 @@
 							. {signal.sample ? 'SAMPLE' : signal.provider.toUpperCase()}
 						</p>
 					{:else}
-						<p class="empty">Waiting on tape wire...</p>
+						<p class="empty">Live Bybit or BloFin data unavailable.</p>
 					{/if}
 				</section>
 			{:else if tab === 'quote'}

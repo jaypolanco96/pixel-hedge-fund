@@ -11,7 +11,7 @@ export const LIVE_BYBIT_BASE = 'https://api.bybit.com';
 export type ExchangeName = 'blofin' | 'bybit';
 const ALLOWED_EXCHANGE_HOSTS: Record<ExchangeName, Set<string>> = {
 	blofin: new Set(['openapi.blofin.com', 'demo-trading-openapi.blofin.com']),
-	bybit: new Set(['api.bybit.com', 'api-demo.bybit.com', 'api-testnet.bybit.com'])
+	bybit: new Set(['api.bybit.com', 'api.bytick.com', 'api-demo.bybit.com', 'api-testnet.bybit.com', 'api.bybit.eu', 'api.bybit.nl', 'api.bybit.tr', 'api.bybit.kz', 'api.bybitgeorgia.ge', 'api.bybit.ae', 'api.bybit.id'])
 };
 
 /** Prevent credentials being sent to a user-supplied arbitrary host. */

@@ -357,7 +357,29 @@ export async function fetchBybitBalance(): Promise<BybitBalanceResponse> {
 
 // -- Public linear tickers --
 
-const PUBLIC_BASE = 'https://api.bybit.com';
+const PUBLIC_BASES = [
+	normalizeExchangeBase(env.BYBIT_BASE_URL ?? env.BYBIT_BASE ?? '', 'bybit'),
+	LIVE_BYBIT_BASE,
+	'https://api.bytick.com'
+].filter((base, index, all) => all.indexOf(base) === index);
+
+async function fetchBybitPublic(path: string): Promise<Response> {
+	let lastError: unknown = new Error('Bybit public request failed');
+	for (const base of PUBLIC_BASES) {
+		try {
+			const res = await fetch(`${base}${path}`, {
+				headers: { Accept: 'application/json' },
+				signal: AbortSignal.timeout(10_000)
+			});
+			if (res.ok) return res;
+			lastError = new Error(`${base} HTTP ${res.status}`);
+		} catch (err) {
+			lastError = err;
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 let tickerCache: { at: number; bySymbol: Map<string, BybitTickerRow> } | null = null;
 const TICKER_TTL_MS = 10_000;
 const candleCache = new Map<string, { at: number; data: CandlesResponse }>();
@@ -379,11 +401,7 @@ const COMMON_LEVERAGED_SPOT_SYMBOLS = [
 async function loadLinearTickers(): Promise<Map<string, BybitTickerRow>> {
 	if (tickerCache && Date.now() - tickerCache.at < TICKER_TTL_MS) return tickerCache.bySymbol;
 	try {
-		const res = await fetch(`${PUBLIC_BASE}/v5/market/tickers?category=linear`, {
-			headers: { Accept: 'application/json' },
-			signal: AbortSignal.timeout(10_000)
-		});
-		if (!res.ok) throw new Error(`bybit tickers HTTP ${res.status}`);
+		const res = await fetchBybitPublic('/v5/market/tickers?category=linear');
 		const body = (await res.json()) as {
 			retCode?: number;
 			result?: { list?: Array<Record<string, unknown>> };
@@ -418,11 +436,7 @@ async function loadLinearTickers(): Promise<Map<string, BybitTickerRow>> {
 async function loadSpotTickers(): Promise<Map<string, BybitTickerRow>> {
 	if (spotTickerCache && Date.now() - spotTickerCache.at < TICKER_TTL_MS) return spotTickerCache.bySymbol;
 	try {
-		const res = await fetch(`${PUBLIC_BASE}/v5/market/tickers?category=spot`, {
-			headers: { Accept: 'application/json' },
-			signal: AbortSignal.timeout(10_000)
-		});
-		if (!res.ok) throw new Error(`bybit spot tickers HTTP ${res.status}`);
+		const res = await fetchBybitPublic('/v5/market/tickers?category=spot');
 		const body = (await res.json()) as {
 			retCode?: number;
 			result?: { list?: Array<Record<string, unknown>> };
@@ -455,11 +469,7 @@ async function loadSpotTickers(): Promise<Map<string, BybitTickerRow>> {
 async function loadSpotLeveragedSymbols(): Promise<string[]> {
 	if (spotInstrumentCache && Date.now() - spotInstrumentCache.at < 60_000) return spotInstrumentCache.symbols;
 	try {
-		const res = await fetch(`${PUBLIC_BASE}/v5/spot-lever-token/info`, {
-			headers: { Accept: 'application/json' },
-			signal: AbortSignal.timeout(10_000)
-		});
-		if (!res.ok) throw new Error(`bybit leveraged-token info HTTP ${res.status}`);
+		const res = await fetchBybitPublic('/v5/spot-lever-token/info');
 		const body = (await res.json()) as { retCode?: number; result?: { list?: Array<Record<string, unknown>> } };
 		if (body.retCode != null && Number(body.retCode) !== 0) throw new Error(`bybit leveraged-token info retCode ${body.retCode}`);
 		const discovered = (body.result?.list ?? [])
@@ -541,11 +551,7 @@ export async function fetchBybitCandles(
 			interval,
 			limit: String(boundedLimit)
 		});
-		const res = await fetch(`${PUBLIC_BASE}/v5/market/kline?${params}`, {
-			headers: { Accept: 'application/json' },
-			signal: AbortSignal.timeout(12_000)
-		});
-		if (!res.ok) throw new Error(`bybit kline HTTP ${res.status}`);
+		const res = await fetchBybitPublic(`/v5/market/kline?${params}`);
 		const body = (await res.json()) as {
 			retCode?: number;
 			result?: { list?: unknown[][] };

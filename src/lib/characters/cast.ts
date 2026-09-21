@@ -21,8 +21,15 @@ export const STAFF: StaffDef[] = [
 	{ id: 'QR', name: 'Samir Patel', role: 'quant', title: 'Quantitative Researcher', skin: 'samir', zone: 'quant' }
 ];
 
-// Cast traders simulate $1M notional each so their desk PNL reflects the larger book.
-const NOTIONAL = 1_000_000;
+// Keep the existing 10x trader at $1M notional while leverage scales exposure.
+// This gives every default cast trader the same $100k margin allocation.
+const BASE_NOTIONAL = 1_000_000;
+const BASE_LEVERAGE = 10;
+
+export function traderNotional(leverage: number): number {
+	const validLeverage = Number.isFinite(leverage) ? Math.max(1, leverage) : BASE_LEVERAGE;
+	return BASE_NOTIONAL * (validLeverage / BASE_LEVERAGE);
+}
 
 export function markLeg(
 	t: TraderDef,
@@ -36,15 +43,16 @@ export function markLeg(
 		t.side === 'long'
 			? (mark - entryMark) / entryMark
 			: (entryMark - mark) / entryMark;
-	const unrealizedPnlUsd = NOTIONAL * signedMove;
-	const marginUsd = NOTIONAL / t.leverage;
+	const notionalUsd = traderNotional(t.leverage);
+	const unrealizedPnlUsd = notionalUsd * signedMove;
+	const marginUsd = notionalUsd / t.leverage;
 	return {
 		traderId: t.id,
 		side: t.side,
 		leverage: t.leverage,
 		symbol: displaySymbol,
 		exchangeSymbol,
-		notionalUsd: NOTIONAL,
+		notionalUsd,
 		entryMark,
 		mark,
 		unrealizedPnlUsd,

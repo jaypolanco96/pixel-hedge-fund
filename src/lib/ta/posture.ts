@@ -117,7 +117,7 @@ export function postureForTrader(
 	if (leg) {
 		// An open leg remains open between closed-candle decisions. The book is
 		// the source of truth here; intrabar signal noise must not rewrite posture.
-		const pct = leg.unrealizedPnlUsd / (leg.notionalUsd / trader.leverage);
+		const pct = leg.unrealizedPnlUsd / (leg.notionalUsd / leg.leverage);
 		return {
 			...base,
 			posture: 'open',

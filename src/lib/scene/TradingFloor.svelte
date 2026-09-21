@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dev } from '$app/environment';
 	import { exchangeFetch } from '$lib/client/exchangeHeaders';
 	import { completedBars } from '$lib/data/validation';
 	import { onMount } from 'svelte';
@@ -1045,7 +1046,7 @@
 			tapeQuotes = tape.quotes ?? [];
 		} catch (e) {
 			if (request !== tapeRequest || market !== wireMarket) return;
-			tapeQuotes = tapeQuotes.map((q) => ({ ...q, sample: true }));
+			tapeQuotes = [];
 			err = e instanceof Error ? e.message : 'Market Wire unavailable';
 		}
 	}
@@ -1191,7 +1192,7 @@
 				fetch(`/api/market/signal?symbol=${encodeURIComponent(sym)}`),
 				fetch(`/api/market/candles?symbol=${encodeURIComponent(sym)}&tf=15m&limit=80`)
 			]);
-			if (!qRes.ok || !sRes.ok || !cRes.ok) throw new Error('Tape Wire unavailable or waiting for candle history');
+			if (!qRes.ok || !sRes.ok || !cRes.ok) throw new Error('Live Bybit or BloFin data unavailable');
 			const [q, s, candles] = await Promise.all([
 				qRes.json() as Promise<QuoteResponse>, sRes.json() as Promise<SignalResponse>, cRes.json() as Promise<CandlesResponse>
 			]);
@@ -1416,7 +1417,10 @@
 			<div class="wall-panel right-wall">
 				<div class="market-board">
 					<header>
-						<span>MARKET WIRE . {wireMarket.toUpperCase()}</span><i>{!tapeQuotes.length ? 'CONNECTING' : tapeQuotes.some((q) => q.sample) ? 'SAMPLE / MIXED' : 'LIVE'}</i>
+						<span>MARKET WIRE . {wireMarket.toUpperCase()}</span>
+						<i class:wire-sample={dev} class:wire-live={!dev} aria-label={dev ? 'Sample market data' : 'Live market data'}>
+							{dev ? 'SAMPLE' : 'LIVE'}
+						</i>
 					</header>
 
 					<div class="wire-cats" role="tablist" aria-label="Wire categories">
@@ -1460,7 +1464,7 @@
 						{#each wireTokenQuotes as tq (tq.display)}
 							<div class="wire-token-row">
 								<b>{wireLabel(tq.display, tq)}</b>
-								<strong>{tq.price.toFixed(wireDecimals(tq.display, tq.price, tq))}{tq.sample ? '*' : ''}</strong>
+								<strong>{tq.price.toFixed(wireDecimals(tq.display, tq.price, tq))}</strong>
 								<em class:down={(tq.change24h ?? 0) < 0}>{tq.change24h == null ? '-' : `${tq.change24h >= 0 ? '+' : ''}${tq.change24h.toFixed(1)}%`}</em>
 							</div>
 						{/each}
@@ -1475,11 +1479,7 @@
 							onclick={() => selectWireTicker(tq.display)}
 						>
 							<b>{wireLabel(tq.display, tq)}</b>
-							<strong
-								>{tq.price.toFixed(wireDecimals(tq.display, tq.price, tq))}{tq.sample
-									? '*'
-									: ''}</strong
-							>
+							<strong>{tq.price.toFixed(wireDecimals(tq.display, tq.price, tq))}</strong>
 							<em class:down={(tq.change24h ?? 0) < 0}
 								>{tq.change24h == null
 									? '-'
@@ -2003,7 +2003,7 @@
 				</p>
 				<footer>
 					CLICK DESK TO {pinnedId === inspectedTrader.id ? 'UNPIN' : 'PIN CRT'}
-					{inspectedPosture.sample ? '. SAMPLE' : ''}
+					{inspectedPosture.sample ? '. WAITING FOR LIVE TAPE' : ''}
 				</footer>
 			{:else if inspectedStaff}
 				<header>
@@ -2044,11 +2044,11 @@
 		>
 			<div class="clip"></div>
 			<div>
-				<span class:dot-live={!!quote && !quote.sample}></span>{!quote ? 'CONNECTING' : quote.sample
+				<span class:dot-live={!!quote && !quote.sample}></span>{!quote ? 'LIVE DATA UNAVAILABLE' : quote.sample
 					? 'SAMPLE TAPE'
 					: `${quote.provider.toUpperCase()} . ${activeDisplay}`}
 			</div>
-			<strong>{quote?.price?.toFixed(priceDecimals) ?? 'CONNECTING'}</strong>
+			<strong>{quote?.price?.toFixed(priceDecimals) ?? '-'}</strong>
 			<small
 				>{clock.label} . {clock.phase.toUpperCase()}{clock.raining
 					? ' . RAIN'
@@ -2323,14 +2323,44 @@
 	.market-board header {
 		display: flex;
 		justify-content: space-between;
+		align-items: center;
 		padding-bottom: 5px;
 		color: #d8b76c;
 		border-bottom: 1px solid #5a5134;
 		font-size: 7px;
 	}
 	.market-board header i {
-		color: #6ed898;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: #d8bb71;
 		font-style: normal;
+	}
+	.market-board header i::before {
+		content: '';
+		width: 5px;
+		height: 5px;
+		background: #d8bb71;
+		box-shadow: 0 0 0 1px #5a5134;
+	}
+	.market-board header i.wire-live {
+		color: #f47764;
+	}
+	.market-board header i.wire-live::before {
+		background: #f04b4b;
+		border-radius: 50%;
+		box-shadow: 0 0 4px 2px rgba(240, 75, 75, 0.75);
+		animation: wire-live-pulse 1.8s ease-in-out infinite;
+	}
+	@keyframes wire-live-pulse {
+		0%,
+		100% {
+			opacity: 0.7;
+		}
+		50% {
+			opacity: 1;
+			box-shadow: 0 0 6px 3px rgba(240, 75, 75, 0.95);
+		}
 	}
 	.wire-market-toggle {
 		display: flex !important;

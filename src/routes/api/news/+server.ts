@@ -6,6 +6,6 @@ export const GET: RequestHandler = async ({ url }) => {
 	const symbol = url.searchParams.get('symbol');
 	const data = await fetchNewsForSymbol(symbol);
 	return json(data, {
-		headers: { 'Cache-Control': 'public, max-age=60' }
+		headers: { 'Cache-Control': 'no-store' }
 	});
 };
