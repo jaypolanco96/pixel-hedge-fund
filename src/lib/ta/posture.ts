@@ -8,7 +8,7 @@ import type {
 	TraderDef,
 	TraderLeg
 } from '$lib/data/types';
-import { markLeg } from '$lib/characters/cast';
+import { markLeg, traderNotional } from '$lib/characters/cast';
 
 export type TraderPosture = 'open' | 'considering' | 'watching' | 'counter';
 
@@ -46,6 +46,7 @@ export interface BookEntry {
 	strategy: 'trend' | 'hedge';
 	rrTp1: number;
 	rrTp2: number;
+	openedAt: number;
 }
 export type OpenBook = Record<string, BookEntry>;
 export interface TakeProfitEvent {
@@ -62,9 +63,41 @@ const RISK_PROFILE: Record<number, { stop: number; tp1: number; tp2: number }> =
 	100: { stop: 0.7, tp1: 2, tp2: 3.1 }
 };
 
+/** Counter-trend fades run at half the desk's normal notional. */
+export const HEDGE_SIZE_SCALE = 0.5;
+/** The risk desk refuses entries that push net exposure past this share of combined desk capacity. */
+export const MAX_NET_FRACTION = 0.5;
+const BAR_MS = 15 * 60_000;
+
+/** A fade that has not worked within a few bars is a wrong idea; hotter desks give up sooner. */
+function fadeMaxHoldMs(trader: TraderDef): number {
+	const bars = trader.leverage <= 10 ? 12 : trader.leverage <= 25 ? 8 : trader.leverage <= 50 ? 6 : 4;
+	return bars * BAR_MS;
+}
+
+export interface BookExposure {
+	longUsd: number;
+	shortUsd: number;
+	netUsd: number;
+	grossUsd: number;
+}
+
+export function bookExposure(legs: TraderLeg[]): BookExposure {
+	let longUsd = 0;
+	let shortUsd = 0;
+	for (const leg of legs) {
+		if (leg.side === 'long') longUsd += leg.notionalUsd;
+		else shortUsd += leg.notionalUsd;
+	}
+	return { longUsd, shortUsd, netUsd: longUsd - shortUsd, grossUsd: longUsd + shortUsd };
+}
+
 function riskPlan(trader: TraderDef, signal: SignalResponse, entry: number, strategy: 'trend' | 'hedge') {
 	const profile = RISK_PROFILE[trader.leverage] ?? RISK_PROFILE[25];
-	const baseRisk = Math.max(Math.abs(entry - signal.risk.stop), signal.atr['14'] * 0.7, entry * 0.0015);
+	// The Supertrend stop sits on the trend side, so a fade is risked off ATR instead.
+	const baseRisk = strategy === 'hedge'
+		? Math.max(signal.atr['14'], entry * 0.0015)
+		: Math.max(Math.abs(entry - signal.risk.stop), signal.atr['14'] * 0.7, entry * 0.0015);
 	const risk = baseRisk * profile.stop;
 	const rrTp1 = strategy === 'hedge' ? Math.min(profile.tp1, 1.35) : profile.tp1;
 	const rrTp2 = strategy === 'hedge' ? Math.min(profile.tp2, 2.1) : profile.tp2;
@@ -80,10 +113,6 @@ function riskPlan(trader: TraderDef, signal: SignalResponse, entry: number, stra
 
 function mandateMatch(side: Side, bias: Bias): boolean {
 	return (side === 'long' && bias === 'LONG') || (side === 'short' && bias === 'SHORT');
-}
-
-function oppositeBias(side: Side, bias: Bias): boolean {
-	return (side === 'long' && bias === 'SHORT') || (side === 'short' && bias === 'LONG');
 }
 
 function stAgainst(side: Side, dir: 1 | -1): boolean {
@@ -104,14 +133,49 @@ export function wantsOpen(trader: TraderDef, signal: SignalResponse): boolean {
 	return false;
 }
 
-/** A small counter-book allocation is allowed only on a clear rejection with
- * mixed higher-timeframe confirmation. This keeps the floor hedged without
- * inventing a trade against a fully aligned trend. */
+/** Both desks scan the tape on their own. The signal's bias and confluence only
+ * describe the trend side, so the desk fighting the trend works a separate
+ * mean-reversion (fade) playbook: RSI exhaustion plus price stretched from the
+ * EMA21 in ATR units. Higher-leverage desks demand deeper exhaustion, and every
+ * threshold tightens when the setup and regime timeframes are both strongly
+ * aligned against the fade. */
+function fadeMetrics(trader: TraderDef, signal: SignalResponse) {
+	const tier = trader.leverage <= 10 ? 0 : trader.leverage <= 25 ? 1 : trader.leverage <= 50 ? 2 : 3;
+	const strongTrend = !!signal.mtf?.aligned && signal.confluence >= 5;
+	const rsiDist = [10, 12, 15, 18][tier] + (strongTrend ? 5 : 0);
+	const stretchNeeded = [0.75, 1, 1.25, 1.5][tier] + (strongTrend ? 0.5 : 0);
+	const atr = signal.atr['14'];
+	const long = trader.side === 'long';
+	const away = long ? signal.ema['21'] - signal.last : signal.last - signal.ema['21'];
+	return {
+		rsiDist,
+		stretchNeeded,
+		rsiDepth: long ? 50 - signal.rsi : signal.rsi - 50,
+		stretch: atr > 0 ? away / atr : 0
+	};
+}
+
 export function wantsHedgeOpen(trader: TraderDef, signal: SignalResponse): boolean {
-	if (mandateMatch(trader.side, signal.bias) || trader.leverage > 25) return false;
-	if (signal.mtf?.aligned || signal.confluence < 4 || signal.structure !== 'rejection') return false;
-	return (signal.bias === 'LONG' && trader.side === 'short' && signal.rsi >= 58)
-		|| (signal.bias === 'SHORT' && trader.side === 'long' && signal.rsi <= 42);
+	if (mandateMatch(trader.side, signal.bias)) return false;
+	const m = fadeMetrics(trader, signal);
+	return m.rsiDepth >= m.rsiDist && m.stretch >= m.stretchNeeded;
+}
+
+function isFadeForming(trader: TraderDef, signal: SignalResponse): boolean {
+	if (mandateMatch(trader.side, signal.bias) || wantsHedgeOpen(trader, signal)) return false;
+	const m = fadeMetrics(trader, signal);
+	return m.rsiDepth >= m.rsiDist * 0.7 && m.stretch >= m.stretchNeeded * 0.6;
+}
+
+function fadeCloud(trader: TraderDef, signal: SignalResponse): string {
+	return `${trader.side === 'long' ? 'dip-buy?' : 'fade the rip?'} RSI ${signal.rsi.toFixed(0)}`;
+}
+
+/** Trend legs die when Supertrend flips against them. A fade's thesis is a
+ * snap back to the middle, so it is done once RSI has normalised. */
+function thesisBroken(trader: TraderDef, strategy: 'trend' | 'hedge', signal: SignalResponse): boolean {
+	if (strategy === 'trend') return stAgainst(trader.side, signal.supertrend.direction);
+	return trader.side === 'long' ? signal.rsi >= 55 : signal.rsi <= 45;
 }
 
 export function isConsidering(trader: TraderDef, signal: SignalResponse): boolean {
@@ -142,7 +206,8 @@ function statusFromPnl(pct: number): FloorStatus {
 export function postureForTrader(
 	trader: TraderDef,
 	signal: SignalResponse | null,
-	leg: TraderLeg | null
+	leg: TraderLeg | null,
+	riskHeld = false
 ): TraderPostureCard {
 	const sample = signal?.sample ?? leg?.sample ?? true;
 	const structure = signal?.structure ?? 'none';
@@ -183,12 +248,21 @@ export function postureForTrader(
 		};
 	}
 
-	if (!signal || bias === 'FLAT') {
+	if (!signal) {
 		return { ...base, posture: 'watching' as const, status: 'watching' as const };
 	}
 
+	if (riskHeld) {
+		return { ...base, posture: 'considering', status: 'thinking', cloud: 'risk desk: net cap' };
+	}
+
 	if (!mandateMatch(trader.side, bias)) {
-		return { ...base, posture: 'counter' as const, status: 'flat' as const };
+		if (isFadeForming(trader, signal)) {
+			return { ...base, posture: 'considering', status: 'thinking', cloud: fadeCloud(trader, signal) };
+		}
+		return bias === 'FLAT'
+			? { ...base, posture: 'watching' as const, status: 'watching' as const }
+			: { ...base, posture: 'counter' as const, status: 'watching' as const };
 	}
 
 	if (isConsidering(trader, signal)) {
@@ -210,7 +284,9 @@ export function postureForTrader(
 
 /**
  * Reconcile at a closed-candle decision point. Existing legs persist between
- * decisions and only leave on an explicit invalidation.
+ * decisions and only leave on an explicit invalidation. Legs already on the
+ * book are settled first so the risk desk sizes new entries against real net
+ * exposure and refuses any that would push it past MAX_NET_FRACTION.
  */
 export function reconcileBook(
 	book: OpenBook,
@@ -220,25 +296,53 @@ export function reconcileBook(
 	sample: boolean,
 	displaySymbol = 'SOLUSDT',
 	exchangeSymbol = 'SOLUSDT',
-	decisionPoint = true
-): { book: OpenBook; legs: TraderLeg[]; takeProfits: TakeProfitEvent[] } {
+	decisionPoint = true,
+	options: { cooldown?: ReadonlySet<string>; now?: number } = {}
+): { book: OpenBook; legs: TraderLeg[]; takeProfits: TakeProfitEvent[]; stopOuts: string[]; timeStops: string[]; riskDenied: string[] } {
 	const next: OpenBook = {};
 	const legs: TraderLeg[] = [];
 	const takeProfits: TakeProfitEvent[] = [];
-	if (!signal || mark <= 0) return { book: {}, legs: [], takeProfits };
+	const stopOuts: string[] = [];
+	const timeStops: string[] = [];
+	const riskDenied: string[] = [];
+	if (!signal || mark <= 0) return { book: {}, legs: [], takeProfits, stopOuts, timeStops, riskDenied };
 
-	for (const t of traders) {
+	const now = options.now ?? Date.now();
+	const netCap = traders.reduce((sum, t) => sum + traderNotional(t.leverage), 0) * MAX_NET_FRACTION;
+	let net = 0;
+	const order = [...traders.filter((t) => book[t.id]), ...traders.filter((t) => !book[t.id])];
+
+	for (const t of order) {
 		const existing = book[t.id];
 		const alreadyOpen = existing !== undefined;
-		const trendEntry = wantsOpen(t, signal);
-		const hedgeEntry = wantsHedgeOpen(t, signal);
-		if (!alreadyOpen && !trendEntry && !hedgeEntry) continue;
-		if (alreadyOpen && decisionPoint && !hedgeEntry && (oppositeBias(t.side, signal.bias) || stAgainst(t.side, signal.supertrend.direction))) {
+		let strategy: 'trend' | 'hedge';
+		if (existing) {
+			strategy = existing.strategy;
+			if (decisionPoint && thesisBroken(t, strategy, signal)) continue;
+			if (decisionPoint && strategy === 'hedge' && now - existing.openedAt >= fadeMaxHoldMs(t)) {
+				timeStops.push(t.id);
+				continue;
+			}
+		} else if (options.cooldown?.has(t.id)) {
+			continue;
+		} else if (wantsOpen(t, signal)) {
+			strategy = 'trend';
+		} else if (wantsHedgeOpen(t, signal)) {
+			strategy = 'hedge';
+		} else {
 			continue;
 		}
+		const scale = strategy === 'hedge' ? HEDGE_SIZE_SCALE : 1;
+		if (!alreadyOpen) {
+			const signed = (t.side === 'long' ? 1 : -1) * traderNotional(t.leverage) * scale;
+			if (Math.abs(net + signed) > netCap && Math.abs(net + signed) > Math.abs(net)) {
+				riskDenied.push(t.id);
+				continue;
+			}
+		}
 		const entry = existing?.entryMark ?? mark;
-		const leg = markLeg(t, entry, mark, sample, displaySymbol, exchangeSymbol);
-		leg.strategy = existing?.strategy ?? (hedgeEntry && !trendEntry ? 'hedge' : 'trend');
+		const leg = markLeg(t, entry, mark, sample, displaySymbol, exchangeSymbol, scale);
+		leg.strategy = strategy;
 		if (existing) {
 			leg.stop = existing.stop;
 			leg.tp1 = existing.tp1;
@@ -265,21 +369,40 @@ export function reconcileBook(
 			(t.side === 'long' && mark <= leg.stop)
 			|| (t.side === 'short' && mark >= leg.stop)
 		);
-		if (alreadyOpen && stopReached) continue;
-		next[t.id] = { entryMark: entry, stop: leg.stop!, tp1: leg.tp1!, tp2: leg.tp2!, strategy: leg.strategy, rrTp1: leg.rrTp1!, rrTp2: leg.rrTp2! };
+		if (alreadyOpen && stopReached) {
+			stopOuts.push(t.id);
+			continue;
+		}
+		next[t.id] = { entryMark: entry, stop: leg.stop!, tp1: leg.tp1!, tp2: leg.tp2!, strategy, rrTp1: leg.rrTp1!, rrTp2: leg.rrTp2!, openedAt: existing?.openedAt ?? now };
 		legs.push(leg);
+		net += (t.side === 'long' ? 1 : -1) * leg.notionalUsd;
 	}
-	return { book: next, legs, takeProfits };
+	const rank = new Map(traders.map((t, i) => [t.id, i]));
+	legs.sort((a, b) => (rank.get(a.traderId) ?? 0) - (rank.get(b.traderId) ?? 0));
+	return { book: next, legs, takeProfits, stopOuts, timeStops, riskDenied };
 }
 
-export function staffNote(staff: StaffDef, signal: SignalResponse | null): string {
+function fmtUsd(usd: number): string {
+	const abs = Math.abs(usd);
+	return abs >= 1e6 ? `$${(abs / 1e6).toFixed(1)}M` : `$${Math.round(abs / 1e3)}K`;
+}
+
+export function staffNote(
+	staff: StaffDef,
+	signal: SignalResponse | null,
+	risk?: BookExposure & { denied: number }
+): string {
 	if (!signal) return 'waiting on tape';
 	const c = signal.confluence;
 	const bias = signal.bias;
 	switch (staff.role) {
 		case 'cio':
+			if (risk && risk.denied > 0) return `net cap hit . ${risk.denied} desk${risk.denied > 1 ? 's' : ''} held`;
 			return bias === 'FLAT' ? 'VAR glance - book quiet' : `risk glance . ${bias} ${c}/6`;
 		case 'pm':
+			if (risk && risk.grossUsd > 0) {
+				return `net ${risk.netUsd >= 0 ? 'long' : 'short'} ${fmtUsd(risk.netUsd)} / gross ${fmtUsd(risk.grossUsd)}`;
+			}
 			return bias === 'FLAT'
 				? 'alloc: stay balanced'
 				: `alloc note: skew ${bias === 'LONG' ? 'longs' : 'shorts'}`;

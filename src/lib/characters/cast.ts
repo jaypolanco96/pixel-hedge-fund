@@ -37,13 +37,14 @@ export function markLeg(
 	mark: number,
 	sample: boolean,
 	displaySymbol = 'SOLUSDT',
-	exchangeSymbol = 'SOLUSDT'
+	exchangeSymbol = 'SOLUSDT',
+	sizeScale = 1
 ): TraderLeg {
 	const signedMove =
 		t.side === 'long'
 			? (mark - entryMark) / entryMark
 			: (entryMark - mark) / entryMark;
-	const notionalUsd = traderNotional(t.leverage);
+	const notionalUsd = traderNotional(t.leverage) * sizeScale;
 	const unrealizedPnlUsd = notionalUsd * signedMove;
 	const marginUsd = notionalUsd / t.leverage;
 	return {

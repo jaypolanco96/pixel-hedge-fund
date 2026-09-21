@@ -54,7 +54,7 @@
 		TraderDef,
 		TraderLeg,
 	} from '$lib/data/types';
-	import { postureForTrader, reconcileBook, staffNote, statusLabel, type OpenBook } from '$lib/ta/posture';
+	import { bookExposure, postureForTrader, reconcileBook, staffNote, statusLabel, type OpenBook } from '$lib/ta/posture';
 	import {
 		loadLeverageOverrides,
 		saveLeverageOverrides,
@@ -72,9 +72,10 @@
 	let bars = $state<Bar[]>([]);
 	let legs = $state<TraderLeg[]>([]);
 	let book = $state<OpenBook>({});
+	let riskDenied = $state<string[]>([]);
 	type TakeProfitFlash = { pnlUsd: number; target: 'TP1' | 'TP2'; expiresAt: number };
 	let takeProfitFlashes = $state<Record<string, TakeProfitFlash>>({});
-	let takeProfitCooldowns = $state<Record<string, number>>({});
+	let reentryCooldowns = $state<Record<string, number>>({});
 	let lastDecisionCandle = 0;
 	let marketRequest = 0;
 	let tapeRequest = 0;
@@ -454,13 +455,13 @@
 		inspectedTrader ? (legs.find((l) => l.traderId === inspectedTrader.id) ?? null) : null
 	);
 	const inspectedPosture = $derived(
-		inspectedTrader ? postureForTrader(inspectedTrader, signal, inspectedLeg) : null
+		inspectedTrader ? postureForTrader(inspectedTrader, signal, inspectedLeg, riskDenied.includes(inspectedTrader.id)) : null
 	);
 	const pinnedLeg = $derived(
 		pinnedTrader ? (legs.find((l) => l.traderId === pinnedTrader.id) ?? null) : null
 	);
 	const pinnedPosture = $derived(
-		pinnedTrader ? postureForTrader(pinnedTrader, signal, pinnedLeg) : null
+		pinnedTrader ? postureForTrader(pinnedTrader, signal, pinnedLeg, riskDenied.includes(pinnedTrader.id)) : null
 	);
 	const longOpen = $derived(
 		longTraders.filter(
@@ -477,6 +478,7 @@
 		).length
 	);
 	const priceDecimals = $derived(activeDef.decimals);
+	const bookRisk = $derived({ ...bookExposure(legs), denied: riskDenied.length });
 
 	function legFor(id: string) {
 		return legs.find((l) => l.traderId === id) ?? null;
@@ -581,7 +583,7 @@
 		}, ms);
 	}
 	function postureFor(t: TraderDef) {
-		return postureForTrader(t, signal, legFor(t.id));
+		return postureForTrader(t, signal, legFor(t.id), riskDenied.includes(t.id));
 	}
 	function showTakeProfit(traderId: string, pnlUsd: number, target: 'TP1' | 'TP2') {
 		const expiresAt = Date.now() + 2800;
@@ -1200,6 +1202,7 @@
 		if (def.display === activeDisplay) return;
 		activeDisplay = def.display;
 		book = {};
+		riskDenied = [];
 		legs = [];
 		traderOpenedAt = {};
 		traderTimeOverrides = {};
@@ -1242,23 +1245,33 @@
 			const decisionCandle = completedBars(bars, 15 * 60_000).at(-1)?.t ?? 0;
 			const decisionPoint = decisionCandle !== 0 && decisionCandle !== lastDecisionCandle;
 			const now = Date.now();
-			const eligibleTraders = traders.filter((trader) => book[trader.id] || (takeProfitCooldowns[trader.id] ?? 0) <= now);
+			const cooldown = new Set(traders.filter((trader) => (reentryCooldowns[trader.id] ?? 0) > now).map((trader) => trader.id));
 			const result = reconcileBook(
 				book,
 				s,
-				eligibleTraders,
+				traders,
 				mark,
 				q.sample || s.sample || candles.sample,
 				def.display,
 				def.bybit,
-				decisionPoint
+				decisionPoint,
+				{ cooldown, now }
 			);
 			if (decisionPoint) lastDecisionCandle = decisionCandle;
 			book = result.book;
+			riskDenied = result.riskDenied;
 			legs = result.legs;
 			for (const profit of result.takeProfits) {
 				showTakeProfit(profit.traderId, profit.pnlUsd, profit.target);
-				takeProfitCooldowns = { ...takeProfitCooldowns, [profit.traderId]: now + 90_000 };
+				reentryCooldowns = { ...reentryCooldowns, [profit.traderId]: now + 90_000 };
+			}
+			// Desks sit out after a stop-out instead of re-firing into the same tape.
+			for (const traderId of result.stopOuts) {
+				reentryCooldowns = { ...reentryCooldowns, [traderId]: now + 240_000 };
+			}
+			// A timed-out fade sits out a full candle before trying the idea again.
+			for (const traderId of result.timeStops) {
+				reentryCooldowns = { ...reentryCooldowns, [traderId]: now + 900_000 };
 			}
 			reconcileTraderTimes(result.book);
 			err = null;
@@ -1595,7 +1608,7 @@
 				{#each STAFF as s (s.id)}
 					<CharacterSprite
 						staff={s}
-						note={staffNote(s, signal)}
+						note={staffNote(s, signal, bookRisk)}
 						{bars}
 						lampBoost={0.22}
 						tick={animTick}
@@ -2058,7 +2071,7 @@
 					</div>
 					<b>{inspectedStaff.title}</b>
 				</header>
-				<div class="staff-sheet">{staffNote(inspectedStaff, signal)}</div>
+				<div class="staff-sheet">{staffNote(inspectedStaff, signal, bookRisk)}</div>
 				<p>
 					{inspectedStaff.role === 'cio'
 						? 'Scanning floor risk and mandate alignment.'

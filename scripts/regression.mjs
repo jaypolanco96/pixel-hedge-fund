@@ -148,6 +148,108 @@ try {
 		assert.equal(tenLeg.unrealizedPnlPctMargin, 0.1);
 		assert.equal(hundredLeg.unrealizedPnlPctMargin, 1);
 	});
+	const posture = await load('lib/ta/posture.ts');
+	const tape = (over = {}) => ({
+		symbol: 'SOLUSDT', tf: '15m', asof: '', last: 100, bias: 'LONG',
+		mtf: { regime: 'LONG', setup: 'LONG', aligned: true },
+		supertrend: { value: 98, direction: 1 }, ema: { '21': 99, '55': 97 }, rsi: 60,
+		macd: { line: 1, signal: 0.5, hist: 0.5 }, atr: { '14': 0.5, pct: 0.5, state: 'normal' },
+		structure: 'pullback', confluence: 5, confluenceBand: 'high',
+		risk: { stop: 98, risk_pct: 2, tp1: 103, tp2: 105, rr_tp1: 1.5 }, sample: false, provider: 'bybit', ...over
+	});
+	const run = (signal, book = {}, mark = 100, decision = true, options = {}) =>
+		posture.reconcileBook(book, signal, cast.TRADERS, mark, false, 'SOLUSDT', 'SOLUSDT', decision, options);
+	const sideOf = (id) => cast.TRADERS.find((t) => t.id === id).side;
+	await test('longs and shorts both trade a strong trend: trend desk full size, exhausted fade desk half size', () => {
+		const first = run(tape({ last: 102, rsi: 78 }), {}, 102);
+		assert.deepEqual(first.riskDenied, []);
+		const res = run(tape({ last: 102, rsi: 78 }), first.book, 102);
+		const shorts = res.legs.filter((l) => l.side === 'short');
+		const longs = res.legs.filter((l) => l.side === 'long');
+		assert.equal(longs.length, 5);
+		assert.equal(shorts.length, 5);
+		assert.ok(longs.every((l) => l.strategy === 'trend'));
+		assert.ok(shorts.every((l) => l.strategy === 'hedge'));
+		const s10 = shorts.find((l) => l.traderId === 'S10');
+		assert.equal(s10.notionalUsd, cast.traderNotional(10) * posture.HEDGE_SIZE_SCALE);
+		assert.ok(s10.stop > s10.entryMark && s10.tp1 < s10.entryMark);
+	});
+	await test('the counter-trend desk stays flat without real exhaustion but keeps looking', () => {
+		const signal = tape({ last: 100.2, rsi: 58 });
+		const res = run(signal, {}, 100.2);
+		assert.equal(res.legs.filter((l) => l.side === 'short').length, 0);
+		const card = posture.postureForTrader(cast.TRADERS.find((t) => t.id === 'S10'), signal, null);
+		assert.equal(card.posture, 'counter');
+		assert.equal(card.status, 'watching');
+		const forming = posture.postureForTrader(cast.TRADERS.find((t) => t.id === 'S05'), tape({ last: 100.8, rsi: 62 }), null);
+		assert.equal(forming.posture, 'considering');
+		assert.ok(forming.cloud);
+	});
+	await test('a FLAT tape sends each desk fading its own side of the range', () => {
+		const flat = { bias: 'FLAT', confluence: 0, mtf: { regime: 'FLAT', setup: 'FLAT', aligned: false }, structure: 'none' };
+		const oversold = run(tape({ ...flat, last: 98, rsi: 28 }), {}, 98);
+		assert.ok(oversold.legs.length > 0 && oversold.legs.every((l) => l.side === 'long'));
+		const overbought = run(tape({ ...flat, last: 101.5, rsi: 72 }), {}, 101.5);
+		assert.ok(overbought.legs.length > 0 && overbought.legs.every((l) => l.side === 'short'));
+	});
+	await test('fade legs survive a bias flip until RSI normalises, trend legs die on a Supertrend flip', () => {
+		const opened = run(tape({ last: 102, rsi: 78 }), {}, 102);
+		assert.ok(opened.book.S10 && opened.book.L10);
+		const held = run(tape({ last: 101.9, rsi: 64 }), opened.book, 101.9);
+		assert.ok(held.book.S10, 'fade stays open while RSI is still elevated');
+		const normalised = run(tape({ last: 100, rsi: 44 }), opened.book, 100);
+		assert.equal(normalised.book.S10, undefined);
+		const flipped = run(tape({ bias: 'SHORT', supertrend: { value: 103, direction: -1 }, last: 101.9, rsi: 64 }), opened.book, 101.9);
+		assert.equal(flipped.book.L10, undefined);
+		assert.ok(flipped.book.S10);
+	});
+	await test('stop-outs are reported so the desk can sit out instead of re-firing', () => {
+		const opened = run(tape({ last: 102, rsi: 78 }), {}, 102);
+		const hit = run(tape({ last: 106, rsi: 78 }), opened.book, 106, false);
+		assert.ok(hit.stopOuts.includes('S10'));
+		assert.equal(hit.stopOuts.every((id) => sideOf(id) === 'short'), true);
+	});
+	await test('the risk desk caps one-way net exposure and the held desk shows why', () => {
+		const signal = tape({ last: 100.2, rsi: 60 });
+		assert.deepEqual(run(signal, {}, 100.2).riskDenied, [], 'a fully one-sided default book fits under the cap');
+		const hot = cast.TRADERS.map((t) => (t.id === 'L100' ? { ...t, leverage: 200 } : t));
+		const res = posture.reconcileBook({}, signal, hot, 100.2, false, 'SOLUSDT', 'SOLUSDT', true);
+		assert.deepEqual(res.riskDenied, ['L100']);
+		assert.equal(res.legs.length, 4);
+		const exposure = posture.bookExposure(res.legs);
+		assert.equal(exposure.netUsd, 9_000_000);
+		assert.ok(exposure.netUsd <= 48_000_000 * posture.MAX_NET_FRACTION);
+		const held = posture.postureForTrader(cast.TRADERS.find((t) => t.id === 'L100'), signal, null, true);
+		assert.equal(held.posture, 'considering');
+		assert.match(held.cloud, /net cap/);
+		const again = posture.reconcileBook(res.book, signal, hot, 100.2, false, 'SOLUSDT', 'SOLUSDT', true);
+		assert.equal(again.riskDenied.length, 1, 'a held desk stays held while net stays one-way');
+	});
+	await test('fade legs time out by leverage and the timed-out desk is not re-fired while on cooldown', () => {
+		const T = 1_000_000_000_000;
+		const bar = 15 * 60_000;
+		const signal = tape({ last: 102, rsi: 78 });
+		const opened = run(signal, {}, 102, true, { now: T });
+		assert.ok(opened.book.S100 && opened.book.S10);
+		const early = run(signal, opened.book, 102, true, { now: T + 3 * bar });
+		assert.ok(early.book.S100 && early.book.S10);
+		assert.deepEqual(early.timeStops, []);
+		const late = run(signal, opened.book, 102, true, { now: T + 4 * bar, cooldown: new Set(['S100']) });
+		assert.deepEqual(late.timeStops, ['S100']);
+		assert.equal(late.book.S100, undefined);
+		assert.ok(late.book.S10, 'a 10x desk is more patient than a 100x desk');
+		assert.equal(run(signal, opened.book, 102, false, { now: T + 9 * bar }).timeStops.length, 0, 'time stops only fire at closed-candle decisions');
+	});
+	await test('PM and CIO notes report net exposure and risk-desk holds', () => {
+		const hot = cast.TRADERS.map((t) => (t.id === 'L100' ? { ...t, leverage: 200 } : t));
+		const res = posture.reconcileBook({}, tape({ last: 100.2, rsi: 60 }), hot, 100.2, false, 'SOLUSDT', 'SOLUSDT', true);
+		const risk = { ...posture.bookExposure(res.legs), denied: res.riskDenied.length };
+		const pm = cast.STAFF.find((s) => s.role === 'pm');
+		const cio = cast.STAFF.find((s) => s.role === 'cio');
+		assert.equal(posture.staffNote(pm, tape(), risk), 'net long $9.0M / gross $9.0M');
+		assert.equal(posture.staffNote(cio, tape(), risk), 'net cap hit . 1 desk held');
+		assert.equal(posture.staffNote(pm, tape({ bias: 'FLAT' }), { longUsd: 0, shortUsd: 0, netUsd: 0, grossUsd: 0, denied: 0 }), 'alloc: stay balanced');
+	});
 	console.log(`${passed} regression groups passed; all exchange requests mocked.`);
 } finally {
 	globalThis.fetch = originalFetch; Date.now = originalNow; console.warn = originalWarn;
