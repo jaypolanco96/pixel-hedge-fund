@@ -115,6 +115,11 @@
 		leverageDraft = String(trader?.leverage ?? '');
 		editingLeverage = false;
 	}
+	function commitTradeDuration(event: Event) {
+		event.stopPropagation();
+		const next = Number((event.currentTarget as HTMLInputElement).value);
+		if (Number.isInteger(next) && next >= 0 && next <= 100000) onTradeDurationCommit(next);
+	}
 
 	$effect(() => {
 		if (!editingLeverage || !leverageInput) return;
@@ -191,7 +196,7 @@
 		<div class="activity">
 			<span>{activity}</span>
 			{#if trader}
-				<label class="trade-duration">TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={tradeDurationMinutes ?? ''} disabled={tradeDurationMinutes == null} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} onchange={(event) => { const next = Number((event.currentTarget as HTMLInputElement).value); if (Number.isInteger(next) && next >= 0 && next <= 100000) onTradeDurationCommit(next); }} />m</label>
+				<label class="trade-duration">TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={tradeDurationMinutes ?? ''} disabled={tradeDurationMinutes == null} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} oninput={commitTradeDuration} onchange={commitTradeDuration} onkeydown={(event) => { event.stopPropagation(); if (event.key === 'Enter') { commitTradeDuration(event); (event.currentTarget as HTMLInputElement).blur(); } }} />m</label>
 			{/if}
 		</div>
 	</div>

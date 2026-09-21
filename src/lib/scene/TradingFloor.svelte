@@ -483,11 +483,14 @@
 	}
 	function tradeDurationFor(id: string): number | null {
 		if (!legFor(id)) return null;
-		if (traderTimeOverrides[id] != null) return traderTimeOverrides[id];
-		return traderOpenedAt[id] == null ? 0 : Math.max(0, Math.floor(totalSimMinutes - traderOpenedAt[id]));
+		const openedAt = traderOpenedAt[id] ?? totalSimMinutes;
+		const elapsed = Math.max(0, Math.floor(totalSimMinutes - openedAt));
+		return (traderTimeOverrides[id] ?? 0) + elapsed;
 	}
 	function setTraderTradeDuration(traderId: string, minutes: number) {
 		if (!Number.isInteger(minutes) || minutes < 0 || minutes > 100000) return;
+		// Reset the elapsed-time anchor so a manual duration keeps counting up.
+		traderOpenedAt = { ...traderOpenedAt, [traderId]: totalSimMinutes };
 		traderTimeOverrides = { ...traderTimeOverrides, [traderId]: minutes };
 		saveTraderTimeOverrides(traderTimeOverrides);
 	}
