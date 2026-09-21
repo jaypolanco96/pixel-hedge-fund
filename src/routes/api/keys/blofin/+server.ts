@@ -26,7 +26,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	};
 
 	const vercel = isVercelEnv();
-	// On Vercel: validate only — no writable shared disk. Client persists to sessionStorage.
+	// On Vercel: validate only - no writable shared disk. Client persists to sessionStorage.
 	const status = vercel ? validateBloFinSecretsInput(input) : await upsertBloFinSecrets(input);
 
 	if (!status.configured) {
@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			ok: true,
 			blofin: status,
 			message: vercel
-				? 'BloFin keys validated (browser session — not stored on Vercel)'
+				? 'BloFin keys validated (browser session - not stored on Vercel)'
 				: 'BloFin keys saved (masked)',
 			persistence: vercel ? 'browser-session' : 'server-file'
 		},

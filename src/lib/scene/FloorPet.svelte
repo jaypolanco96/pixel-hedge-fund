@@ -181,10 +181,10 @@
 		class:bear={mode === 'bear'}
 		class:sleep={mode === 'sleep'}
 		aria-label={mode === 'bull'
-			? 'Mini bull pet — floor bias bullish'
+			? 'Mini bull pet - floor bias bullish'
 			: mode === 'bear'
-				? 'Bear cub pet — floor bias bearish'
-				: 'Office pet sleeping — flat bias'}
+				? 'Bear cub pet - floor bias bearish'
+				: 'Office pet sleeping - flat bias'}
 		title={mode === 'bull' ? 'Bull pet' : mode === 'bear' ? 'Bear cub' : 'Sleeping (FLAT)'}
 	>
 		{#if mode === 'bull'}

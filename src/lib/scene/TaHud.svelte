@@ -46,7 +46,7 @@
 			<span>TP2 {signal.risk.tp2.toFixed(decimals)}</span>
 		</div>
 		<div class="mtf">
-			4H {signal.mtf.regime} / 15M {signal.mtf.setup} · {signal.mtf.aligned ? 'ALIGNED' : 'COUNTER'}
+			4H {signal.mtf.regime} / 15M {signal.mtf.setup} . {signal.mtf.aligned ? 'ALIGNED' : 'COUNTER'}
 		</div>
 	{:else}
 		<div class="boot">TAPE WIRE CONNECTING<span>_</span></div>

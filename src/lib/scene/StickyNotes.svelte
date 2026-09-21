@@ -96,7 +96,7 @@
 				class="del"
 				data-no-drag
 				aria-label="Delete sticky note"
-				onclick={() => removeNote(note.id)}>×</button
+				onclick={() => removeNote(note.id)}>x</button
 			>
 			<p>{note.text}</p>
 		</div>
@@ -109,7 +109,7 @@
 					bind:value={draft}
 					maxlength={140}
 					rows={3}
-					placeholder="Stick a note on the glass…"
+					placeholder="Stick a note on the glass..."
 					aria-label="Sticky note text"
 				></textarea>
 				<div class="swatches">

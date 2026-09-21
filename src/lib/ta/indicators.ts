@@ -1,4 +1,4 @@
-/** Pure TA indicators — Supertrend, EMA, RSI, MACD, ATR */
+/** Pure TA indicators - Supertrend, EMA, RSI, MACD, ATR */
 
 export function ema(values: number[], period: number): number[] {
 	const out: number[] = new Array(values.length).fill(NaN);

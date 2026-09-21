@@ -1,4 +1,4 @@
-/** Shared BloFin DTO types — safe for client + server. */
+/** Shared BloFin DTO types - safe for client + server. */
 
 export type BloFinMode = 'demo' | 'live';
 
@@ -21,7 +21,7 @@ export interface BloFinHealth {
 	networkBlocked?: boolean;
 	error?: string;
 	/**
-	 * Keys present (and prefer live mode). Independent of reachable —
+	 * Keys present (and prefer live mode). Independent of reachable -
 	 * ISP 403 must NOT clear this flag.
 	 */
 	writesEnabled: boolean;
@@ -168,6 +168,6 @@ export interface BloFinTradeWriteResponse {
 	msg?: string;
 	/** HTTP status when the failure was transport-level. */
 	httpStatus?: number;
-	/** Upstream data only — never includes secrets. */
+	/** Upstream data only - never includes secrets. */
 	data?: unknown;
 }

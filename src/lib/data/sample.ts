@@ -1,7 +1,7 @@
 import type { Bar, QuoteResponse, CandlesResponse } from './types';
 import { resolveSymbol, type SymbolDef } from './symbols';
 
-/** Labeled SAMPLE fallback — never silent fake live prices. */
+/** Labeled SAMPLE fallback - never silent fake live prices. */
 
 export function sampleQuote(symbolInput?: string | null): QuoteResponse {
 	const def = resolveSymbol(symbolInput);

@@ -52,7 +52,7 @@ function stAgainst(side: Side, dir: 1 | -1): boolean {
 	return (side === 'long' && dir === -1) || (side === 'short' && dir === 1);
 }
 
-/** Open only when confluence supports the desk mandate — never invent a fill. */
+/** Open only when confluence supports the desk mandate - never invent a fill. */
 export function wantsOpen(trader: TraderDef, signal: SignalResponse): boolean {
 	if (!mandateMatch(trader.side, signal.bias)) return false;
 	if (stAgainst(trader.side, signal.supertrend.direction)) return false;
@@ -201,19 +201,19 @@ export function staffNote(staff: StaffDef, signal: SignalResponse | null): strin
 	const bias = signal.bias;
 	switch (staff.role) {
 		case 'cio':
-			return bias === 'FLAT' ? 'VAR glance — book quiet' : `risk glance · ${bias} ${c}/6`;
+			return bias === 'FLAT' ? 'VAR glance - book quiet' : `risk glance . ${bias} ${c}/6`;
 		case 'pm':
 			return bias === 'FLAT'
 				? 'alloc: stay balanced'
 				: `alloc note: skew ${bias === 'LONG' ? 'longs' : 'shorts'}`;
 		case 'senior_analyst':
 			return signal.structure !== 'none'
-				? `${signal.structure} · RSI ${signal.rsi.toFixed(0)}`
-				: `structure none · RSI ${signal.rsi.toFixed(0)}`;
+				? `${signal.structure} . RSI ${signal.rsi.toFixed(0)}`
+				: `structure none . RSI ${signal.rsi.toFixed(0)}`;
 		case 'research_analyst':
 			return `clip: ST ${signal.supertrend.direction === 1 ? '↑' : '↓'} ${signal.supertrend.value.toFixed(1)}`;
 		case 'quant':
-			return `model conf ${c}/6 · ${signal.atr.state}`;
+			return `model conf ${c}/6 . ${signal.atr.state}`;
 		default:
 			return '';
 	}

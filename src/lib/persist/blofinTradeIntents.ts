@@ -1,4 +1,4 @@
-/** Pending live trade intents — local only until Confirm POSTs. */
+/** Pending live trade intents - local only until Confirm POSTs. */
 import { readJson, writeJson } from './local';
 import type { BloFinTradeIntent } from '$lib/data/blofinTrade';
 

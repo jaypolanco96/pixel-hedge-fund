@@ -19,7 +19,7 @@
 				{#if t.detail}
 					<span>{t.detail}</span>
 				{/if}
-				<button type="button" class="x" onclick={() => dismissToast(t.id)} aria-label="Dismiss">×</button>
+				<button type="button" class="x" onclick={() => dismissToast(t.id)} aria-label="Dismiss">x</button>
 			</div>
 		{/each}
 	</div>

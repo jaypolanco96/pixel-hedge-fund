@@ -19,7 +19,7 @@ export type DeskDragHandle = {
 	ready: boolean;
 	placed: boolean;
 	dragging: boolean;
-	/** True after a drag — consume in onclick to suppress action. */
+	/** True after a drag - consume in onclick to suppress action. */
 	suppressClick: boolean;
 	el: HTMLElement | null;
 	place: (parent: HTMLElement | null | undefined) => void;

@@ -48,7 +48,7 @@
 	}
 
 	function fmt(n: number | undefined | null, d = priceDecimals) {
-		if (n == null || !Number.isFinite(n)) return '—';
+		if (n == null || !Number.isFinite(n)) return '-';
 		return n.toFixed(d);
 	}
 
@@ -56,7 +56,7 @@
 		try {
 			return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 		} catch {
-			return '—';
+			return '-';
 		}
 	}
 
@@ -108,8 +108,8 @@
 				<i class:live={!quote?.sample && !!quote}></i>
 				<i class:ok={!!signal}></i>
 			</div>
-			<strong>DESK CRT · {activeDisplay}</strong>
-			<button type="button" class="x" onclick={close} aria-label="Close desk CRT">×</button>
+			<strong>DESK CRT . {activeDisplay}</strong>
+			<button type="button" class="x" onclick={close} aria-label="Close desk CRT">x</button>
 		</header>
 
 		<nav class="tabs" aria-label="CRT sections">
@@ -131,12 +131,12 @@
 		<div class="body">
 			{#if tab === 'chart'}
 				<section class="panel chart-panel">
-					<h3>15M CANDLES · {activeDisplay}</h3>
+					<h3>15M CANDLES . {activeDisplay}</h3>
 					<div class="chart-wrap">
 						<MiniChart
 							{bars}
 							{bias}
-							label={`${activeDisplay} · ${!signal ? 'CONNECTING' : signal.sample ? 'SAMPLE' : 'LIVE DESK'}`}
+							label={`${activeDisplay} . ${!signal ? 'CONNECTING' : signal.sample ? 'SAMPLE' : 'LIVE DESK'}`}
 							showLevels={!!signal}
 							stop={signal?.risk.stop}
 							tp1={signal?.risk.tp1}
@@ -145,11 +145,11 @@
 					</div>
 					{#if signal}
 						<p class="meta">
-							SL {fmt(signal.risk.stop)} · TP1 {fmt(signal.risk.tp1)} · TP2 {fmt(signal.risk.tp2)}
-							· {signal.sample ? 'SAMPLE' : signal.provider.toUpperCase()}
+							SL {fmt(signal.risk.stop)} . TP1 {fmt(signal.risk.tp1)} . TP2 {fmt(signal.risk.tp2)}
+							. {signal.sample ? 'SAMPLE' : signal.provider.toUpperCase()}
 						</p>
 					{:else}
-						<p class="empty">Waiting on tape wire…</p>
+						<p class="empty">Waiting on tape wire...</p>
 					{/if}
 				</section>
 			{:else if tab === 'quote'}
@@ -157,10 +157,10 @@
 					<h3>TICKER READOUT</h3>
 					{#if quote}
 						<div class="equity">
-							<small>{quote.display} · {quote.symbol}</small>
+							<small>{quote.display} . {quote.symbol}</small>
 							<strong>{fmt(quote.price)}</strong>
 							<em
-								>{quote.sample ? 'SAMPLE' : `${quote.provider.toUpperCase()} LIVE`} · mark {fmt(quote.mark)} · {fmtTime(
+								>{quote.sample ? 'SAMPLE' : `${quote.provider.toUpperCase()} LIVE`} . mark {fmt(quote.mark)} . {fmtTime(
 									quote.t
 								)}</em
 							>
@@ -170,17 +170,17 @@
 							<div><dt>ASK</dt><dd>{fmt(quote.ask)}</dd></div>
 							<div><dt>SPREAD</dt><dd>{fmt((quote.ask ?? 0) - (quote.bid ?? 0), Math.max(priceDecimals, 4))}</dd></div>
 							<div>
-								<dt>24H Δ</dt>
+								<dt>24H DELTA</dt>
 								<dd class={quote.change24h != null && quote.change24h >= 0 ? 'pos' : 'neg'}>
 									{quote.change24h == null
-										? '—'
+										? '-'
 										: `${quote.change24h >= 0 ? '+' : ''}${quote.change24h.toFixed(2)}%`}
 								</dd>
 							</div>
 							<div><dt>PROVIDER</dt><dd>{quote.provider}</dd></div>
 						</dl>
 					{:else}
-						<p class="empty">No quote — connecting…</p>
+						<p class="empty">No quote - connecting...</p>
 					{/if}
 				</section>
 			{:else if tab === 'signal'}
@@ -189,8 +189,8 @@
 					{#if signal}
 						<div class="bias-row" data-bias={signal.bias}>
 							<strong>{signal.bias}</strong>
-							<span>conf {signal.confluence}/6 · {signal.confluenceBand}</span>
-							<em>{signal.sample ? 'SAMPLE' : 'LIVE'} · {signal.tf}</em>
+							<span>conf {signal.confluence}/6 . {signal.confluenceBand}</span>
+							<em>{signal.sample ? 'SAMPLE' : 'LIVE'} . {signal.tf}</em>
 						</div>
 						<dl>
 							<div><dt>LAST</dt><dd>{fmt(signal.last)}</dd></div>
@@ -216,7 +216,7 @@
 								<dt>MTF</dt>
 								<dd>
 									4H {signal.mtf.regime} / 15M {signal.mtf.setup}
-									{signal.mtf.aligned ? ' · ALIGNED' : ' · COUNTER'}
+									{signal.mtf.aligned ? ' . ALIGNED' : ' . COUNTER'}
 								</dd>
 							</div>
 							<div><dt>SL</dt><dd class="neg">{fmt(signal.risk.stop)}</dd></div>
@@ -228,15 +228,15 @@
 				</section>
 			{:else if tab === 'watch'}
 				<section class="panel">
-					<h3>WATCHLIST · SWITCH PAIR</h3>
+					<h3>WATCHLIST . SWITCH PAIR</h3>
 					<ul class="watch">
 						{#each SYMBOLS as s (s.display)}
 							{@const tq = tapeQuotes.find((q) => q.display === s.display)}
 							<li class:active={s.display === activeDisplay}>
 								<button type="button" onclick={() => onSelectSymbol(s.display)}>
 									<span class="sym">{s.display}</span>
-									<span class="px">{tq ? fmt(tq.price, s.decimals) : '—'}</span>
-									<span class="tag">{tq?.sample ? 'SAMPLE' : tq ? 'LIVE' : '…'}</span>
+									<span class="px">{tq ? fmt(tq.price, s.decimals) : '-'}</span>
+									<span class="tag">{tq?.sample ? 'SAMPLE' : tq ? 'LIVE' : '...'}</span>
 								</button>
 							</li>
 						{/each}
@@ -271,7 +271,7 @@
 						<input
 							bind:value={draft}
 							maxlength="200"
-							placeholder="Scratch note…"
+							placeholder="Scratch note..."
 							aria-label="Desk note"
 						/>
 						<button type="submit">ADD</button>
@@ -285,17 +285,17 @@
 									<em>{fmtTime(n.createdAt)}</em>
 								</div>
 								<button type="button" class="del" onclick={() => removeNote(n.id)} aria-label="Delete note"
-									>×</button
+									>x</button
 								>
 							</li>
 						{:else}
-							<li class="empty-li">No notes yet — scribble above.</li>
+							<li class="empty-li">No notes yet - scribble above.</li>
 						{/each}
 					</ul>
 				</section>
 			{/if}
 		</div>
-		<footer>Esc / × closes · office CRT · real tape only</footer>
+		<footer>Esc / x closes . office CRT . real tape only</footer>
 	</div>
 {/if}
 

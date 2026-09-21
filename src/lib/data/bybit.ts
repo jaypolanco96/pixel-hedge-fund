@@ -49,7 +49,7 @@ function num(v: unknown, fallback = 0): number {
 }
 
 /**
- * Config priority: per-request LOGIN headers → env → local `.secrets` (dev).
+ * Config priority: per-request LOGIN headers -> env -> local `.secrets` (dev).
  */
 export async function getBybitConfig(): Promise<BybitConfig> {
 	const fromReq = getRequestBybit();
@@ -355,7 +355,7 @@ export async function fetchBybitBalance(): Promise<BybitBalanceResponse> {
 	};
 }
 
-// —— Public linear tickers ——
+// -- Public linear tickers --
 
 const PUBLIC_BASE = 'https://api.bybit.com';
 let tickerCache: { at: number; bySymbol: Map<string, BybitTickerRow> } | null = null;
@@ -495,13 +495,13 @@ export function quoteFromBybitTicker(def: SymbolDef, tick: BybitTickerRow): Quot
 	};
 }
 
-/** Public linear ticker → QuoteResponse. SAMPLE on miss. */
+/** Public linear ticker -> QuoteResponse. SAMPLE on miss. */
 export async function fetchBybitQuote(symbolInput?: string | null): Promise<QuoteResponse> {
 	const def = resolveSymbol(symbolInput);
 	const map = await loadLinearTickers();
 	const tick = map.get(def.bybit);
 	if (!tick || !tick.lastPrice) {
-		console.warn(`[Bybit] quote ${def.display} (${def.bybit}) missing → SAMPLE`);
+		console.warn(`[Bybit] quote ${def.display} (${def.bybit}) missing -> SAMPLE`);
 		return sampleQuote(def.display);
 	}
 	return quoteFromBybitTicker(def, tick);

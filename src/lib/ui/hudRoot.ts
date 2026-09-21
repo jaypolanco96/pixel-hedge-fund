@@ -1,4 +1,4 @@
-/** Body-level fixed HUD host — no transform/filter ancestors, so position:fixed is real. */
+/** Body-level fixed HUD host - no transform/filter ancestors, so position:fixed is real. */
 
 const HUD_ID = 'phf-hud-root';
 
@@ -31,7 +31,7 @@ export function ensureHudRoot(): HTMLElement {
 		document.body.appendChild(hud);
 	}
 	hud.setAttribute('style', HUD_STYLE);
-	// Must stay a direct child of <body> — never under .scene-frame / sveltekit wrappers.
+	// Must stay a direct child of <body> - never under .scene-frame / sveltekit wrappers.
 	if (hud.parentElement !== document.body) {
 		document.body.appendChild(hud);
 	}

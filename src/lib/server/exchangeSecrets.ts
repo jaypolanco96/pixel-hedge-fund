@@ -1,5 +1,5 @@
 /**
- * Local exchange API secrets — server-only.
+ * Local exchange API secrets - server-only.
  * Stored in gitignored `.secrets/exchanges.json`. Never return raw secrets to the client.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -38,7 +38,7 @@ export interface BybitSecrets {
 	apiKey: string;
 	apiSecret: string;
 	brokerId?: string;
-	/** Unused by Bybit v5 today — kept optional for desk form symmetry. */
+	/** Unused by Bybit v5 today - kept optional for desk form symmetry. */
 	passphrase?: string;
 	baseUrl: string;
 }
@@ -196,7 +196,7 @@ export async function getKeysStatus(): Promise<KeysStatusResponse & { persistenc
 		ok: true,
 		blofin: blofinStatusFrom(secrets),
 		bybit: bybitStatusFrom(secrets),
-		secretsPath: vercel ? '(ephemeral — use browser session LOGIN)' : '.secrets/exchanges.json',
+		secretsPath: vercel ? '(ephemeral - use browser session LOGIN)' : '.secrets/exchanges.json',
 		persistence: vercel ? 'browser-session' : 'server-file-or-env',
 		vercel
 	};

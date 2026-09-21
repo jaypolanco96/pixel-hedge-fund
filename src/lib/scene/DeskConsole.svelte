@@ -67,7 +67,7 @@
 	let tradeMsg = $state<string | null>(null);
 	let tradeErr = $state(false);
 
-	/* ── LOGIN (local secrets) ── */
+	/* -- LOGIN (local secrets) -- */
 	let blofinKey = $state('');
 	let blofinSecret = $state('');
 	let blofinPass = $state('');
@@ -109,7 +109,7 @@
 		if (balance.totalEquityUsd != null) return balance.totalEquityUsd;
 		return balance.details.reduce((s, d) => s + d.available, 0);
 	});
-	/** Keys present — network block must NOT disable confirm. */
+	/** Keys present - network block must NOT disable confirm. */
 	const writesReady = $derived(!!health?.writesEnabled);
 	const networkBlocked = $derived(
 		!!health?.configured && (!!health?.networkBlocked || health?.reachable === false)
@@ -171,7 +171,7 @@
 		if (!confirm(confirmMsg)) return;
 		keysBusy = true;
 		keysErr = false;
-		keysMsg = 'Saving BloFin…';
+		keysMsg = 'Saving BloFin...';
 		try {
 			// Always persist in browser session first (works on Vercel)
 			const localStatus = upsertBloFinClientKeys({
@@ -224,7 +224,7 @@
 		if (!confirm(confirmMsg)) return;
 		keysBusy = true;
 		keysErr = false;
-		keysMsg = 'Saving Bybit…';
+		keysMsg = 'Saving Bybit...';
 		try {
 			const localStatus = upsertBybitClientKeys({
 				apiKey: bybitKey,
@@ -289,7 +289,7 @@
 			if (health?.fromSnapshot || balance?.fromSnapshot) {
 				err = null;
 			} else if (!health?.configured) {
-				err = 'No BloFin keys — use LOGIN tab (browser session)';
+				err = 'No BloFin keys - use LOGIN tab (browser session)';
 			} else if (!health.ok) {
 				err = health.error ?? 'BloFin unreachable';
 			}
@@ -309,7 +309,7 @@
 			const label = p
 				? `${p.instId} ${p.side === 'flat' ? '' : p.side.toUpperCase()}`.trim()
 				: `POS ${positionId.slice(0, 6)}`;
-			overlay[traderId] = overlay[traderId] ? `${overlay[traderId]} · ${label}` : label;
+			overlay[traderId] = overlay[traderId] ? `${overlay[traderId]} . ${label}` : label;
 		}
 		onOverlayChange(overlay);
 	}
@@ -374,7 +374,7 @@
 		};
 		intents = upsertTradeIntent(intent);
 		tradeErr = false;
-		tradeMsg = `Intent stored · ${intent.instId} → ${traderId} · ${sz.size.toFixed(4)} cts (confirm to POST)`;
+		tradeMsg = `Intent stored . ${intent.instId} -> ${traderId} . ${sz.size.toFixed(4)} cts (confirm to POST)`;
 	}
 
 	async function confirmDeskIntent() {
@@ -387,16 +387,16 @@
 		}
 		if (!health?.configured) {
 			tradeErr = true;
-			tradeMsg = 'BloFin keys not configured — use LOGIN tab';
+			tradeMsg = 'BloFin keys not configured - use LOGIN tab';
 			toastErr('Keys missing', 'Configure BloFin on the LOGIN tab');
 			return;
 		}
 		if (networkBlocked) {
-			toastInfo('Network warning', 'BloFin may be unreachable (403) — still attempting POST');
+			toastInfo('Network warning', 'BloFin may be unreachable (403) - still attempting POST');
 		}
 		sending = true;
 		tradeErr = false;
-		tradeMsg = 'Sending live order…';
+		tradeMsg = 'Sending live order...';
 		try {
 			const mmRes = await exchangeFetch('/api/blofin/margin-mode', {
 				method: 'POST',
@@ -440,7 +440,7 @@
 			if (!ord.ok) throw new Error(formatExchangeError(ord));
 
 			intents = removeTradeIntent(pending.id);
-			tradeMsg = `LIVE OK · ${pending.instId} ${pending.side}`;
+			tradeMsg = `LIVE OK . ${pending.instId} ${pending.side}`;
 			toastOk('Order live', `${pending.instId} ${pending.side}`);
 			confirmIntent = null;
 			await refresh();
@@ -473,7 +473,7 @@
 	});
 
 	function fmt(n: number | null | undefined, d = 2) {
-		if (n == null || !Number.isFinite(n)) return '—';
+		if (n == null || !Number.isFinite(n)) return '-';
 		return n.toFixed(d);
 	}
 
@@ -490,7 +490,7 @@
 		class="console"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Desk console — BloFin live"
+		aria-label="Desk console - BloFin live"
 	>
 		<header class="titlebar">
 			<div class="leds">
@@ -498,8 +498,8 @@
 				<i class:live={health?.mode === 'live'}></i>
 				<i class:ok={health?.ok}></i>
 			</div>
-			<strong>DESK CONSOLE · BLOFIN LIVE</strong>
-			<button type="button" class="x" onclick={close} aria-label="Close desk console">×</button>
+			<strong>DESK CONSOLE . BLOFIN LIVE</strong>
+			<button type="button" class="x" onclick={close} aria-label="Close desk console">x</button>
 		</header>
 
 		<nav class="tabs" aria-label="Console sections">
@@ -517,17 +517,17 @@
 				>
 			{/each}
 			<button type="button" class="refresh" onclick={refresh} disabled={loading}>
-				{loading ? '…' : '↻'}
+				{loading ? '...' : 'R'}
 			</button>
 		</nav>
 
 		{#if networkBlocked && health?.configured}
 			<div class="banner net">
-				BloFin unreachable from this network (403). Keys OK — use VPN or deploy server-side.
+				BloFin unreachable from this network (403). Keys OK - use VPN or deploy server-side.
 			</div>
 		{:else if health?.fromSnapshot || balance?.fromSnapshot}
 			<div class="banner snap">
-				SNAPSHOT / CACHE · synced {health?.syncedAt ?? balance?.syncedAt ?? '—'} · offline desk copy (not demo)
+				SNAPSHOT / CACHE . synced {health?.syncedAt ?? balance?.syncedAt ?? '-'} . offline desk copy (not demo)
 			</div>
 		{/if}
 		{#if err && !networkBlocked}
@@ -548,18 +548,18 @@
 				<section class="panel">
 					<h3>LINK STATUS</h3>
 					<dl>
-						<div><dt>MODE</dt><dd data-mode={health?.mode ?? 'demo'}>{health?.mode?.toUpperCase() ?? '—'}</dd></div>
-						<div><dt>BASE</dt><dd class="mono">{health?.baseUrl ?? '—'}</dd></div>
+						<div><dt>MODE</dt><dd data-mode={health?.mode ?? 'demo'}>{health?.mode?.toUpperCase() ?? '-'}</dd></div>
+						<div><dt>BASE</dt><dd class="mono">{health?.baseUrl ?? '-'}</dd></div>
 						<div><dt>API KEY</dt><dd>{health?.keyPresent ? 'YES' : 'NO'}</dd></div>
 						<div><dt>SECRET</dt><dd>{health?.secretPresent ? 'YES' : 'NO'}</dd></div>
 						<div><dt>PASSPHRASE</dt><dd>{health?.passphrasePresent ? 'YES' : 'NO'}</dd></div>
-						<div><dt>REACHABLE</dt><dd>{health?.reachable == null ? '—' : health.reachable ? 'YES' : 'NO'}</dd></div>
+						<div><dt>REACHABLE</dt><dd>{health?.reachable == null ? '-' : health.reachable ? 'YES' : 'NO'}</dd></div>
 						<div><dt>SOURCE</dt><dd>{health?.fromSnapshot ? 'SNAPSHOT' : 'LIVE'}</dd></div>
-						<div><dt>SYNCED</dt><dd class="mono">{health?.syncedAt ?? '—'}</dd></div>
+						<div><dt>SYNCED</dt><dd class="mono">{health?.syncedAt ?? '-'}</dd></div>
 						<div><dt>WRITES (KEYS)</dt><dd class={health?.writesEnabled ? 'pos' : 'neg'}>{health?.writesEnabled ? 'READY' : 'NO KEYS'}</dd></div>
 						<div><dt>NETWORK</dt><dd class={health?.reachable ? 'pos' : 'neg'}>{health?.networkBlocked ? 'BLOCKED 403' : health?.reachable ? 'OK' : 'DOWN'}</dd></div>
 					</dl>
-					<p class="hint">Esc / × closes. Keys never leave the server.</p>
+					<p class="hint">Esc / x closes. Keys never leave the server.</p>
 				</section>
 			{:else if tab === 'account'}
 				<section class="panel">
@@ -570,7 +570,7 @@
 						<div class="equity">
 							<small>TOTAL EQUITY</small>
 							<strong>${fmt(balance.totalEquityUsd, 2)}</strong>
-							<em>{balance.mode.toUpperCase()}{balance.fromSnapshot ? ' · SNAPSHOT' : balance.sample ? ' · SAMPLE' : ''}</em>
+							<em>{balance.mode.toUpperCase()}{balance.fromSnapshot ? ' . SNAPSHOT' : balance.sample ? ' . SAMPLE' : ''}</em>
 						</div>
 						<table>
 							<thead>
@@ -591,17 +591,17 @@
 				</section>
 			{:else if tab === 'positions'}
 				<section class="panel">
-					<h3>POSITIONS → FLOOR</h3>
+					<h3>POSITIONS -> FLOOR</h3>
 					{#if !positions?.ok}
 						<p class="empty">{positions?.error ?? 'No positions'}</p>
 					{:else if positions.positions.length === 0}
-						<p class="empty">Flat — no open BloFin positions.</p>
+						<p class="empty">Flat - no open BloFin positions.</p>
 					{:else}
 						{#each positions.positions as p (p.positionId)}
 							<article class="pos-card" data-side={p.side}>
 								<header>
 									<strong>{p.instId}</strong>
-									<span>{p.side.toUpperCase()} · {p.leverage}× · {p.marginMode}</span>
+									<span>{p.side.toUpperCase()} . {p.leverage}x . {p.marginMode}</span>
 								</header>
 								<div class="grid">
 									<span>SIZE</span><b>{fmt(p.size, 4)}</b>
@@ -618,9 +618,9 @@
 										onchange={(e) =>
 											setAssign(p.positionId, (e.currentTarget as HTMLSelectElement).value)}
 									>
-										<option value="">— unassigned —</option>
+										<option value="">- unassigned -</option>
 										{#each tradersFor(p) as t}
-											<option value={t.id}>{t.id} {t.name} ({t.leverage}×)</option>
+											<option value={t.id}>{t.id} {t.name} ({t.leverage}x)</option>
 										{/each}
 									</select>
 								</label>
@@ -716,7 +716,7 @@
 												fundsPct: syncPct[p.positionId] ?? 5,
 												leverage: syncLev[p.positionId] ?? p.leverage,
 												markPrice: p.markPrice
-											}).size.toFixed(4)} cts · notional $
+											}).size.toFixed(4)} cts . notional $
 											{sizeFromFundsPct({
 												availableEquity,
 												fundsPct: syncPct[p.positionId] ?? 5,
@@ -740,14 +740,14 @@
 								<h4>PENDING LIVE INTENTS</h4>
 								{#each intents.filter((it) => it.source === 'desk' && it.exchange !== 'bybit' && it.marketType !== 'spot') as it (it.id)}
 									<div class="intent-row">
-										<span>{it.instId} {it.side} {it.leverage}× · {it.estSize.toFixed(4)} cts → {it.traderId}</span>
+										<span>{it.instId} {it.side} {it.leverage}x . {it.estSize.toFixed(4)} cts -> {it.traderId}</span>
 										<button
 											type="button"
 											class="confirm"
 											disabled={!writesReady || sending}
 											onclick={() => (confirmIntent = it)}
 										>
-											LIVE ORDER — confirm
+											LIVE ORDER - confirm
 										</button>
 									</div>
 								{/each}
@@ -794,12 +794,12 @@
 						{#if import.meta.env.DEV}
 							Locally, SAVE also writes gitignored <code>.secrets/exchanges.json</code>.
 						{/if}
-						Never returned raw by GET — only masked ****. Confirm before save.
+						Never returned raw by GET - only masked ****. Confirm before save.
 					</p>
 					{#if keysStatus}
 						<p class="keys-status">
 							BloFin: {keysStatus.blofin?.configured ? 'CONFIGURED ' + (keysStatus.blofin.apiKeyMasked ?? '') : 'NOT SET'}
-							· Bybit: {keysStatus.bybit?.configured ? 'CONFIGURED ' + (keysStatus.bybit.apiKeyMasked ?? '') : 'NOT SET'}
+							. Bybit: {keysStatus.bybit?.configured ? 'CONFIGURED ' + (keysStatus.bybit.apiKeyMasked ?? '') : 'NOT SET'}
 						</p>
 					{/if}
 					{#if keysMsg}
@@ -824,7 +824,7 @@
 							<input type="text" bind:value={blofinBase} placeholder="https://openapi.blofin.com" />
 						</label>
 						<button type="button" class="store" disabled={keysBusy} onclick={saveBloFinKeys}>
-							{keysBusy ? 'SAVING…' : 'SAVE BLOFIN KEYS'}
+							{keysBusy ? 'SAVING...' : 'SAVE BLOFIN KEYS'}
 						</button>
 					</fieldset>
 
@@ -846,31 +846,31 @@
 							<input type="text" bind:value={bybitBase} placeholder="https://api.bybit.com" />
 						</label>
 						<button type="button" class="store" disabled={keysBusy} onclick={saveBybitKeys}>
-							{keysBusy ? 'SAVING…' : 'SAVE BYBIT KEYS'}
+							{keysBusy ? 'SAVING...' : 'SAVE BYBIT KEYS'}
 						</button>
 					</fieldset>
 				</section>
 
 			{/if}
 		</div>
-		<footer>LIVE-CAPABLE · assign stores intent · confirm required before POST · key <code>phf-blofin-assignments</code></footer>
+		<footer>LIVE-CAPABLE . assign stores intent . confirm required before POST . key <code>phf-blofin-assignments</code></footer>
 	</div>
 
 	{#if confirmIntent}
 		<div class="confirm-backdrop" role="presentation"></div>
 		<div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-label="Confirm live order">
-			<strong>LIVE ORDER — confirm</strong>
+			<strong>LIVE ORDER - confirm</strong>
 			<p>
-				{confirmIntent.instId} · {confirmIntent.side.toUpperCase()} · {confirmIntent.positionSide} ·
+				{confirmIntent.instId} . {confirmIntent.side.toUpperCase()} . {confirmIntent.positionSide} .
 				{confirmIntent.marginMode}<br />
-				{confirmIntent.orderType} · {confirmIntent.leverage}× · size {confirmIntent.estSize.toFixed(4)} ·
+				{confirmIntent.orderType} . {confirmIntent.leverage}x . size {confirmIntent.estSize.toFixed(4)} .
 				notional ${confirmIntent.estNotional.toFixed(2)}
 				{#if confirmIntent.reduceOnly}<br />reduce-only{/if}
 			</p>
 			<div class="confirm-actions">
 				<button type="button" class="store" disabled={sending} onclick={() => (confirmIntent = null)}>CANCEL</button>
 				<button type="button" class="confirm" disabled={sending} onclick={confirmDeskIntent}>
-					{sending ? 'SENDING…' : 'LIVE ORDER — confirm'}
+					{sending ? 'SENDING...' : 'LIVE ORDER - confirm'}
 				</button>
 			</div>
 		</div>

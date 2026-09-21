@@ -227,7 +227,7 @@
 		class:open
 		class:printing
 		aria-expanded={open}
-		aria-label="Office fax printer — open print reports"
+		aria-label="Office fax printer - open print reports"
 		onclick={handleMachineClick}
 	>
 		<div class="fax-top">
@@ -237,7 +237,7 @@
 		<div class="fax-body">
 			<div class="paper-slot"><i></i></div>
 			<div class="fax-keys"><b></b><b></b><b></b></div>
-			<div class="fax-display">{signal?.bias ?? '…'}</div>
+			<div class="fax-display">{signal?.bias ?? '...'}</div>
 		</div>
 		<div class="fax-tray"></div>
 		{#if printing}<div class="spit-anim" aria-hidden="true"></div>{/if}
@@ -248,15 +248,15 @@
 			<header>
 				<strong>PRINT REPORT</strong>
 				<button type="button" class="close" onclick={() => (open = false)} aria-label="Close fax panel"
-					>×</button
+					>x</button
 				>
 			</header>
 			<p class="hint">
-				Chart Desk fax · {displaySymbol}
+				Chart Desk fax . {displaySymbol}
 				{#if signal?.sample || quote?.sample || !signal}
-					· <em>SAMPLE</em>
+					. <em>SAMPLE</em>
 				{:else}
-					· LIVE
+					. LIVE
 				{/if}
 			</p>
 			<ul>

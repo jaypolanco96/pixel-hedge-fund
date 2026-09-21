@@ -32,7 +32,7 @@
 	const netPnl = $derived(pnlUsd - feeUsd);
 	const pnlPctPrice = $derived(entry ? (priceMove / entry) * 100 : 0);
 	const pnlPctMargin = $derived(margin ? (netPnl / margin) * 100 : 0);
-	/** Rough isolated liq: entry * (1 ± 1/lev) ignoring fees/maintenance */
+	/** Rough isolated liq: entry * (1 +/- 1/lev) ignoring fees/maintenance */
 	const liqEst = $derived.by(() => {
 		if (!entry || leverage < 1) return null;
 		const buf = 1 / leverage;
@@ -52,7 +52,7 @@
 	}
 
 	function fmt(n: number | null | undefined, d = 2) {
-		if (n == null || !Number.isFinite(n)) return '—';
+		if (n == null || !Number.isFinite(n)) return '-';
 		return n.toFixed(d);
 	}
 
@@ -81,8 +81,8 @@
 	<div class="console" role="dialog" aria-modal="true" aria-label="Profit calculator">
 		<header class="titlebar">
 			<div class="leds"><i class="on"></i><i></i><i></i></div>
-			<strong>P&amp;L CALC · {activeDisplay}</strong>
-			<button type="button" class="x" onclick={close} aria-label="Close profit calculator">×</button>
+			<strong>P&amp;L CALC . {activeDisplay}</strong>
+			<button type="button" class="x" onclick={close} aria-label="Close profit calculator">x</button>
 		</header>
 
 		<div class="body">
@@ -136,7 +136,7 @@
 				</div>
 				<div>
 					<dt>FEES (est.)</dt>
-					<dd class="neg">−{fmt(feeUsd, 2)}</dd>
+					<dd class="neg">-{fmt(feeUsd, 2)}</dd>
 				</div>
 				<div>
 					<dt>$ P&amp;L (net)</dt>
@@ -164,12 +164,12 @@
 				</div>
 				<div>
 					<dt>LIQ (rough)</dt>
-					<dd class="neg">{liqEst == null ? '—' : fmt(liqEst, priceDecimals)}</dd>
+					<dd class="neg">{liqEst == null ? '-' : fmt(liqEst, priceDecimals)}</dd>
 				</div>
 			</dl>
-			<p class="hint">Isolated rough liq ≈ entry ± 1/lev. Esc / × closes.</p>
+			<p class="hint">Isolated rough liq ~ entry +/- 1/lev. Esc / x closes.</p>
 		</div>
-		<footer>DESK CALCULATOR · offline math only</footer>
+		<footer>DESK CALCULATOR . offline math only</footer>
 	</div>
 {/if}
 

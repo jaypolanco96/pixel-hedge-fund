@@ -1,11 +1,11 @@
 import type { DayPhase, SimClockState } from '$lib/data/types';
 
-/** One real second ≈ 2 sim minutes → full day ~12 real minutes */
+/** One real second ~ 2 sim minutes -> full day ~12 real minutes */
 export const SIM_MINUTES_PER_REAL_SECOND = 2;
 
 /**
  * Real-calendar holiday window for Christmas / winter snow.
- * Dec 1 – Jan 5 inclusive (local timezone).
+ * Dec 1 - Jan 5 inclusive (local timezone).
  * Outside this window snow is off; birds still run year-round.
  */
 export function isHolidaySnowWindow(date: Date = new Date()): boolean {
@@ -70,7 +70,7 @@ export function weatherFromSimMinutes(
 	const intensity = into < 8 ? into / 8 : into > 37 ? Math.max(0, (45 - into) / 8) : 1;
 	const active = intensity > 0.05;
 
-	// Deterministic per bout: cycleIndex % 3 !== 0 → snow (2/3) when holiday
+	// Deterministic per bout: cycleIndex % 3 !== 0 -> snow (2/3) when holiday
 	const preferSnow = holidayWindow && cycleIndex % 3 !== 0;
 
 	if (preferSnow) {
@@ -130,7 +130,7 @@ export function tickSimClock(
 }
 
 export function initialSimClock(realHourHint?: number, now: Date = new Date()): SimClockState {
-	const hour = realHourHint ?? 17.35; // golden sunset — Apex Capital vibe
+	const hour = realHourHint ?? 17.35; // golden sunset - Apex Capital vibe
 	const phase = phaseFromHour(hour);
 	const holidayWindow = isHolidaySnowWindow(now);
 	return {

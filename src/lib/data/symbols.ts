@@ -1,5 +1,5 @@
 /**
- * Display ↔ venue instrument mapping.
+ * Display <-> venue instrument mapping.
  *
  * Display uses *USDT form for the office floor.
  * Bybit is the primary market source; BloFin is the permitted exchange fallback.
@@ -16,7 +16,7 @@ export interface SymbolDef {
 	/** Bybit spot symbol; defaults to the linear symbol when omitted. */
 	bybitSpot?: string;
 	canonical: string;
-	/** Rough SAMPLE mid when live fetch fails — labeled sample only. */
+	/** Rough SAMPLE mid when live fetch fails - labeled sample only. */
 	sampleMid: number;
 	/** Price decimals for tape / HUD. */
 	decimals: number;
@@ -38,7 +38,7 @@ export const SYMBOL_CATEGORIES: readonly { id: SymbolCategory | 'all'; label: st
 ] as const;
 
 export const SYMBOLS: readonly SymbolDef[] = [
-	// —— majors (Bybit) ——
+	// -- majors (Bybit) --
 	{
 		display: 'BTCUSDT',
 		bybit: 'BTCUSDT',
@@ -99,7 +99,7 @@ export const SYMBOLS: readonly SymbolDef[] = [
 		category: 'layer1',
 		newsQuery: 'Avalanche OR AVAX crypto'
 	},
-	// —— meme ——
+	// -- meme --
 	{
 		display: 'DOGEUSDT',
 		bybit: 'DOGEUSDT',
@@ -151,7 +151,7 @@ export const SYMBOLS: readonly SymbolDef[] = [
 		category: 'meme',
 		newsQuery: 'Shiba Inu OR SHIB crypto'
 	},
-	// —— defi ——
+	// -- defi --
 	{
 		display: 'LINKUSDT',
 		bybit: 'LINKUSDT',
@@ -182,7 +182,7 @@ export const SYMBOLS: readonly SymbolDef[] = [
 		category: 'defi',
 		newsQuery: 'Uniswap OR UNI crypto'
 	},
-	// —— ai ——
+	// -- ai --
 	{
 		display: 'FETUSDT',
 		bybit: 'FETUSDT',
@@ -203,7 +203,7 @@ export const SYMBOLS: readonly SymbolDef[] = [
 		category: 'ai',
 		newsQuery: 'Render OR RNDR crypto AI'
 	},
-	// ETF / STOCK: no reliable Bybit equity-perp tickers in this pack —
+	// ETF / STOCK: no reliable Bybit equity-perp tickers in this pack -
 	// tabs remain for filter UI; leave lists empty (filter shows note).
 ] as const;
 
@@ -223,7 +223,7 @@ export function categoryForBase(baseInput: string): SymbolCategory {
 const BY_DISPLAY = new Map(SYMBOLS.map((s) => [s.display, s]));
 const BY_BYBIT = new Map(SYMBOLS.map((s) => [s.bybit, s]));
 
-/** Aliases accepted on API input → display symbol. */
+/** Aliases accepted on API input -> display symbol. */
 const ALIASES: Record<string, string> = {
 	BTCUSDT: 'BTCUSDT',
 	BTCUSD: 'BTCUSDT',

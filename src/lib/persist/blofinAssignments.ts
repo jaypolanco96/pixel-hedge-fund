@@ -1,10 +1,10 @@
-/** Map BloFin positionId → floor trader id. Local only — never sent to exchange. */
+/** Map BloFin positionId -> floor trader id. Local only - never sent to exchange. */
 import { TRADERS } from '$lib/characters/cast';
 import { readJson, writeJson } from './local';
 
 export const BLOFIN_ASSIGN_KEY = 'phf-blofin-assignments';
 
-/** positionId → traderId */
+/** positionId -> traderId */
 export type BloFinAssignments = Record<string, string>;
 
 const traderIds = new Set(TRADERS.map((t) => t.id));
@@ -29,7 +29,7 @@ export function saveBloFinAssignments(assignments: BloFinAssignments): void {
 	writeJson(BLOFIN_ASSIGN_KEY, valid);
 }
 
-/** traderId → list of assigned positionIds */
+/** traderId -> list of assigned positionIds */
 export function assignmentsByTrader(assignments: BloFinAssignments): Record<string, string[]> {
 	const by: Record<string, string[]> = {};
 	for (const [positionId, traderId] of Object.entries(assignments)) {
@@ -44,7 +44,7 @@ export function assignPosition(
 	traderId: string | null
 ): BloFinAssignments {
 	const next = { ...assignments };
-	// One position → one trader; clear prior mapping for this position.
+	// One position -> one trader; clear prior mapping for this position.
 	delete next[positionId];
 	if (traderId && traderIds.has(traderId)) {
 		// Optional: unassign this trader's previous exclusive slot for same position only.

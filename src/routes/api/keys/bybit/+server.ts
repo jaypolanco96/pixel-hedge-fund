@@ -45,7 +45,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			ok: true,
 			bybit: status,
 			message: vercel
-				? 'Bybit keys validated (browser session — not stored on Vercel)'
+				? 'Bybit keys validated (browser session - not stored on Vercel)'
 				: 'Bybit keys saved (masked)',
 			persistence: vercel ? 'browser-session' : 'server-file'
 		},

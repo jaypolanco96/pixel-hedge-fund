@@ -1,4 +1,4 @@
-/** Shared Bybit DTO types — safe for client + server. */
+/** Shared Bybit DTO types - safe for client + server. */
 
 export interface BybitHealth {
 	ok: boolean;

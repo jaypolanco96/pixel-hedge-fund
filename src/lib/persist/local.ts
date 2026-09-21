@@ -1,4 +1,4 @@
-/** Tiny localStorage helpers — never throw into the UI. */
+/** Tiny localStorage helpers - never throw into the UI. */
 
 export function readJson<T>(key: string, fallback: T): T {
 	try {

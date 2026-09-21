@@ -32,7 +32,7 @@ function sampleHeadlines(label: string): NewsHeadline[] {
 			publishedAt: null
 		},
 		{
-			title: `${label} tape quiet — SAMPLE wire`,
+			title: `${label} tape quiet - SAMPLE wire`,
 			link: '',
 			source: 'SAMPLE',
 			publishedAt: null

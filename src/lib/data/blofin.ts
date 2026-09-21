@@ -5,7 +5,7 @@
  * Never returns API secrets. Never calls transfer / withdraw.
  *
  * On upstream 403 / network failure, serves static/blofin-snapshot.json
- * as offline CACHE (not demo) — labeled fromSnapshot.
+ * as offline CACHE (not demo) - labeled fromSnapshot.
  */
 import { createHmac, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -47,7 +47,7 @@ export type {
 	BloFinTradeWriteResponse
 } from './blofinTypes';
 
-/** Live production root — demo URL is never the default. */
+/** Live production root - demo URL is never the default. */
 const LIVE_BASE = 'https://openapi.blofin.com';
 const DEMO_BASE = 'https://demo-trading-openapi.blofin.com';
 
@@ -193,7 +193,7 @@ const ALLOWED_GET = new Set([
 	'/api/v1/asset/balances'
 ]);
 
-/** Allowlisted POST trade paths only — hard reject anything else. */
+/** Allowlisted POST trade paths only - hard reject anything else. */
 const ALLOWED_POST = new Set([
 	'/api/v1/account/set-leverage',
 	'/api/v1/account/set-margin-mode',
@@ -213,7 +213,7 @@ export interface BloFinConfig {
 	configured: boolean;
 }
 
-/** Desk-lead snapshot file — offline cache, not demo. */
+/** Desk-lead snapshot file - offline cache, not demo. */
 export interface BloFinSnapshotFile {
 	sample?: boolean;
 	source?: string;
@@ -260,8 +260,8 @@ function readBloFinSecretsFile(): {
 }
 
 /**
- * Config priority: per-request LOGIN headers → env → local `.secrets` (dev).
- * On Vercel, visitors supply keys via Desk LOGIN (sessionStorage → request headers).
+ * Config priority: per-request LOGIN headers -> env -> local `.secrets` (dev).
+ * On Vercel, visitors supply keys via Desk LOGIN (sessionStorage -> request headers).
  */
 export function getBloFinConfig(): BloFinConfig {
 	const fromReq = getRequestBloFin();
@@ -470,7 +470,7 @@ function writeResult(
 	return { ok: true, mode: cfg.mode, path, data: res.data };
 }
 
-/** 403, network, or missing credentials → serve desk snapshot cache. */
+/** 403, network, or missing credentials -> serve desk snapshot cache. */
 export function shouldFallbackToSnapshot(fail: Fail, configured: boolean): boolean {
 	if (!configured) return true;
 	if (fail.status === 403) return true;
@@ -565,7 +565,7 @@ export function buildPositionWarnings(positions: BloFinPosition[]): string[] {
 	const warnings: string[] = [];
 	for (const p of positions) {
 		if (p.leverage >= 50) {
-			warnings.push(`${p.instId}: high leverage ${p.leverage}×`);
+			warnings.push(`${p.instId}: high leverage ${p.leverage}x`);
 		}
 		if (p.marginRatio != null && p.marginRatio < 2) {
 			warnings.push(`${p.instId}: thin margin ratio ${p.marginRatio.toFixed(2)}`);
@@ -676,7 +676,7 @@ export async function checkHealth(
 ): Promise<BloFinHealth> {
 	const base = healthSnapshot();
 	const cfg = getBloFinConfig();
-	/** Writes are "enabled" when keys exist — network reachability is separate. */
+	/** Writes are "enabled" when keys exist - network reachability is separate. */
 	const writesEnabled = cfg.configured;
 
 	if (!cfg.configured) {
@@ -692,7 +692,7 @@ export async function checkHealth(
 				fromSnapshot: true,
 				syncedAt: snap.syncedAt,
 				writesEnabled: false,
-				error: 'Live credentials missing — serving offline cache (not demo)'
+				error: 'Live credentials missing - serving offline cache (not demo)'
 			};
 		}
 		return {
@@ -727,8 +727,8 @@ export async function checkHealth(
 					syncedAt: snap.syncedAt,
 					writesEnabled,
 					error: networkBlocked
-						? `BloFin unreachable from this network (${res.status ?? 'net'}) — keys OK, serving offline cache`
-						: `Upstream ${res.error} — serving offline cache (not demo)`
+						? `BloFin unreachable from this network (${res.status ?? 'net'}) - keys OK, serving offline cache`
+						: `Upstream ${res.error} - serving offline cache (not demo)`
 				};
 			}
 		}
@@ -887,7 +887,7 @@ export async function fetchOrders(
 	};
 }
 
-/* ─── Write helpers (validated bodies → allowlisted POST) ─── */
+/* --- Write helpers (validated bodies -> allowlisted POST) --- */
 
 function strField(v: unknown): string | null {
 	if (v == null) return null;
@@ -909,7 +909,7 @@ export async function setLeverage(body: BloFinSetLeverageBody): Promise<BloFinTr
 	}
 	const levNum = Number(leverage);
 	if (!Number.isFinite(levNum) || levNum < 1 || levNum > 125) {
-		return { ok: false, mode: cfg.mode, path, error: 'leverage must be 1–125' };
+		return { ok: false, mode: cfg.mode, path, error: 'leverage must be 1-125' };
 	}
 	const payload: Record<string, unknown> = {
 		instId,
@@ -1114,5 +1114,5 @@ export async function closePosition(
 	return writeResult(path, res, cfg);
 }
 
-/** Exported for tests / docs — demo base is opt-in only via BLOFIN_BASE_URL. */
+/** Exported for tests / docs - demo base is opt-in only via BLOFIN_BASE_URL. */
 export const BLOFIN_URLS = { LIVE_BASE, DEMO_BASE } as const;

@@ -26,8 +26,8 @@ export const FAX_REPORTS: FaxReportOption[] = [
 	},
 	{
 		id: 'risk_card',
-		title: 'Risk card (SL · TP1/TP2 · ATR)',
-		blurb: 'Stop, targets, risk %, ATR vol state — Chart Desk numbers only.'
+		title: 'Risk card (SL . TP1/TP2 . ATR)',
+		blurb: 'Stop, targets, risk %, ATR vol state - Chart Desk numbers only.'
 	},
 	{
 		id: 'mtf_memo',
@@ -37,7 +37,7 @@ export const FAX_REPORTS: FaxReportOption[] = [
 	{
 		id: 'session_tape',
 		title: 'Session tape / funding-style summary',
-		blurb: 'Quote mark, 24h change, sample flag. Honest labels — no invented prices.'
+		blurb: 'Quote mark, 24h change, sample flag. Honest labels - no invented prices.'
 	}
 ];
 
@@ -46,12 +46,12 @@ function line(s: string): string {
 }
 
 function money(n: number | undefined | null, digits = 4): string {
-	if (n == null || !Number.isFinite(n)) return '—';
+	if (n == null || !Number.isFinite(n)) return '-';
 	return n.toFixed(digits);
 }
 
 function pct(n: number | undefined | null, digits = 2): string {
-	if (n == null || !Number.isFinite(n)) return '—';
+	if (n == null || !Number.isFinite(n)) return '-';
 	return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}%`;
 }
 
@@ -64,12 +64,12 @@ function stamp(): string {
 
 function header(title: string, symbol: string, sample: boolean, provider: string): string[] {
 	return [
-		'════════════════════════════════════════',
-		'  PIXEL HEDGE FUND · CHART DESK FAX',
+		'========================================',
+		'  PIXEL HEDGE FUND . CHART DESK FAX',
 		`  ${title.toUpperCase()}`,
 		`  PAIR: ${symbol}   ${sample ? '*** SAMPLE DATA ***' : `LIVE / ${provider.toUpperCase()}`}`,
 		`  PRINTED: ${stamp()} ET`,
-		'════════════════════════════════════════',
+		'========================================',
 		''
 	];
 }
@@ -77,12 +77,12 @@ function header(title: string, symbol: string, sample: boolean, provider: string
 function footer(sample: boolean): string[] {
 	return [
 		'',
-		'────────────────────────────────────────',
+		'----------------------------------------',
 		sample
-			? 'NOTE: SAMPLE — numbers are not live venue marks.'
+			? 'NOTE: SAMPLE - numbers are not live venue marks.'
 			: 'NOTE: Prefer Chart Desk signal; never invent fills.',
-		'PHF · Discipline · Research · Returns',
-		'════════════════════════════════════════'
+		'PHF . Discipline . Research . Returns',
+		'========================================'
 	];
 }
 
@@ -112,7 +112,7 @@ export function buildFaxReport(
 	switch (id) {
 		case 'bias_brief': {
 			if (!signal) {
-				lines.push('NO SIGNAL PAYLOAD — fax idle. Re-poll Tape Wire.');
+				lines.push('NO SIGNAL PAYLOAD - fax idle. Re-poll Tape Wire.');
 				break;
 			}
 			lines.push(
@@ -128,16 +128,16 @@ export function buildFaxReport(
 				line(lastBarsNote(bars)),
 				'',
 				signal.confluenceBand === 'high'
-					? 'DESK READ: High confluence — mandate desks may open.'
+					? 'DESK READ: High confluence - mandate desks may open.'
 					: signal.confluenceBand === 'tradeable'
-						? 'DESK READ: Tradeable band — selective desks considering / open.'
-						: 'DESK READ: Weak confluence — watching / no invented fill.'
+						? 'DESK READ: Tradeable band - selective desks considering / open.'
+						: 'DESK READ: Weak confluence - watching / no invented fill.'
 			);
 			break;
 		}
 		case 'supertrend_ema': {
 			if (!signal) {
-				lines.push('NO SIGNAL — cannot print Supertrend / EMA sheet.');
+				lines.push('NO SIGNAL - cannot print Supertrend / EMA sheet.');
 				break;
 			}
 			const stArrow = signal.supertrend.direction === 1 ? 'BULL ↑' : 'BEAR ↓';
@@ -146,13 +146,13 @@ export function buildFaxReport(
 					? 'EMA21 > EMA55 (bullish stack)'
 					: signal.ema['21'] < signal.ema['55']
 						? 'EMA21 < EMA55 (bearish stack)'
-						: 'EMA21 ≈ EMA55 (flat stack)';
+						: 'EMA21 ~ EMA55 (flat stack)';
 			lines.push(
 				line(`SUPERTREND:    ${money(signal.supertrend.value, digits)}  ${stArrow}`),
 				line(`EMA 21:       ${money(signal.ema['21'], digits)}`),
 				line(`EMA 55:       ${money(signal.ema['55'], digits)}`),
 				line(`STACK:        ${emaStack}`),
-				line(`CLOSE vs ST:  last ${money(signal.last, digits)} · stop/ST ${money(signal.risk.stop, digits)}`),
+				line(`CLOSE vs ST:  last ${money(signal.last, digits)} . stop/ST ${money(signal.risk.stop, digits)}`),
 				line(`STRUCTURE:    ${signal.structure}`),
 				'',
 				line(lastBarsNote(bars))
@@ -161,7 +161,7 @@ export function buildFaxReport(
 		}
 		case 'risk_card': {
 			if (!signal) {
-				lines.push('NO SIGNAL — risk card blank.');
+				lines.push('NO SIGNAL - risk card blank.');
 				break;
 			}
 			lines.push(
@@ -180,7 +180,7 @@ export function buildFaxReport(
 		}
 		case 'mtf_memo': {
 			if (!signal) {
-				lines.push('NO SIGNAL — MTF memo unavailable.');
+				lines.push('NO SIGNAL - MTF memo unavailable.');
 				break;
 			}
 			lines.push(
@@ -191,8 +191,8 @@ export function buildFaxReport(
 				line(`CONFLUENCE:    ${signal.confluence}/6 (${signal.confluenceBand})`),
 				'',
 				signal.mtf.aligned
-					? 'MEMO: Setup and regime agree — higher-quality desk bias.'
-					: 'MEMO: Setup/regime diverge — prefer watching over forcing a fill.',
+					? 'MEMO: Setup and regime agree - higher-quality desk bias.'
+					: 'MEMO: Setup/regime diverge - prefer watching over forcing a fill.',
 				'',
 				line(`As-of: ${signal.asof}`)
 			);
@@ -202,23 +202,23 @@ export function buildFaxReport(
 			const qSample = quote?.sample ?? true;
 			lines.push(
 				line(`DISPLAY:       ${quote?.display ?? displaySymbol}`),
-				line(`VENUE SYM:     ${quote?.symbol ?? '—'}`),
-				line(`PROVIDER:      ${quote?.provider ?? '—'}`),
-				line(`MARK:          ${quote ? money(quote.mark, digits) : '—'}${qSample ? '  [SAMPLE]' : ''}`),
-				line(`LAST/PRICE:    ${quote ? money(quote.price, digits) : '—'}${qSample ? '  [SAMPLE]' : ''}`),
-				line(`BID / ASK:     ${quote ? money(quote.bid, digits) : '—'} / ${quote ? money(quote.ask, digits) : '—'}`),
+				line(`VENUE SYM:     ${quote?.symbol ?? '-'}`),
+				line(`PROVIDER:      ${quote?.provider ?? '-'}`),
+				line(`MARK:          ${quote ? money(quote.mark, digits) : '-'}${qSample ? '  [SAMPLE]' : ''}`),
+				line(`LAST/PRICE:    ${quote ? money(quote.price, digits) : '-'}${qSample ? '  [SAMPLE]' : ''}`),
+				line(`BID / ASK:     ${quote ? money(quote.bid, digits) : '-'} / ${quote ? money(quote.ask, digits) : '-'}`),
 				line(`24H CHANGE:    ${pct(quote?.change24h ?? null)}`),
-				line(`QUOTE TS:      ${quote?.t ? new Date(quote.t).toISOString() : '—'}`),
+				line(`QUOTE TS:      ${quote?.t ? new Date(quote.t).toISOString() : '-'}`),
 				'',
 				line(
 					qSample
-						? 'FUNDING-STYLE NOTE: SAMPLE tape — do not treat as live funding or mark.'
+						? 'FUNDING-STYLE NOTE: SAMPLE tape - do not treat as live funding or mark.'
 						: 'FUNDING-STYLE NOTE: Live Bybit/BloFin mark, bid, and ask. Funding rate is not in this feed.'
 				),
 				'',
 				signal
 					? line(
-							`CHART DESK: bias ${signal.bias} · conf ${signal.confluence}/6 · ATR ${signal.atr.state}`
+							`CHART DESK: bias ${signal.bias} . conf ${signal.confluence}/6 . ATR ${signal.atr.state}`
 						)
 					: line('CHART DESK: signal not loaded for this print.')
 			);
@@ -236,7 +236,7 @@ export function faxHtmlDocument(title: string, body: string, sample: boolean): s
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>${title} — PHF Fax</title>
+<title>${title} - PHF Fax</title>
 <style>
   body { background:#e8e0d0; color:#1a1410; font-family:"Courier New",monospace; margin:24px; }
   pre { white-space:pre-wrap; font-size:12px; line-height:1.35; border:2px dashed #666; padding:16px; background:#f7f2e6; }
@@ -246,7 +246,7 @@ export function faxHtmlDocument(title: string, body: string, sample: boolean): s
 </head>
 <body>
   <div class="badge">${sample ? 'SAMPLE' : 'LIVE'}</div>
-  <h1 style="font-size:14px;letter-spacing:.08em;">PIXEL HEDGE FUND · FAX PRINT</h1>
+  <h1 style="font-size:14px;letter-spacing:.08em;">PIXEL HEDGE FUND . FAX PRINT</h1>
   <pre>${safe}</pre>
   <script>window.onload=()=>{ try{ window.print(); }catch(e){} };<\/script>
 </body>

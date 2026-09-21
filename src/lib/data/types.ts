@@ -72,7 +72,7 @@ export interface SignalResponse {
 	provider: 'bybit' | 'blofin' | 'sample';
 }
 
-// Trader leverage is user-editable within the persisted 1–1000 range.
+// Trader leverage is user-editable within the persisted 1-1000 range.
 export type Leverage = number;
 
 export interface TraderDef {
@@ -126,6 +126,6 @@ export interface SimClockState {
 	/** Soft white snowfall on the panoramic glass (holiday window). */
 	snowing: boolean;
 	snowIntensity: number;
-	/** Real-calendar Dec 1–Jan 5: snow can replace rain in weather rolls. */
+	/** Real-calendar Dec 1-Jan 5: snow can replace rain in weather rolls. */
 	holidayWindow: boolean;
 }

@@ -191,7 +191,7 @@
 		class="trash-can"
 		class:open
 		aria-expanded={open}
-		aria-label="Office trash can — open busted thesis report"
+		aria-label="Office trash can - open busted thesis report"
 		onclick={handleCanClick}
 	>
 		<svg viewBox="0 0 40 48" width="40" height="48" aria-hidden="true">
@@ -220,19 +220,19 @@
 			<header>
 				<strong>BUSTED THESIS</strong>
 				<button type="button" class="close" onclick={() => (open = false)} aria-label="Close trash report"
-					>×</button
+					>x</button
 				>
 			</header>
 			<p class="hint">
-				Discarded research · {displaySymbol}
+				Discarded research . {displaySymbol}
 				{#if reportLabel}<span class="pill">{reportLabel}</span>{/if}
 				{#if reportSample}
-					· <em>SAMPLE</em>
+					. <em>SAMPLE</em>
 				{:else}
-					· LIVE CONTEXT
+					. LIVE CONTEXT
 				{/if}
 			</p>
-			<p class="sub">{reportTitle} — crumpled note from the pit (narrative, not a P&amp;L ticket).</p>
+			<p class="sub">{reportTitle} - crumpled note from the pit (narrative, not a P&amp;L ticket).</p>
 			<pre class:sample={reportSample}>{reportBody}</pre>
 			<div class="actions">
 				<button type="button" class="ghost" onclick={() => (open = false)}>Stuff back in</button>

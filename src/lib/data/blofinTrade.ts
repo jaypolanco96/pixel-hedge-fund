@@ -40,7 +40,7 @@ export interface BloFinTradeIntent {
 	source: 'desk' | 'quick';
 }
 
-/** Map tape display (BTCUSDT) → BloFin instId (BTC-USDT). */
+/** Map tape display (BTCUSDT) -> BloFin instId (BTC-USDT). */
 export function displayToBloFinInstId(display: string): string {
 	const d = display.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 	if (d.endsWith('USDT') && d.length > 4) {

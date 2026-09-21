@@ -186,7 +186,7 @@
 	}
 
 	function fmt(n: number, d = 2) {
-		if (!Number.isFinite(n)) return '—';
+		if (!Number.isFinite(n)) return '-';
 		return n.toFixed(d);
 	}
 
@@ -219,7 +219,7 @@
 		} catch (e) {
 			if (request !== tokenRequest) return;
 			leveragedTokens = [];
-			statusMsg = `Leveraged token list unavailable · ${e instanceof Error ? e.message : String(e)}`;
+			statusMsg = `Leveraged token list unavailable . ${e instanceof Error ? e.message : String(e)}`;
 			statusErr = true;
 		} finally {
 			tokenLoading = false;
@@ -379,11 +379,11 @@
 		if (![fundsPct, leverage, sizing.size, availableEquity, mark].every(Number.isFinite)) return 'Order values must be finite numbers';
 		if (!(fundsPct > 0)) return 'Percent of funds must be > 0';
 		if (fundsPct > 100) return '% funds cannot exceed 100';
-		if (!(leverage >= 1)) return 'Leverage must be ≥ 1';
-		if (leverage > 125) return 'Leverage over max (125×)';
-		if (!(sizing.size > 0)) return 'Size is empty — check % funds / mark / equity';
+		if (!(leverage >= 1)) return 'Leverage must be >= 1';
+		if (leverage > 125) return 'Leverage over max (125x)';
+		if (!(sizing.size > 0)) return 'Size is empty - check % funds / mark / equity';
 		if (availableEquity <= 0) return 'No available equity loaded';
-		if (!isLeveragedToken && !protection) return 'No valid TP1 / Supertrend stop for this side — wait for an aligned Chart Desk signal';
+		if (!isLeveragedToken && !protection) return 'No valid TP1 / Supertrend stop for this side - wait for an aligned Chart Desk signal';
 		if (orderType === 'limit' && !(limitPrice && limitPrice > 0)) return 'Limit order needs a price';
 		return null;
 	}
@@ -392,7 +392,7 @@
 		const intent = buildIntent();
 		if (!(intent.estSize > 0)) {
 			statusErr = true;
-			statusMsg = 'Size is zero — check % funds / mark / equity';
+			statusMsg = 'Size is zero - check % funds / mark / equity';
 			return;
 		}
 		if (orderType === 'limit' && !(intent.price && intent.price > 0)) {
@@ -403,7 +403,7 @@
 		upsertTradeIntent(intent);
 		pending = intent;
 		statusErr = false;
-		statusMsg = `Intent stored · ${intent.instId} ${intent.side} · ${fmt(intent.estSize, 4)} cts`;
+		statusMsg = `Intent stored . ${intent.instId} ${intent.side} . ${fmt(intent.estSize, 4)} cts`;
 	}
 
 	function requestSend() {
@@ -418,13 +418,13 @@
 		if (!(pending && pending.estSize > 0)) return;
 		if (!writesReady) {
 			statusErr = true;
-			statusMsg = `${exchange === 'bybit' ? 'Bybit' : 'BloFin'} keys not configured or unreachable — open Desk LOGIN`;
+			statusMsg = `${exchange === 'bybit' ? 'Bybit' : 'BloFin'} keys not configured or unreachable - open Desk LOGIN`;
 			toastErr('Keys missing', statusMsg);
 			return;
 		}
 		if (networkBlocked) {
 			statusErr = true;
-			statusMsg = `${exchange === 'bybit' ? 'Bybit' : 'BloFin'} network blocked — cannot place live order`;
+			statusMsg = `${exchange === 'bybit' ? 'Bybit' : 'BloFin'} network blocked - cannot place live order`;
 			toastErr('Network blocked', statusMsg);
 			return;
 		}
@@ -441,7 +441,7 @@
 		}
 		sending = true;
 		statusErr = false;
-		statusMsg = 'Sending live order…';
+		statusMsg = 'Sending live order...';
 		try {
 			if (pending.exchange === 'bybit') {
 				const bybitRes = await exchangeFetch('/api/bybit/order', {
@@ -481,7 +481,7 @@
 				if (!bybit.ok) throw new Error(formatExchangeError(bybit));
 				const placed = pending;
 				removeTradeIntent(pending.id);
-				statusMsg = `BYBIT LIVE OK · ${pending.instId} ${pending.side} · ${fmt(pending.estSize, 4)}`;
+				statusMsg = `BYBIT LIVE OK . ${pending.instId} ${pending.side} . ${fmt(pending.estSize, 4)}`;
 				toastOk('Bybit order live', statusMsg);
 				statusErr = false;
 				confirmOpen = false;
@@ -507,7 +507,7 @@
 				const spot = (await spotRes.json()) as BloFinTradeWriteResponse;
 				if (!spot.ok) throw new Error(formatExchangeError(spot));
 				removeTradeIntent(pending.id);
-				statusMsg = `BLOFIN SPOT LIVE OK · ${pending.instId} · ${fmt(pending.estSize, 8)}`;
+				statusMsg = `BLOFIN SPOT LIVE OK . ${pending.instId} . ${fmt(pending.estSize, 8)}`;
 				toastOk('BloFin spot order live', statusMsg);
 				statusErr = false;
 				confirmOpen = false;
@@ -569,7 +569,7 @@
 
 			const placed = pending;
 			removeTradeIntent(pending.id);
-			statusMsg = `LIVE OK · ${pending.instId} ${pending.side} · ${fmt(pending.estSize, 4)}`;
+			statusMsg = `LIVE OK . ${pending.instId} ${pending.side} . ${fmt(pending.estSize, 4)}`;
 			toastOk('Order live', statusMsg);
 			statusErr = false;
 			confirmOpen = false;
@@ -627,36 +627,36 @@
 
 {#if open}
 	<div class="backdrop" role="presentation" onclick={close}></div>
-	<div class="console" role="dialog" aria-modal="true" aria-label="Create position — fund trader with percent equity">
+	<div class="console" role="dialog" aria-modal="true" aria-label="Create position - fund trader with percent equity">
 		<header class="titlebar">
 			<div class="leds">
 				<i class:on={writesReady} class:warn={!writesReady}></i>
 				<i class:live={activeLive}></i>
 				<i class:ok={activeConfigured && !networkBlocked}></i>
 			</div>
-			<strong>CREATE POSITION · {exchange.toUpperCase()} · {activeLive ? 'LIVE' : '—'}</strong>
-			<button type="button" class="x" onclick={close} aria-label="Close quick trade">×</button>
+			<strong>CREATE POSITION . {exchange.toUpperCase()} . {activeLive ? 'LIVE' : '-'}</strong>
+			<button type="button" class="x" onclick={close} aria-label="Close quick trade">x</button>
 		</header>
 
 		{#if networkBlocked && activeConfigured}
-			<div class="banner warn">{exchange === 'bybit' ? 'Bybit' : 'BloFin'} unreachable from this network. Keys OK — use VPN or deploy server-side.</div>
+			<div class="banner warn">{exchange === 'bybit' ? 'Bybit' : 'BloFin'} unreachable from this network. Keys OK - use VPN or deploy server-side.</div>
 		{:else if exchange === 'blofin' && health?.fromSnapshot}
-			<div class="banner cache">SNAPSHOT / CACHE — offline desk copy (not demo)</div>
+			<div class="banner cache">SNAPSHOT / CACHE - offline desk copy (not demo)</div>
 		{:else if writesReady}
-			<div class="banner live">FUND TRADER WITH % EQUITY · Confirm LIVE required before POST</div>
+			<div class="banner live">FUND TRADER WITH % EQUITY . Confirm LIVE required before POST</div>
 		{:else}
-			<div class="banner warn">{exchange.toUpperCase()} KEYS NOT SET · open Desk LOGIN (browser session)</div>
+			<div class="banner warn">{exchange.toUpperCase()} KEYS NOT SET . open Desk LOGIN (browser session)</div>
 		{/if}
 
 		<div class="body">
-			<p class="cta-sub">Fund trader with % available USDT equity · {activeDisplay}</p>
+			<p class="cta-sub">Fund trader with % available USDT equity . {activeDisplay}</p>
 
 			<label class="field hero-funds">
 				<span class="hero-label">% OF FUNDS</span>
 				<div class="hero-pct">{fmt(fundsPct, 0)}%</div>
 				<input type="range" min="0" max="100" step="1" bind:value={fundsPct} aria-label="Percent of funds" />
 				<input type="number" min="0" max="100" step="0.1" bind:value={fundsPct} aria-label="Percent of funds number" />
-				<em class="hero-hint">0% = no order · {marketType === 'spot' ? 'spot size = funds ÷ mark' : 'futures size = funds × leverage ÷ mark'}</em>
+				<em class="hero-hint">0% = no order . {marketType === 'spot' ? 'spot size = funds / mark' : 'futures size = funds x leverage / mark'}</em>
 			</label>
 
 			<label class="field">
@@ -679,7 +679,7 @@
 				<span>FLOOR TRADER</span>
 				<select value={traderId} onchange={onTraderChange}>
 					{#each sideTraders as t (t.id)}
-						<option value={t.id}>{t.id} {t.name} ({t.leverage}× {t.side})</option>
+						<option value={t.id}>{t.id} {t.name} ({t.leverage}x {t.side})</option>
 					{/each}
 				</select>
 			</label>
@@ -707,14 +707,14 @@
 			</label>
 
 			<label class="field">
-				<span>LEVERAGED TOKEN {tokenLoading ? '· loading…' : ''}</span>
+				<span>LEVERAGED TOKEN {tokenLoading ? '. loading...' : ''}</span>
 				<select bind:value={tokenSelection} onchange={onTokenChange} aria-label="Leveraged token">
 					<option value="">REGULAR SYMBOL</option>
 					{#each availableTokens as token (token.exchange + token.instId)}
 						<option value={token.symbol}>{token.label}</option>
 					{/each}
 				</select>
-				<em class="field-note">{isLeveragedToken ? 'Spot product · no liquidation · venue token price' : 'Venue-listed 3L / 3S and similar spot products appear here'}</em>
+				<em class="field-note">{isLeveragedToken ? 'Spot product . no liquidation . venue token price' : 'Venue-listed 3L / 3S and similar spot products appear here'}</em>
 			</label>
 
 			<label class="field">
@@ -756,15 +756,15 @@
 
 			<dl class="preview">
 				<div><dt>INST</dt><dd class="mono">{instId}</dd></div>
-				<div><dt>MARK</dt><dd>{mark ? fmt(mark, priceDecimals) : '—'}</dd></div>
-				<div><dt>AVAIL EQ</dt><dd>${fmt(availableEquity, 2)}{loadingBal ? ' …' : ''}</dd></div>
+				<div><dt>MARK</dt><dd>{mark ? fmt(mark, priceDecimals) : '-'}</dd></div>
+				<div><dt>AVAIL EQ</dt><dd>${fmt(availableEquity, 2)}{loadingBal ? ' ...' : ''}</dd></div>
 			<div><dt>{marketType === 'spot' ? 'FUNDS' : 'MARGIN'}</dt><dd>${fmt(sizing.margin, 2)}</dd></div>
 			<div><dt>{marketType === 'spot' ? 'VALUE' : 'NOTIONAL'}</dt><dd>${fmt(sizing.notional, 2)}</dd></div>
 				<div><dt>EST SIZE</dt><dd>{fmt(sizing.size, 4)} cts</dd></div>
 				<div><dt>STOP / TP1</dt><dd>{isLeveragedToken ? 'SPOT EXIT PLAN' : protection ? `${fmt(protection.stopLoss, priceDecimals)} / ${fmt(protection.takeProfit, priceDecimals)}` : 'WAITING FOR ALIGNED SIGNAL'}</dd></div>
 				<div>
 					<dt>ASSIGNED</dt>
-					<dd>{assigned ? `${assigned.name} · ${assigned.side.toUpperCase()}` : '—'}</dd>
+					<dd>{assigned ? `${assigned.name} . ${assigned.side.toUpperCase()}` : '-'}</dd>
 				</div>
 			</dl>
 
@@ -783,37 +783,37 @@
 					CREATE POSITION
 				</button>
 			</div>
-			<p class="hint">{isLeveragedToken ? 'Leveraged token is a spot product; TP1 / SL are an exit plan and are not attached to the entry.' : marketType === 'spot' ? 'Spot entry only; TP1 / SL are shown as the current plan.' : 'Create attaches full-size TP1 + Supertrend SL at mark, then arms CONFIRM LIVE.'} Esc / × closes.</p>
+			<p class="hint">{isLeveragedToken ? 'Leveraged token is a spot product; TP1 / SL are an exit plan and are not attached to the entry.' : marketType === 'spot' ? 'Spot entry only; TP1 / SL are shown as the current plan.' : 'Create attaches full-size TP1 + Supertrend SL at mark, then arms CONFIRM LIVE.'} Esc / x closes.</p>
 		</div>
 		<footer>
-			{networkBlocked ? 'NETWORK BLOCKED' : writesReady ? 'LIVE READY' : 'KEYS MISSING'} · CONFIRM LIVE required · never auto-fires · key {FUNDS_PCT_KEY}
+			{networkBlocked ? 'NETWORK BLOCKED' : writesReady ? 'LIVE READY' : 'KEYS MISSING'} . CONFIRM LIVE required . never auto-fires . key {FUNDS_PCT_KEY}
 		</footer>
 	</div>
 
 	{#if confirmOpen && pending}
 		<div class="confirm-backdrop" role="presentation"></div>
 		<div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm live order">
-			<strong>LIVE ORDER — confirm</strong>
+			<strong>LIVE ORDER - confirm</strong>
 			<p>
-				{pending.instId} · {pending.side.toUpperCase()} · {pending.positionSide} · {pending.marginMode}<br />
-				{pending.orderType} · {pending.leverage}× · size {fmt(pending.estSize, 4)} · notional ${fmt(pending.estNotional, 2)}
+				{pending.instId} . {pending.side.toUpperCase()} . {pending.positionSide} . {pending.marginMode}<br />
+				{pending.orderType} . {pending.leverage}x . size {fmt(pending.estSize, 4)} . notional ${fmt(pending.estNotional, 2)}
 				{#if pending.orderType === 'limit'}
 					<br />limit @ {pending.price}
 				{/if}
 				{#if pending.reduceOnly}
 					<br />reduce-only
 				{/if}
-				{#if pending.signalSample}<br />SAMPLE signal — verify before sending{/if}
+				{#if pending.signalSample}<br />SAMPLE signal - verify before sending{/if}
 			</p>
 			<div class="confirm-levels" aria-label="Attached take profit and stop loss">
 				<div><span>TP1</span><b>{pendingIsLeveragedToken ? 'SPOT EXIT' : fmt(pending.takeProfitPrice ?? 0, priceDecimals)}</b></div>
 				<div><span>SL</span><b>{pendingIsLeveragedToken ? 'SPOT EXIT' : fmt(pending.stopLossPrice ?? 0, priceDecimals)}</b></div>
-			<small>{pendingIsLeveragedToken ? 'Leveraged token · no TP/SL attached · sell to exit' : pending.marketType === 'spot' ? (pending.exchange === 'bybit' ? 'Bybit spot TP1 / SL attached · market exits' : 'BloFin spot plan shown for review · protection is not attached to the entry') : 'Attached protection · mark-price triggers · market exits'}</small>
+			<small>{pendingIsLeveragedToken ? 'Leveraged token . no TP/SL attached . sell to exit' : pending.marketType === 'spot' ? (pending.exchange === 'bybit' ? 'Bybit spot TP1 / SL attached . market exits' : 'BloFin spot plan shown for review . protection is not attached to the entry') : 'Attached protection . mark-price triggers . market exits'}</small>
 			</div>
 			<div class="confirm-actions">
 				<button type="button" class="ghost" disabled={sending} onclick={() => (confirmOpen = false)}>CANCEL</button>
 				<button type="button" class="danger" disabled={sending} onclick={confirmLiveOrder}>
-					{sending ? 'SENDING…' : 'LIVE ORDER — confirm'}
+					{sending ? 'SENDING...' : 'LIVE ORDER - confirm'}
 				</button>
 			</div>
 		</div>

@@ -60,12 +60,12 @@
 		class="book-reader"
 		role="dialog"
 		aria-modal="true"
-		aria-label={`${book.spineTitle} — desk primer`}
+		aria-label={`${book.spineTitle} - desk primer`}
 	>
 		<header class="titlebar">
 			<span class="badge">DESK LIBRARY</span>
 			<strong>{book.spineTitle}</strong>
-			<button type="button" class="x" onclick={close} aria-label="Close book">×</button>
+			<button type="button" class="x" onclick={close} aria-label="Close book">x</button>
 		</header>
 
 		<div class="page-sheet">
@@ -73,15 +73,15 @@
 			<p class="page-body">{pageText}</p>
 			<div class="page-footer">
 				<span>p. {pageIndex + 1} / {pageCount}</span>
-				<span class="folio">PIXEL HEDGE FUND · desk primer</span>
+				<span class="folio">PIXEL HEDGE FUND . desk primer</span>
 			</div>
 		</div>
 
 		<nav class="pager" aria-label="Book pages">
-			<button type="button" class="nav" disabled={pageIndex <= 0} onclick={prev}>← Prev</button>
+			<button type="button" class="nav" disabled={pageIndex <= 0} onclick={prev}>PREV</button>
 			<button type="button" class="nav close-mid" onclick={close}>Close</button>
 			<button type="button" class="nav" disabled={pageIndex >= pageCount - 1} onclick={next}
-				>Next →</button
+				>NEXT</button
 			>
 		</nav>
 	</div>

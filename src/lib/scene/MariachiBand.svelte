@@ -18,7 +18,7 @@
 	});
 
 	const notePhase = $derived(frame % 4);
-	/* Anchored above Nora (center of 5 staff) — enter/exit is a short local sway */
+	/* Anchored above Nora (center of 5 staff) - enter/exit is a short local sway */
 	const walkX = $derived(
 		pose === 'enter' ? -28 + frame * 8 : pose === 'exit' ? 8 + (frame - 28) * 10 : 0
 	);
@@ -55,7 +55,7 @@
 <style>
 	.mariachi {
 		position: absolute;
-		/* Nora is 3rd of 5 centered staff — sit on her desk midline */
+		/* Nora is 3rd of 5 centered staff - sit on her desk midline */
 		left: 50%;
 		top: 2px;
 		bottom: auto;

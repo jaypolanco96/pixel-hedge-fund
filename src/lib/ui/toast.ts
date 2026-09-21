@@ -1,4 +1,4 @@
-/** Tiny pixel toast bus — client-only. */
+/** Tiny pixel toast bus - client-only. */
 import { writable } from 'svelte/store';
 
 export type ToastKind = 'ok' | 'err' | 'info';

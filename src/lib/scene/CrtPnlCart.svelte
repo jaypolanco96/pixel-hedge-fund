@@ -85,23 +85,23 @@
 	const traderName = (id: string) => TRADERS.find((t) => t.id === id)?.name ?? id;
 
 	function fmtSigned(n: number | null | undefined): string {
-		if (n == null || !Number.isFinite(n)) return '—';
+		if (n == null || !Number.isFinite(n)) return '-';
 		const sign = n > 0 ? '+' : '';
 		return `${sign}${n.toFixed(2)}`;
 	}
 
 	function fmtEq(n: number | null | undefined): string {
-		if (n == null || !Number.isFinite(n)) return '—';
+		if (n == null || !Number.isFinite(n)) return '-';
 		return `~${n.toFixed(2)} USDT`;
 	}
 
 	function fmtNum(n: number | null | undefined, d = 4): string {
-		if (n == null || !Number.isFinite(n)) return '—';
+		if (n == null || !Number.isFinite(n)) return '-';
 		return n.toFixed(d);
 	}
 
 	function fmtPx(n: number | null | undefined): string {
-		if (n == null || !Number.isFinite(n)) return '—';
+		if (n == null || !Number.isFinite(n)) return '-';
 		if (Math.abs(n) >= 1000) return n.toFixed(2);
 		if (Math.abs(n) >= 1) return n.toFixed(4);
 		return n.toFixed(6);
@@ -127,14 +127,14 @@
 	const screenText = $derived.by(() => {
 		if (page === 'floor') {
 			return [
-				`CRT · FLOOR [${feedLabel}]`,
+				`CRT . FLOOR [${feedLabel}]`,
 				'BOOK uPNL',
 				fmtSigned(floorUpnl),
 				`legs ${legs.length}`
 			].join('\n');
 		}
 		const lines = [
-			`CRT · P&L  [${feedLabel}]`,
+			`CRT . P&L  [${feedLabel}]`,
 			`BF  uPNL  ${fmtSigned(bfUpnl)}`,
 			`BY  uPNL  ${fmtSigned(byUpnl)}`
 		];
@@ -323,7 +323,7 @@
 		top = next.top;
 	}
 
-	/** Park left of lounge / near risk aisle — floor prop, not on trader desks. */
+	/** Park left of lounge / near risk aisle - floor prop, not on trader desks. */
 	function defaultPosition(): ScenePosition {
 		if (!sceneFrame || !root) return { left: 220, top: 280 };
 		const frameRect = sceneFrame.getBoundingClientRect();
@@ -414,7 +414,7 @@
 	}
 
 	function refreshAgo(): string {
-		if (lastRefreshAt == null) return '—';
+		if (lastRefreshAt == null) return '-';
 		const s = Math.max(0, Math.round((Date.now() - lastRefreshAt) / 1000));
 		return `${s}s ago`;
 	}
@@ -436,7 +436,7 @@
 	style:top={`${top}px`}
 	style:visibility={ready ? 'visible' : 'hidden'}
 	role="group"
-	aria-label="Draggable CRT TV on rolling cart — P&L readout"
+	aria-label="Draggable CRT TV on rolling cart - P&L readout"
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
 	onpointerup={finishPointer}
@@ -453,7 +453,7 @@
 					class:scan={crtScanlines && !reduceMotion}
 					class:dim-scan={crtScanlines && reduceMotion}
 					aria-label="Open CRT P&L detail screen"
-					title="Click glass for detail · drag cart to move"
+					title="Click glass for detail . drag cart to move"
 					onclick={openDetail}
 				>
 					<pre class="crt-text">{screenText}</pre>
@@ -502,21 +502,21 @@
 				<i class:sample={detailStatus === 'SAMPLE'}></i>
 				<i class:net={detailStatus === 'NETWORK'}></i>
 			</div>
-			<strong>CRT · P&amp;L DETAIL · {detailStatus}</strong>
+			<strong>CRT . P&amp;L DETAIL . {detailStatus}</strong>
 			<button type="button" class="refresh" onclick={() => void refreshExchange()} disabled={pollBusy}>
-				{pollBusy ? '…' : '↻'}
+				{pollBusy ? '...' : 'R'}
 			</button>
-			<button type="button" class="x" onclick={closeDetail} aria-label="Close P&L detail">×</button>
+			<button type="button" class="x" onclick={closeDetail} aria-label="Close P&L detail">x</button>
 		</header>
 
 		<div class="body">
 			<section class="venue">
-				<h3>BLOFIN {#if bfConfigured}<span class="tag">{bfSample ? 'SAMPLE' : bfLive ? 'LIVE' : '—'}</span>{:else}<span class="tag muted">NO KEYS / DATA</span>{/if}</h3>
+				<h3>BLOFIN {#if bfConfigured}<span class="tag">{bfSample ? 'SAMPLE' : bfLive ? 'LIVE' : '-'}</span>{:else}<span class="tag muted">NO KEYS / DATA</span>{/if}</h3>
 				{#if bfConfigured}
 					<dl class="summary">
 						<div><dt>Equity</dt><dd>{fmtEq(equityUsdt)}</dd></div>
-						<div><dt>Available</dt><dd>{bfAvailable == null ? '—' : fmtNum(bfAvailable, 2)}</dd></div>
-						<div><dt>Σ uPNL</dt><dd class={bfUpnl != null && bfUpnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(bfUpnl)}</dd></div>
+						<div><dt>Available</dt><dd>{bfAvailable == null ? '-' : fmtNum(bfAvailable, 2)}</dd></div>
+						<div><dt>SUM uPNL</dt><dd class={bfUpnl != null && bfUpnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(bfUpnl)}</dd></div>
 					</dl>
 					{#if bfPositions.length === 0}
 						<p class="empty">No open BloFin positions.</p>
@@ -547,17 +547,17 @@
 						</table>
 					{/if}
 				{:else}
-					<p class="empty">BloFin keys/data not present — nothing to show.</p>
+					<p class="empty">BloFin keys/data not present - nothing to show.</p>
 				{/if}
 			</section>
 
 			<section class="venue">
-				<h3>BYBIT {#if byConfigured}<span class="tag">{bySample ? 'SAMPLE' : byLive ? 'LIVE' : '—'}</span>{:else}<span class="tag muted">NO KEYS / DATA</span>{/if}</h3>
+				<h3>BYBIT {#if byConfigured}<span class="tag">{bySample ? 'SAMPLE' : byLive ? 'LIVE' : '-'}</span>{:else}<span class="tag muted">NO KEYS / DATA</span>{/if}</h3>
 				{#if byConfigured}
 					<dl class="summary">
 						<div><dt>Equity</dt><dd>{fmtEq(byEquity ?? equityUsdt)}</dd></div>
-						<div><dt>Available</dt><dd>{byAvailable == null ? '—' : fmtNum(byAvailable, 2)}</dd></div>
-						<div><dt>Σ uPNL</dt><dd class={byUpnl != null && byUpnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(byUpnl)}</dd></div>
+						<div><dt>Available</dt><dd>{byAvailable == null ? '-' : fmtNum(byAvailable, 2)}</dd></div>
+						<div><dt>SUM uPNL</dt><dd class={byUpnl != null && byUpnl >= 0 ? 'pos' : 'neg'}>{fmtSigned(byUpnl)}</dd></div>
 					</dl>
 					{#if byPositions.length === 0}
 						<p class="empty">No open Bybit positions.</p>
@@ -588,7 +588,7 @@
 						</table>
 					{/if}
 				{:else}
-					<p class="empty">Bybit keys/data not present — nothing to show.</p>
+					<p class="empty">Bybit keys/data not present - nothing to show.</p>
 				{/if}
 			</section>
 
@@ -626,7 +626,7 @@
 		</div>
 
 		<footer>
-			Status {detailStatus} · poll ~12s · refreshed {refreshAgo()} · Esc / × / backdrop closes
+			Status {detailStatus} . poll ~12s . refreshed {refreshAgo()} . Esc / x / backdrop closes
 		</footer>
 	</div>
 {/if}

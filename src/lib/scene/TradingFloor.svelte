@@ -29,6 +29,8 @@
 	import QuickTradePanel from './QuickTradePanel.svelte';
 	import ProfitCalcPanel from './ProfitCalcPanel.svelte';
 	import { TRADERS, STAFF } from '$lib/characters/cast';
+	import { DEFAULT_OFFICE_FLAG, OFFICE_FLAGS } from '$lib/data/officeFlags';
+	import { loadTraderTimeOverrides, saveTraderTimeOverrides } from '$lib/persist/traderTime';
 	import {
 		loadBloFinAssignments,
 		type BloFinAssignments
@@ -93,6 +95,9 @@
 	let coffeeTripTimer: ReturnType<typeof setTimeout> | null = null;
 	let deskSettings = $state(loadDeskSettings());
 	let settingsOpen = $state(false);
+	const selectedOfficeFlag = $derived(OFFICE_FLAGS.find((flag) => flag.id === deskSettings.officeFlag) ?? DEFAULT_OFFICE_FLAG);
+	let traderOpenedAt = $state<Record<string, number>>({});
+	let traderTimeOverrides = $state<Record<string, number>>({});
 	let blofinAssignments = $state<BloFinAssignments>({});
 	let blofinOverlay = $state<Record<string, string>>({});
 	let sceneFrame = $state<HTMLDivElement>();
@@ -136,6 +141,11 @@
 		fortune: { left: 0, top: 0, dragging: false }, loungePlant: { left: 0, top: 0, dragging: false }
 	});
 	const loungeDecorDrag: Partial<Record<LoungeDecorId, { pointerId: number; offsetX: number; offsetY: number }>> = {};
+	const OFFICE_FLAG_KEY = 'phf-office-flag-pos';
+	const OFFICE_FLAG_DEFAULT = { left: 1270, top: 310 };
+	let officeFlagEl = $state<HTMLElement>();
+	let officeFlagPosition = $state({ ...OFFICE_FLAG_DEFAULT, dragging: false });
+	const officeFlagDrag: { pointerId: number | null; offsetX: number; offsetY: number } = { pointerId: null, offsetX: 0, offsetY: 0 };
 	let pricePadRoot = $state<HTMLElement>();
 	let pricePadLeft = $state(18);
 	let pricePadTop = $state(0);
@@ -207,6 +217,43 @@
 				delete wireDecorEls[id];
 			}
 		};
+	}
+
+	function placeOfficeFlag() {
+		if (!sceneFrame || !officeFlagEl) return;
+		const saved = loadScenePosition(OFFICE_FLAG_KEY);
+		const source = saved ?? OFFICE_FLAG_DEFAULT;
+		officeFlagPosition = { ...officeFlagPosition, left: Math.max(0, Math.min(source.left, sceneFrame.clientWidth - officeFlagEl.offsetWidth)), top: Math.max(0, Math.min(source.top, sceneFrame.clientHeight - officeFlagEl.offsetHeight)) };
+	}
+	function onOfficeFlagPointerDown(event: PointerEvent) {
+		if (!officeFlagEl || !sceneFrame || officeFlagDrag.pointerId !== null) return;
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		const rect = sceneFrame.getBoundingClientRect();
+		officeFlagDrag.pointerId = event.pointerId;
+		officeFlagDrag.offsetX = (event.clientX - rect.left) * sceneFrame.clientWidth / rect.width - officeFlagPosition.left;
+		officeFlagDrag.offsetY = (event.clientY - rect.top) * sceneFrame.clientHeight / rect.height - officeFlagPosition.top;
+		officeFlagPosition = { ...officeFlagPosition, dragging: true };
+		officeFlagEl.setPointerCapture(event.pointerId);
+		event.preventDefault();
+	}
+	function onOfficeFlagPointerMove(event: PointerEvent) {
+		if (!sceneFrame || !officeFlagEl || officeFlagDrag.pointerId !== event.pointerId) return;
+		const rect = sceneFrame.getBoundingClientRect();
+		const scaleX = rect.width > 0 ? sceneFrame.clientWidth / rect.width : 1;
+		const scaleY = rect.height > 0 ? sceneFrame.clientHeight / rect.height : 1;
+		officeFlagPosition = { ...officeFlagPosition, left: Math.max(0, Math.min(sceneFrame.clientWidth - officeFlagEl.offsetWidth, (event.clientX - rect.left) * scaleX - officeFlagDrag.offsetX)), top: Math.max(0, Math.min(sceneFrame.clientHeight - officeFlagEl.offsetHeight, (event.clientY - rect.top) * scaleY - officeFlagDrag.offsetY)) };
+		event.preventDefault();
+	}
+	function onOfficeFlagPointerUp(event: PointerEvent) {
+		if (!officeFlagEl || officeFlagDrag.pointerId !== event.pointerId) return;
+		saveScenePosition(OFFICE_FLAG_KEY, officeFlagPosition);
+		officeFlagPosition = { ...officeFlagPosition, dragging: false };
+		officeFlagDrag.pointerId = null;
+		if (officeFlagEl.hasPointerCapture(event.pointerId)) officeFlagEl.releasePointerCapture(event.pointerId);
+	}
+	function bindOfficeFlag(node: HTMLElement) {
+		officeFlagEl = node;
+		return { destroy() { if (officeFlagEl === node) officeFlagEl = undefined; } };
 	}
 
 	function bindLoungeDecor(node: HTMLElement, id: LoungeDecorId) {
@@ -281,7 +328,7 @@
 	}
 
 
-	/** Individual desk props — each drags alone; positions in localStorage. */
+	/** Individual desk props - each drags alone; positions in localStorage. */
 	type DeskPropId = 'pad' | 'calc' | 'coffee' | 'set' | 'keyboard' | 'wsj' | 'legal';
 	type DeskPropState = {
 		left: number;
@@ -300,6 +347,10 @@
 		keyboard: 'phf-tool-keyboard-pos',
 		wsj: 'phf-wsj-pos',
 		legal: 'phf-legal-pad-pos'
+	};
+	const DESK_PROP_DEFAULT_KEYS: Record<DeskPropId, string> = {
+		pad: 'phf-default-tool-pad-pos', calc: 'phf-default-tool-calc-pos', coffee: 'phf-default-tool-coffee-pos',
+		set: 'phf-default-tool-set-pos', keyboard: 'phf-default-tool-keyboard-pos', wsj: 'phf-default-wsj-pos', legal: 'phf-default-legal-pad-pos'
 	};
 
 	const DESK_PROP_DEFAULTS: Record<DeskPropId, { left: number; top: number }> = {
@@ -404,13 +455,39 @@
 	function legFor(id: string) {
 		return legs.find((l) => l.traderId === id) ?? null;
 	}
+	function tradeDurationFor(id: string): number | null {
+		if (!legFor(id)) return null;
+		if (traderTimeOverrides[id] != null) return traderTimeOverrides[id];
+		return traderOpenedAt[id] == null ? 0 : Math.max(0, Math.floor(totalSimMinutes - traderOpenedAt[id]));
+	}
+	function setTraderTradeDuration(traderId: string, minutes: number) {
+		if (!Number.isInteger(minutes) || minutes < 0 || minutes > 100000) return;
+		traderTimeOverrides = { ...traderTimeOverrides, [traderId]: minutes };
+		saveTraderTimeOverrides(traderTimeOverrides);
+	}
+	function reconcileTraderTimes(nextBook: OpenBook) {
+		const nextOpened = { ...traderOpenedAt };
+		const nextOverrides = { ...traderTimeOverrides };
+		for (const id of Object.keys(nextBook)) {
+			if (nextOpened[id] == null) nextOpened[id] = totalSimMinutes;
+		}
+		for (const id of Object.keys(nextOpened)) {
+			if (nextBook[id] == null) {
+				delete nextOpened[id];
+				delete nextOverrides[id];
+			}
+		}
+		traderOpenedAt = nextOpened;
+		traderTimeOverrides = nextOverrides;
+		saveTraderTimeOverrides(nextOverrides);
+	}
 	function blofinBadgeFor(traderId: string): string | null {
 		if (!deskSettings.showBlofinBadges) return null;
 		if (blofinOverlay[traderId]) return blofinOverlay[traderId];
 		const assigned = Object.entries(blofinAssignments)
 			.filter(([, tid]) => tid === traderId)
 			.map(([pid]) => pid);
-		return assigned.length ? `BF×${assigned.length}` : null;
+		return assigned.length ? `BFx${assigned.length}` : null;
 	}
 	function openDeskConsole() {
 		deskConsoleOpen = true;
@@ -429,7 +506,7 @@
 		quickTradeOpen = true;
 	}
 
-	/** Floor trader click → fund panel preset to that desk (also pins). */
+	/** Floor trader click -> fund panel preset to that desk (also pins). */
 	function openQuickTradeFor(traderId: string) {
 		quickTradePresetTraderId = traderId;
 		inspectedId = traderId;
@@ -468,7 +545,7 @@
 		if (coffeeTripActive) return;
 		coffeeTripActive = true;
 		if (coffeeTripTimer) clearTimeout(coffeeTripTimer);
-		const ms = 2000 + Math.floor(Math.random() * 2000); // 2–4s
+		const ms = 2000 + Math.floor(Math.random() * 2000); // 2"4s
 		coffeeTripTimer = setTimeout(() => {
 			coffeeTripActive = false;
 			coffeeTripTimer = null;
@@ -501,10 +578,10 @@
 	}
 
 	function fmt(n: number | undefined, digits = priceDecimals) {
-		return n == null || !Number.isFinite(n) ? '—' : n.toFixed(digits);
+		return n == null || !Number.isFinite(n) ? '-' : n.toFixed(digits);
 	}
 	function pnl(n: number | undefined) {
-		if (n == null) return '—';
+		if (n == null) return '-';
 		return `${n >= 0 ? '+' : ''}$${Math.abs(n).toFixed(2)}`;
 	}
 
@@ -693,6 +770,12 @@
 		};
 	}
 
+	function saveCurrentDeskLayoutAsDefault() {
+		for (const id of Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]) {
+			saveScenePosition(DESK_PROP_DEFAULT_KEYS[id], deskProps[id]);
+		}
+	}
+
 	function placeDeskProp(id: DeskPropId) {
 		if (deskProps[id].placed || !deskPropEls[id] || !sceneFrame || !foregroundDesk) return;
 		const saved = loadScenePosition(DESK_PROP_KEYS[id]);
@@ -709,8 +792,8 @@
 			set: { left: 356, top: mobileTop + 116 }
 		};
 		const fallback = {
-			left: DESK_PROP_DEFAULTS[id].left,
-			top: DESK_PROP_DEFAULTS[id].top + deskTop
+			left: loadScenePosition(DESK_PROP_DEFAULT_KEYS[id])?.left ?? DESK_PROP_DEFAULTS[id].left,
+			top: (loadScenePosition(DESK_PROP_DEFAULT_KEYS[id])?.top ?? DESK_PROP_DEFAULTS[id].top) + deskTop
 		};
 		// Migrate legacy desk-local saves (tops lived in the ~150px foreground strip).
 		let left = saved?.left ?? fallback.left;
@@ -921,7 +1004,7 @@
 	}
 
 	function wireLabel(display: string, q?: QuoteResponse): string {
-		return q?.label ? `${q.label} · ${q.venue ?? 'WIRE'}` : wireMarket === 'spot' ? spotWireSymbol(display) : resolveSymbol(display).label;
+		return q?.label ? `${q.label} . ${q.venue ?? 'WIRE'}` : wireMarket === 'spot' ? spotWireSymbol(display) : resolveSymbol(display).label;
 	}
 
 	function wireDecimals(display: string, price: number, q?: QuoteResponse): number {
@@ -971,7 +1054,7 @@
 			newsSample = true;
 			newsHeadlines = [
 				{
-					title: `${activeDef.label} — wire quiet (SAMPLE)`,
+					title: `${activeDef.label} - wire quiet (SAMPLE)`,
 					link: '',
 					source: 'SAMPLE'
 				}
@@ -1011,7 +1094,7 @@
 					const sym = String(p.instId ?? '').replace(/-USDT|_USDT|USDT/gi, '') || p.instId;
 					lines.push({
 						venue: 'BF',
-						text: `${sym} ${String(p.side).toUpperCase()} ${p.size}× ${p.leverage}x`
+						text: `${sym} ${String(p.side).toUpperCase()} ${p.size}x ${p.leverage}x`
 					});
 				}
 			} else if (bfRes.status === 403 || bfRes.status === 503) {
@@ -1035,7 +1118,7 @@
 					const sym = String(p.symbol ?? '').replace(/USDT$/i, '');
 					lines.push({
 						venue: 'BY',
-						text: `${sym} ${String(p.deskSide).toUpperCase()} ${p.size}× ${p.leverage}x`
+						text: `${sym} ${String(p.deskSide).toUpperCase()} ${p.size}x ${p.leverage}x`
 					});
 				}
 			}
@@ -1064,6 +1147,8 @@
 		activeDisplay = def.display;
 		book = {};
 		legs = [];
+		traderOpenedAt = {};
+		traderTimeOverrides = {};
 		lastDecisionCandle = 0;
 		quote = null;
 		signal = null;
@@ -1115,6 +1200,7 @@
 			if (decisionPoint) lastDecisionCandle = decisionCandle;
 			book = result.book;
 			legs = result.legs;
+			reconcileTraderTimes(result.book);
 			err = null;
 		} catch (e) {
 			if (request !== marketRequest || sym !== activeDisplay) return;
@@ -1157,6 +1243,7 @@
 		let last = performance.now();
 		let pollAcc = 0;
 		leverageOverrides = loadLeverageOverrides();
+		traderTimeOverrides = loadTraderTimeOverrides();
 		blofinAssignments = loadBloFinAssignments();
 		pricePadSaved = loadScenePosition(PRICE_PAD_KEY);
 		for (const id of Object.keys(WIRE_DECOR_KEYS) as WireDecorId[]) {
@@ -1166,10 +1253,12 @@
 		const onSceneResize = () => {
 			clampWireDecorToScene();
 			placeLoungeDecor();
+			placeOfficeFlag();
 		};
 		window.addEventListener('resize', onSceneResize);
 		requestAnimationFrame(clampWireDecorToScene);
 		requestAnimationFrame(placeLoungeDecor);
+		requestAnimationFrame(placeOfficeFlag);
 		void (async () => {
 			const asg = blofinAssignments;
 			if (!Object.keys(asg).length) return;
@@ -1183,12 +1272,12 @@
 					const pos = byPos.get(positionId) as { instId: string; side: string } | undefined;
 					const label = pos
 						? `${pos.instId} ${pos.side === 'flat' ? '' : String(pos.side).toUpperCase()}`.trim()
-						: `BF×1`;
-					overlay[traderId] = overlay[traderId] ? `${overlay[traderId]} · ${label}` : label;
+						: `BFx1`;
+					overlay[traderId] = overlay[traderId] ? `${overlay[traderId]} . ${label}` : label;
 				}
 				blofinOverlay = overlay;
 			} catch {
-				/* ignore — console will refresh */
+				/* ignore - console will refresh */
 			}
 		})();
 		pollMarket();
@@ -1243,6 +1332,10 @@
 		if (!sceneFrame || !foregroundDesk) return;
 		requestAnimationFrame(() => placeAllDeskProps());
 	});
+	$effect(() => {
+		if (!sceneFrame || !officeFlagEl) return;
+		requestAnimationFrame(placeOfficeFlag);
+	});
 </script>
 
 <svelte:window
@@ -1267,16 +1360,16 @@
 				<div class="fund-sign">
 					<div class="monogram">PHF</div>
 					<div>
-						<strong>PIXEL HEDGE FUND</strong><small>DISCIPLINE · RESEARCH · RETURNS</small>
+						<strong>PIXEL HEDGE FUND</strong><small>DISCIPLINE . RESEARCH . RETURNS</small>
 					</div>
 				</div>
 				<div class="whiteboard">
 					<h3>TODAY:</h3>
-					<p>□ Review {activeDef.label} regime</p>
-					<p>□ Check ST risk stops</p>
-					<p>□ Rebalance allocation</p>
-					<p>□ Watch funding / tape</p>
-					<b>↗ SMALL EDGE COMPOUNDS</b>
+					<p>[ ] Review {activeDef.label} regime</p>
+					<p>[ ] Check ST risk stops</p>
+					<p>[ ] Rebalance allocation</p>
+					<p>[ ] Watch funding / tape</p>
+					<b>-> SMALL EDGE COMPOUNDS</b>
 				</div>
 			</div>
 
@@ -1306,7 +1399,7 @@
 			<div class="wall-panel right-wall">
 				<div class="market-board">
 					<header>
-						<span>MARKET WIRE · {wireMarket.toUpperCase()}</span><i>{!tapeQuotes.length ? 'CONNECTING' : tapeQuotes.some((q) => q.sample) ? 'SAMPLE / MIXED' : 'LIVE'}</i>
+						<span>MARKET WIRE . {wireMarket.toUpperCase()}</span><i>{!tapeQuotes.length ? 'CONNECTING' : tapeQuotes.some((q) => q.sample) ? 'SAMPLE / MIXED' : 'LIVE'}</i>
 					</header>
 
 					<div class="wire-cats" role="tablist" aria-label="Wire categories">
@@ -1333,25 +1426,25 @@
 								<option value={activeDisplay}>{activeDisplay} (selected)</option>
 							{/if}
 							{#each wireChannels as s (s.display)}
-								<option value={s.display}>{s.label} · {s.display}</option>
+								<option value={s.display}>{s.label} . {s.display}</option>
 							{/each}
 						</select>
 					</label>
 					{#if (wireCategory === 'etf' || wireCategory === 'stock') && !filteredTapeQuotes.length}
-						<p class="wire-note">No live ETF/stock perps on desk venues — tabs reserved.</p>
+						<p class="wire-note">No live ETF/stock perps on desk venues - tabs reserved.</p>
 					{/if}
 					{#if wireMarket === 'futures'}
-						<p class="wire-note">TOP 20 VOLUME · BYBIT + BLOFIN</p>
+						<p class="wire-note">TOP 20 VOLUME . BYBIT + BLOFIN</p>
 					{/if}
 					{#if wireMarket === 'spot' && wireTokenQuotes.length === 0}
-						<p class="wire-note">No live leveraged spot tokens returned by Bybit right now · checked SHIB3L / SHIB3S / SHIB5L / SHIB5S.</p>
+						<p class="wire-note">No live leveraged spot tokens returned by Bybit right now . checked SHIB3L / SHIB3S / SHIB5L / SHIB5S.</p>
 					{:else if wireMarket === 'spot'}
 						<div class="wire-token-heading">LEVERAGED SPOT TOKENS</div>
 						{#each wireTokenQuotes as tq (tq.display)}
 							<div class="wire-token-row">
 								<b>{wireLabel(tq.display, tq)}</b>
 								<strong>{tq.price.toFixed(wireDecimals(tq.display, tq.price, tq))}{tq.sample ? '*' : ''}</strong>
-								<em class:down={(tq.change24h ?? 0) < 0}>{tq.change24h == null ? '—' : `${tq.change24h >= 0 ? '+' : ''}${tq.change24h.toFixed(1)}%`}</em>
+								<em class:down={(tq.change24h ?? 0) < 0}>{tq.change24h == null ? '-' : `${tq.change24h >= 0 ? '+' : ''}${tq.change24h.toFixed(1)}%`}</em>
 							</div>
 						{/each}
 					{/if}
@@ -1372,7 +1465,7 @@
 							>
 							<em class:down={(tq.change24h ?? 0) < 0}
 								>{tq.change24h == null
-									? '—'
+									? '-'
 									: `${tq.change24h >= 0 ? '+' : ''}${tq.change24h.toFixed(1)}%`}</em
 							>
 						</button>
@@ -1394,7 +1487,7 @@
 			onpointercancel={(e) => onWireDecorPointerUp('bull', e)}
 			onlostpointercapture={(e) => onWireDecorPointerUp('bull', e)}
 			onkeydown={(e) => onWireDecorKeyDown('bull', e)}
-		>♞</div>
+		>&#x265E;</div>
 		<div
 			class="cabinet wire-decor-piece"
 			class:is-dragging={wireDecorPositions.cabinet.dragging}
@@ -1426,6 +1519,13 @@
 
 		<div class="ticker-anchor">
 			<TickerTape quotes={tapeQuotes} {activeDisplay} market={wireMarket} bias={signal?.bias ?? 'FLAT'} />
+		</div>
+
+		<div class="office-flag" class:is-dragging={officeFlagPosition.dragging} use:bindOfficeFlag style={`left: ${officeFlagPosition.left}px; top: ${officeFlagPosition.top}px;`} title={`${selectedOfficeFlag.name} - drag to move`} aria-label={`Draggable office flag: ${selectedOfficeFlag.name}`} role="button" tabindex="0" onpointerdown={onOfficeFlagPointerDown} onpointermove={onOfficeFlagPointerMove} onpointerup={onOfficeFlagPointerUp} onpointercancel={onOfficeFlagPointerUp} onlostpointercapture={onOfficeFlagPointerUp}>
+			<div class="flag-pole"></div>
+			<div class="flag-cloth">
+				<img src={`https://flagcdn.com/w320/${selectedOfficeFlag.id.toLowerCase()}.png`} alt={selectedOfficeFlag.name} draggable="false" />
+			</div>
 		</div>
 
 		<section class="office-floor" bind:this={officeFloor}>
@@ -1462,6 +1562,7 @@
 								trader={t}
 								leg={legFor(t.id)}
 								posture={postureFor(t)}
+								tradeDurationMinutes={tradeDurationFor(t.id)}
 								{bars}
 								lampBoost={signal?.bias === 'LONG' ? 0.22 : 0}
 								tick={animTick}
@@ -1470,6 +1571,7 @@
 								onInspect={() => (inspectedId = t.id)}
 								onPin={() => openQuickTradeFor(t.id)}
 								onLeverageCommit={(value) => setTraderLeverage(t.id, value)}
+								onTradeDurationCommit={(value) => setTraderTradeDuration(t.id, value)}
 							/>
 						{/each}
 					</div>
@@ -1485,6 +1587,7 @@
 								trader={t}
 								leg={legFor(t.id)}
 								posture={postureFor(t)}
+								tradeDurationMinutes={tradeDurationFor(t.id)}
 								{bars}
 								lampBoost={signal?.bias === 'SHORT' ? 0.22 : 0}
 								tick={animTick}
@@ -1493,6 +1596,7 @@
 								onInspect={() => (inspectedId = t.id)}
 								onPin={() => openQuickTradeFor(t.id)}
 								onLeverageCommit={(value) => setTraderLeverage(t.id, value)}
+								onTradeDurationCommit={(value) => setTraderTradeDuration(t.id, value)}
 							/>
 						{/each}
 					</div>
@@ -1592,20 +1696,20 @@
 				type="button"
 				class="foreground-monitor"
 				aria-label="Open desk CRT terminal"
-				title="Desk CRT — chart / quote / signal"
+				title="Desk CRT - chart / quote / signal"
 				onclick={openMonitorPanel}
 			>
 				<div class="monitor-bezel">
 					{#if pinnedTrader && pinnedPosture}
 						<div class="pinned-head">
-							<span>PINNED: {pinnedTrader.name} · {pinnedTrader.leverage}×</span>
+							<span>PINNED: {pinnedTrader.name} . {pinnedTrader.leverage}x</span>
 							<b>{pinnedPosture.status.toUpperCase()}</b>
 						</div>
 						<div class="pinned-chart">
 							<MiniChart
 								{bars}
 								bias={pinnedPosture.bias}
-										label={`${activeDef.bybit} · PINNED DESK`}
+										label={`${activeDef.bybit} . PINNED DESK`}
 								showLevels={true}
 								stop={pinnedPosture.stop}
 								tp1={pinnedPosture.tp1}
@@ -1613,7 +1717,7 @@
 							/>
 						</div>
 						<div class="pinned-risk">
-							SL {fmt(pinnedPosture.stop)} · TP1 {fmt(pinnedPosture.tp1)} · TP2 {fmt(
+							SL {fmt(pinnedPosture.stop)} . TP1 {fmt(pinnedPosture.tp1)} . TP2 {fmt(
 								pinnedPosture.tp2
 							)}
 						</div>
@@ -1641,8 +1745,8 @@
 			onpointercancel={(e) => onDeskPropPointerUp('wsj', e)}
 			role="button"
 			tabindex="0"
-			aria-label="Wall Street Journal — news for active coin"
-			title="Drag to move · click for more headlines"
+			aria-label="Wall Street Journal - news for active coin"
+			title="Drag to move . click for more headlines"
 			onclick={() => deskPropClick('wsj', () => (wsjExpanded = !wsjExpanded))}
 			onkeydown={(e) => {
 				if (e.key === 'Enter' || e.key === ' ') {
@@ -1656,7 +1760,7 @@
 				<b class="wsj-hed"
 					>{activeDef.label}: {newsHeadlines[0].title.slice(0, 48)}{newsHeadlines[0].title
 						.length > 48
-						? '…'
+						? '...'
 						: ''}</b
 				>
 			{:else if !wsjExpanded}
@@ -1665,15 +1769,15 @@
 			{#if newsSample}<em class="wsj-sample">SAMPLE</em>{/if}
 			{#if wsjExpanded}
 				<div class="wsj-edition">
-					<p class="wsj-kicker">MARKET EDITION · {activeDef.label}</p>
+					<p class="wsj-kicker">MARKET EDITION . {activeDef.label}</p>
 					{#if newsHeadlines[0]}
 						<h2>{newsHeadlines[0].title}</h2>
-						<p class="wsj-byline">{newsHeadlines[0].source} · full wire headline</p>
+						<p class="wsj-byline">{newsHeadlines[0].source} . full wire headline</p>
 					{/if}
 					<p class="wsj-dek">Latest complete headlines for the active market. Click the paper again to fold it up.</p>
 					<ul class="wsj-more">
 						{#each newsHeadlines.slice(1) as h, i (i)}
-							<li><strong>{h.source}</strong> — {h.title}</li>
+							<li><strong>{h.source}</strong> - {h.title}</li>
 						{/each}
 					</ul>
 				</div>
@@ -1704,11 +1808,11 @@
 					<p>{line.venue} {line.text}</p>
 				{/each}
 			{:else}
-				<p>FLAT — no open positions</p>
+				<p>FLAT - no open positions</p>
 			{/if}
 			<p class="pos-ta">
 				TA {signal?.bias === 'LONG' ? 'LONG' : signal?.bias === 'SHORT' ? 'SHORT' : 'FLAT'}
-				{activeDef.label} · {signal?.confluence ?? '—'}/6
+				{activeDef.label} . {signal?.confluence ?? '-'}/6
 			</p>
 			<span></span>
 		</div>
@@ -1726,7 +1830,7 @@
 			onpointerup={(e) => onDeskPropPointerUp('keyboard', e)}
 			onpointercancel={(e) => onDeskPropPointerUp('keyboard', e)}
 			aria-label="Open desk console"
-			title="Desk console (BloFin live) — drag to move"
+			title="Desk console (BloFin live) - drag to move"
 			onclick={() => deskPropClick('keyboard', openDeskConsole)}
 		><i></i></button>
 		<button
@@ -1742,8 +1846,8 @@
 			onpointermove={(e) => onDeskPropPointerMove('pad', e)}
 			onpointerup={(e) => onDeskPropPointerUp('pad', e)}
 			onpointercancel={(e) => onDeskPropPointerUp('pad', e)}
-			aria-label="Create position — fund trader with percent equity"
-			title="CREATE POSITION — fund trader with % equity — drag to move"
+			aria-label="Create position - fund trader with percent equity"
+			title="CREATE POSITION - fund trader with % equity - drag to move"
 			onclick={() => deskPropClick('pad', openQuickTrade)}
 		>
 			<span class="pad-target" aria-hidden="true"></span>
@@ -1762,7 +1866,7 @@
 			onpointerup={(e) => onDeskPropPointerUp('calc', e)}
 			onpointercancel={(e) => onDeskPropPointerUp('calc', e)}
 			aria-label="Open profit calculator"
-			title="P&L calculator — drag to move"
+			title="P&L calculator - drag to move"
 			onclick={() => deskPropClick('calc', openProfitCalc)}
 		>789<br />456<br />123</button>
 		<button
@@ -1779,8 +1883,8 @@
 			onpointermove={(e) => onDeskPropPointerMove('coffee', e)}
 			onpointerup={(e) => onDeskPropPointerUp('coffee', e)}
 			onpointercancel={(e) => onDeskPropPointerUp('coffee', e)}
-			aria-label="Sip coffee — brief trip"
-			title="Coffee — drag to move"
+			aria-label="Sip coffee - brief trip"
+			title="Coffee - drag to move"
 			onclick={() => deskPropClick('coffee', triggerCoffeeTrip)}
 		><i></i><b></b></button>
 		<button
@@ -1797,9 +1901,9 @@
 			onpointerup={(e) => onDeskPropPointerUp('set', e)}
 			onpointercancel={(e) => onDeskPropPointerUp('set', e)}
 			aria-label="Open desk settings"
-			title="Desk settings — drag to move"
+			title="Desk settings - drag to move"
 			onclick={() => deskPropClick('set', openDeskSettings)}
-		>⚙<b>SET</b></button>
+		><span class="settings-glyph" aria-hidden="true">+</span><b>SET</b></button>
 {#if deskSettings.showClipboard && !deskSettings.hideAllDraggables && ((inspectedTrader && inspectedPosture) || inspectedStaff)}
 	<aside
 		bind:this={clipboardRoot}
@@ -1822,9 +1926,9 @@
 			{#if inspectedTrader && inspectedPosture}
 				<header>
 					<div>
-						<small>DESK CLIPBOARD · DRAG</small><strong>{inspectedTrader.name}</strong>
+						<small>DESK CLIPBOARD . DRAG</small><strong>{inspectedTrader.name}</strong>
 					</div>
-					<b>{inspectedTrader.side.toUpperCase()} · {inspectedTrader.leverage}×</b>
+					<b>{inspectedTrader.side.toUpperCase()} . {inspectedTrader.leverage}x</b>
 				</header>
 				<div class="panel-status" data-status={inspectedPosture.status}>
 					<i></i>{statusLabel(inspectedPosture.status)}
@@ -1842,8 +1946,8 @@
 						<dt>CONFLUENCE</dt>
 						<dd
 							>{inspectedPosture.confluence}/6 {inspectedPosture.aligned
-								? '· ALIGNED'
-								: '· COUNTER'}</dd
+								? '. ALIGNED'
+								: '. COUNTER'}</dd
 						>
 					</div>
 					<div>
@@ -1863,15 +1967,15 @@
 						>
 					</div>
 					<div>
-						<dt>STOP · SUPERTREND</dt>
+						<dt>STOP . SUPERTREND</dt>
 						<dd class="negative">{fmt(inspectedPosture.stop)}</dd>
 					</div>
 					<div>
-						<dt>TP1 · 1.5R</dt>
+						<dt>TP1 . 1.5R</dt>
 						<dd class="positive">{fmt(inspectedPosture.tp1)}</dd>
 					</div>
 					<div>
-						<dt>TP2 · 2.5R</dt>
+						<dt>TP2 . 2.5R</dt>
 						<dd class="positive">{fmt(inspectedPosture.tp2)}</dd>
 					</div>
 				</dl>
@@ -1882,12 +1986,12 @@
 				</p>
 				<footer>
 					CLICK DESK TO {pinnedId === inspectedTrader.id ? 'UNPIN' : 'PIN CRT'}
-					{inspectedPosture.sample ? '· SAMPLE' : ''}
+					{inspectedPosture.sample ? '. SAMPLE' : ''}
 				</footer>
 			{:else if inspectedStaff}
 				<header>
 					<div>
-						<small>STAFF NOTE · DRAG</small><strong>{inspectedStaff.name}</strong>
+						<small>STAFF NOTE . DRAG</small><strong>{inspectedStaff.name}</strong>
 					</div>
 					<b>{inspectedStaff.title}</b>
 				</header>
@@ -1925,19 +2029,19 @@
 			<div>
 				<span class:dot-live={!!quote && !quote.sample}></span>{!quote ? 'CONNECTING' : quote.sample
 					? 'SAMPLE TAPE'
-					: `${quote.provider.toUpperCase()} · ${activeDisplay}`}
+					: `${quote.provider.toUpperCase()} . ${activeDisplay}`}
 			</div>
 			<strong>{quote?.price?.toFixed(priceDecimals) ?? 'CONNECTING'}</strong>
 			<small
-				>{clock.label} · {clock.phase.toUpperCase()}{clock.raining
-					? ' · RAIN'
+				>{clock.label} . {clock.phase.toUpperCase()}{clock.raining
+					? ' . RAIN'
 					: ''}{clock.snowing
-					? ' · XMAS · SNOW'
+					? ' . XMAS . SNOW'
 					: clock.holidayWindow
-						? ' · XMAS'
+						? ' . XMAS'
 						: ''}{kong.active
-					? ' · KONG!'
-					: ''}{mariachi.active ? ' · MARIACHI!' : ''}</small
+					? ' . KONG!'
+					: ''}{mariachi.active ? ' . MARIACHI!' : ''}</small
 			>
 		</aside>
 		{/if}
@@ -1989,7 +2093,7 @@
 	<div class="desk-settings-panel" role="dialog" aria-modal="true" aria-label="Desk settings">
 		<header>
 			<strong>DESK SETTINGS</strong>
-			<button type="button" class="x" onclick={() => (settingsOpen = false)} aria-label="Close settings">×</button>
+			<button type="button" class="x" onclick={() => (settingsOpen = false)} aria-label="Close settings">X</button>
 		</header>
 		<div class="settings-body">
 			<section>
@@ -2003,6 +2107,18 @@
 				<button type="button" class="ghost" onclick={toggleHideAllDraggables}>
 					{deskSettings.hideAllDraggables ? 'SHOW ALL DRAGGABLES' : 'HIDE ALL DRAGGABLES'}
 				</button>
+				<button type="button" class="ghost" onclick={saveCurrentDeskLayoutAsDefault}>USE CURRENT TOOL LAYOUT AS DEFAULT</button>
+			</section>
+			<section>
+				<h4>OFFICE DECOR</h4>
+				<label class="flag-picker">
+					<span>Flag</span>
+					<select value={deskSettings.officeFlag} onchange={(e) => updateDeskSetting('officeFlag', e.currentTarget.value)} aria-label="Office flag">
+						{#each OFFICE_FLAGS as flag (flag.id)}
+							<option value={flag.id}>{flag.name}</option>
+						{/each}
+					</select>
+				</label>
 			</section>
 			<section>
 				<h4>MOTION / DESK</h4>
@@ -2403,6 +2519,45 @@
 		transform: perspective(480px) rotateX(7deg);
 		transform-origin: top;
 	}
+
+	.office-flag {
+		position: absolute;
+		z-index: 8;
+		width: 92px;
+		height: 64px;
+		color: #d7bd80;
+		font-size: 7px;
+		text-align: center;
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+	}
+	.office-flag.is-dragging {
+		z-index: 95;
+		cursor: grabbing;
+	}
+	.flag-pole {
+		position: absolute;
+		top: 0;
+		left: 7px;
+		width: 4px;
+		height: 53px;
+		background: #bd8b4d;
+		box-shadow: 2px 0 #4b2c1b;
+	}
+	.flag-cloth {
+		position: absolute;
+		top: 3px;
+		left: 11px;
+		width: 70px;
+		height: 38px;
+		display: grid;
+		place-items: center;
+		background: #24150f;
+		border: 2px solid #8f6539;
+		box-shadow: 3px 3px 0 rgba(0,0,0,.35);
+	}
+	.flag-cloth img { display:block; width:100%; height:100%; object-fit:cover; image-rendering:auto; }
 	.floor-light {
 		position: absolute;
 		inset: 0;
@@ -2423,7 +2578,7 @@
 		justify-content: center;
 		border: 2px solid rgba(114, 74, 47, 0.75);
 		background: rgba(31, 20, 16, 0.36);
-		/* Sit on the carpet — no divider “perch” line under feet */
+		/* Sit on the carpet - no divider ...perch" line under feet */
 		overflow: visible;
 	}
 	.back-staff :global(.mariachi) {
@@ -2989,7 +3144,7 @@
 			repeating-linear-gradient(90deg, #776f5e 0 3px, transparent 3px 10px),
 			repeating-linear-gradient(0deg, #776f5e 0 3px, transparent 3px 10px);
 	}
-	/* Phone tucked small — reduces desk clutter */
+	/* Phone tucked small - reduces desk clutter */
 	.phone-main {
 		position: absolute;
 		left: 720px;
@@ -3020,14 +3175,14 @@
 		height: 16px;
 		background: repeating-radial-gradient(#4c4940 0 2px, #aaa085 2px 5px);
 	}
-	/* Individually draggable desk props — scene-frame absolute coords */
+	/* Individually draggable desk props - scene-frame absolute coords */
 	.desk-prop {
 		position: absolute;
 		z-index: 60;
 		pointer-events: auto;
 		touch-action: none;
 		user-select: none;
-		/* Stay visible — never gate on is-ready (expand/reflow races were blanking props) */
+		/* Stay visible - never gate on is-ready (expand/reflow races were blanking props) */
 		visibility: visible;
 		opacity: 1;
 	}
@@ -3086,7 +3241,7 @@
 		width: min(390px, calc(100vw - 28px));
 		max-height: min(480px, calc(100vh - 28px));
 		min-height: 300px;
-		/* Must stay above .foreground-desk (z 55) — old z-index:18 hid the paper under the wood */
+		/* Must stay above .foreground-desk (z 55) - old z-index:18 hid the paper under the wood */
 		z-index: 300005;
 		overflow: auto;
 		box-shadow: 7px 9px 0 rgba(20, 10, 4, 0.5);
@@ -3284,7 +3439,7 @@
 			opacity: 0.3;
 		}
 	}
-	/* Coffee sip — short full-scene trip, always clears */
+	/* Coffee sip - short full-scene trip, always clears */
 	.coffee-trip {
 		position: fixed;
 		inset: 0;
@@ -3421,7 +3576,7 @@
 		border: 2px solid #c66b59;
 		font-size: 8px;
 	}
-	/* —— Responsive: tablet (~768–1100) + phone (~375–480) —— */
+	/* -- Responsive: tablet (~768"1100) + phone (~375"480) -- */
 	@media (max-width: 1100px) {
 		.scene-frame {
 			min-height: 0;
@@ -3894,6 +4049,11 @@
 		font-size: 7px;
 		letter-spacing: 0.08em;
 	}
+	.settings-glyph {
+		font-size: 17px;
+		font-weight: 900;
+		line-height: 1;
+	}
 	.desk-settings-btn:hover,
 	.desk-settings-btn:focus-visible {
 		outline: 2px solid #efc870;
@@ -3941,6 +4101,8 @@
 		color: #e3d072;
 		width: 24px;
 		height: 24px;
+		padding: 0;
+		font: 900 13px/1 var(--mono, monospace);
 		cursor: pointer;
 	}
 	.settings-body {
@@ -3962,6 +4124,22 @@
 		font-size: 9px;
 		margin: 0 0 5px;
 		cursor: pointer;
+	}
+	.settings-body .flag-picker {
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+	}
+	.settings-body .flag-picker span {
+		font-size: 9px;
+	}
+	.settings-body select {
+		min-width: 185px;
+		padding: 5px 6px;
+		background: #241a0e;
+		border: 1px solid #6a5a30;
+		color: #f0dfaa;
+		font: 8px var(--mono, monospace);
 	}
 	.settings-body .ghost {
 		margin-top: 6px;

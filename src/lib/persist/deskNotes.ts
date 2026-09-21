@@ -1,4 +1,4 @@
-/** Local desk scratch notes — never sent to exchange. */
+/** Local desk scratch notes - never sent to exchange. */
 import { readJson, writeJson } from './local';
 
 export const DESK_NOTES_KEY = 'phf-desk-notes';

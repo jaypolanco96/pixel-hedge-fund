@@ -18,9 +18,11 @@
 		tick = 0,
 		pinned = false,
 		blofinBadge = null as string | null,
+		tradeDurationMinutes = null as number | null,
 		onInspect = () => {},
 		onPin = () => {},
-		onLeverageCommit = (_leverage: number) => {}
+		onLeverageCommit = (_leverage: number) => {},
+		onTradeDurationCommit = (_minutes: number) => {}
 	}: {
 		trader?: TraderDef;
 		staff?: StaffDef;
@@ -34,9 +36,11 @@
 		pinned?: boolean;
 		/** Short BloFin overlay label when a live position is assigned to this desk. */
 		blofinBadge?: string | null;
+		tradeDurationMinutes?: number | null;
 		onInspect?: () => void;
 		onPin?: () => void;
 		onLeverageCommit?: (leverage: number) => void;
+		onTradeDurationCommit?: (minutes: number) => void;
 	} = $props();
 
 	const name = $derived(trader?.name ?? staff?.name ?? '');
@@ -44,6 +48,10 @@
 	const postureKind = $derived(posture?.posture ?? null);
 	const roleLabel = $derived(trader ? `${trader.side.toUpperCase()} DESK` : staff?.title ?? '');
 	const status = $derived(posture?.status ?? 'watching');
+	const pnlValue = $derived(trader ? (leg?.unrealizedPnlUsd ?? null) : null);
+	const pnlText = $derived(
+		pnlValue == null ? 'PNL -' : `PNL ${pnlValue >= 0 ? '+' : '-'}$${Math.abs(pnlValue).toFixed(2)}`
+	);
 	let editingLeverage = $state(false);
 	let leverageDraft = $state('');
 	let leverageInput = $state<HTMLInputElement>();
@@ -130,7 +138,6 @@
 	aria-label={`${name}, ${roleLabel}, ${activity}`}
 	onmouseenter={inspect}
 	onfocus={inspect}
-	onclick={pin}
 	onkeydown={(event) => { if (event.key === 'Enter' || event.key === ' ') pin(); }}
 	style:--lev-color={trader ? leverageHeat(trader.leverage) : '#d9b66f'}
 	style:--lamp={0.56 + lampBoost}
@@ -148,6 +155,13 @@
 		{/if}
 	{:else}
 		<div class="staff-note">{note}</div>
+	{/if}
+
+	{#if trader}
+		<div class="pnl-headline" class:positive={pnlValue != null && pnlValue >= 0} class:negative={pnlValue != null && pnlValue < 0}>
+			<i class="pnl-stack" aria-hidden="true"><em></em><em></em><em></em></i>
+			<span>{pnlText}</span>
+		</div>
 	{/if}
 
 	<div class="desk-cluster">
@@ -172,9 +186,15 @@
 		{#if staff?.role === 'senior_analyst' || staff?.role === 'research_analyst'}<div class="clipboard"></div>{/if}
 		<div class="wood-top"></div>
 		<div class="desk-base"><i></i><i></i></div>
+		<div class="activity">
+			<span>{activity}</span>
+			{#if trader}
+				<label class="trade-duration">TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={tradeDurationMinutes ?? ''} disabled={tradeDurationMinutes == null} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} onchange={(event) => { const next = Number((event.currentTarget as HTMLInputElement).value); if (Number.isInteger(next) && next >= 0 && next <= 100000) onTradeDurationCommit(next); }} />m</label>
+			{/if}
+		</div>
 	</div>
 
-	<div class="person" aria-hidden="true">
+	<div class="person" role="button" tabindex="0" aria-label={`Inspect ${name}`} onclick={pin} onkeydown={(event) => { if (event.key === 'Enter' || event.key === ' ') pin(); }}>
 		<div class="hair"></div>
 		<div class="head"><i></i></div>
 		<div class="torso"><i></i></div>
@@ -228,12 +248,11 @@
 					aria-label={`Edit ${trader.name} leverage`}
 					onclick={beginLeverageEdit}
 					onpointerdown={(event) => event.stopPropagation()}
-					>{trader.leverage}×</button
+					>{trader.leverage}x</button
 				>
 			{/if}
 		{/if}
 	</div>
-	<div class="activity">{activity}</div>
 </div>
 
 <style>
@@ -281,7 +300,7 @@
 	.desk-lamp span { position:absolute; left:10px; bottom:0; width:3px; height:28px; background:#34291e; transform:rotate(9deg); transform-origin:bottom; }
 	.desk-lamp i { position:absolute; top:1px; right:0; width:15px; height:9px; background:#2b5137; border:2px solid #1a291d; clip-path:polygon(15% 0,85% 0,100% 100%,0 100%); box-shadow:0 7px 10px rgba(244,190,94,var(--lamp)); }
 	.keyboard { position:absolute; left:35px; top:40px; width:34px; height:6px; z-index:3; background:#c2b797; border:1px solid #494235; transform:skewX(-12deg); }
-	/* Sit fully on the wood top — higher z-index so the desk surface doesn't clip the mug */
+	/* Sit fully on the wood top - higher z-index so the desk surface doesn't clip the mug */
 	.mug { position:absolute; right:28px; top:34px; width:9px; height:10px; z-index:6; background:#ddd0ad; border:1px solid #40392f; box-sizing:border-box; }
 	.mug i { position:absolute; right:-3px; top:2px; width:4px; height:5px; border:1px solid #ddd0ad; border-left:0; box-sizing:border-box; }
 	.desk-phone { position:absolute; left:5px; top:33px; width:16px; height:9px; background:#9b927b; border:2px solid #40392f; border-radius:3px; }
@@ -334,7 +353,19 @@
 	.leverage-input { width:31px; box-sizing:border-box; text-align:center; color:#f6e6bd; background:#17100b; border-color:#efc66f; cursor:text; }
 	.leverage-input::-webkit-inner-spin-button, .leverage-input::-webkit-outer-spin-button { margin:0; }
 	.leverage-input:focus { outline:1px solid #fff0aa; }
-	.activity { position:absolute; right:7px; top:106px; z-index:12; padding:1px 3px; color:#d9ccb6; background:#2a211d; border:1px solid #5d4432; font:5px var(--mono, monospace); }
+	.activity { position:absolute; right:1px; top:49px; z-index:12; min-width:65px; padding:3px 4px; color:#d9ccb6; background:#211815; border:2px solid #6c4935; box-shadow:2px 2px 0 rgba(0,0,0,.4); font:7px var(--mono, monospace); text-align:center; line-height:1.2; }
+	.activity span { display:block; white-space:nowrap; }
+	.pnl-headline { position:absolute; left:50%; top:17px; z-index:24; display:flex; align-items:center; justify-content:center; gap:4px; min-width:76px; padding:3px 5px; transform:translateX(-50%); color:#c9b999; background:#211815; border:2px solid #6c4935; box-shadow:2px 2px 0 rgba(0,0,0,.4); font:900 8px var(--mono, monospace); line-height:1; white-space:nowrap; text-align:center; }
+	.pnl-headline.positive { color:#8bdc9a; }
+	.pnl-headline.negative { color:#ff9b8e; }
+	.pnl-stack { position:relative; display:inline-block; width:10px; height:8px; flex:none; transform:translateY(-1px); }
+	.pnl-stack em { position:absolute; left:1px; width:8px; height:3px; border:1px solid currentColor; background:currentColor; transform:skewY(-8deg); }
+	.pnl-stack em:nth-child(1) { top:4px; opacity:.58; }
+	.pnl-stack em:nth-child(2) { top:2px; opacity:.78; }
+	.pnl-stack em:nth-child(3) { top:0; }
+	.trade-duration { display:flex; align-items:center; justify-content:center; gap:2px; width:100%; margin-top:2px; color:#e3c982; font:6px var(--mono, monospace); }
+	.trade-duration input { width:30px; box-sizing:border-box; padding:1px; color:#fff0b0; background:#100b09; border:1px solid #9e7047; font:6px var(--mono, monospace); text-align:center; }
+	.trade-duration input:disabled { color:#8f8169; opacity:.7; }
 
 	.status-badge { position:absolute; left:1px; top:31px; z-index:15; padding:2px 4px; background:#33433b; color:#e6d9bf; border:2px solid #201713; font:6px var(--mono, monospace); text-transform:uppercase; letter-spacing:.05em; box-shadow:2px 2px 0 rgba(20,10,5,.45); }
 	.blofin-badge { position:absolute; left:1px; top:48px; z-index:16; max-width:calc(100% - 4px); padding:2px 4px; background:#0c2a1c; color:#7dffb0; border:2px solid #1a5a3a; font:5px/1.1 var(--mono, monospace); letter-spacing:.04em; box-shadow:2px 2px 0 rgba(10,40,25,.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

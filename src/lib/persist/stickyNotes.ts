@@ -5,9 +5,9 @@ export const STICKY_STORAGE_KEY = 'phf-window-stickies';
 export interface StickyNote {
 	id: string;
 	text: string;
-	/** Percent of window-wall width (0–100). */
+	/** Percent of window-wall width (0-100). */
 	x: number;
-	/** Percent of window-wall height (0–100). */
+	/** Percent of window-wall height (0-100). */
 	y: number;
 	color: string;
 	createdAt: number;

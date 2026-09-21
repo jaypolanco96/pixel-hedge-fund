@@ -21,7 +21,8 @@ export const STAFF: StaffDef[] = [
 	{ id: 'QR', name: 'Samir Patel', role: 'quant', title: 'Quantitative Researcher', skin: 'samir', zone: 'quant' }
 ];
 
-const NOTIONAL = 10_000;
+// Cast traders simulate $1M notional each so their desk PNL reflects the larger book.
+const NOTIONAL = 1_000_000;
 
 export function markLeg(
 	t: TraderDef,

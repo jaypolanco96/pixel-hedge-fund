@@ -44,7 +44,7 @@
 	}
 
 	/**
-	 * Plain position:fixed — no visualViewport offset, no scroll reassert.
+	 * Plain position:fixed - no visualViewport offset, no scroll reassert.
 	 * Parent is #phf-hud-root on document.body (no transformed ancestors).
 	 */
 	function applyPosition(nextLeft: number, nextTop: number) {

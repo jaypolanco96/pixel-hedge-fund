@@ -1,4 +1,4 @@
-/** Desk office settings — localStorage `phf-desk-settings`. */
+/** Desk office settings - localStorage `phf-desk-settings`. */
 import { readJson, writeJson } from './local';
 
 export const DESK_SETTINGS_KEY = 'phf-desk-settings';
@@ -14,6 +14,7 @@ export interface DeskSettings {
 	reduceMotion: boolean;
 	disableCoffeeTrip: boolean;
 	compactDeskTools: boolean;
+	officeFlag: string;
 	showBlofinBadges: boolean;
 	soundOff: boolean;
 	/** Dim evening skyline tint for late sessions. */
@@ -35,6 +36,7 @@ export const DEFAULT_DESK_SETTINGS: DeskSettings = {
 	reduceMotion: false,
 	disableCoffeeTrip: false,
 	compactDeskTools: true,
+	officeFlag: 'BR',
 	showBlofinBadges: true,
 	soundOff: true,
 	nightModeTint: false,
@@ -47,7 +49,11 @@ export function loadDeskSettings(): DeskSettings {
 	const settings = { ...DEFAULT_DESK_SETTINGS };
 	if (raw && typeof raw === 'object') {
 		for (const key of Object.keys(settings) as (keyof DeskSettings)[]) {
-			if (typeof raw[key] === 'boolean') settings[key] = raw[key];
+			if (key === 'officeFlag' && typeof raw[key] === 'string') {
+				settings.officeFlag = raw[key];
+			} else if (typeof raw[key] === 'boolean') {
+				(settings as Record<string, boolean | string>)[key] = raw[key];
+			}
 		}
 	}
 	return settings;

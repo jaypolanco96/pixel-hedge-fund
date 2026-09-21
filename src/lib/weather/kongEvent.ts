@@ -7,7 +7,7 @@ import type { DayPhase } from '$lib/data/types';
  * - Eligible only during dusk or night (sim time window).
  * - At most once per sim-day (day index = floor(totalSimMinutes / 1440)).
  * - On first eligible tick of a sim-day in dusk/night, roll ~8% chance.
- * - Event lasts ~28 anim frames (~9–12s at floor tick), then ends.
+ * - Event lasts ~28 anim frames (~9-12s at floor tick), then ends.
  * - Cooldown: cannot re-roll until next sim-day.
  */
 
@@ -46,7 +46,7 @@ export function tickKong(
 	if (!eligible) return prev;
 	if (day === prev.rolledDay) return prev;
 
-	// First eligible moment of this sim-day — roll once.
+	// First eligible moment of this sim-day - roll once.
 	const roll = Math.random() < KONG_ROLL_CHANCE;
 	return {
 		active: roll,
