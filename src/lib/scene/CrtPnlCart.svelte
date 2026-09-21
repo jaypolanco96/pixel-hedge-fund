@@ -36,6 +36,7 @@
 	const STORAGE_KEY = 'phf-crt-cart-pos';
 	const DRAG_THRESHOLD = 5;
 	const POLL_MS = 12_000;
+	const DESKTOP_DEFAULT_POSITION: ScenePosition = { left: 542, top: 300 };
 
 	type Page = 'both' | 'exchange' | 'floor';
 	const PAGES: Page[] = ['both', 'exchange', 'floor'];
@@ -325,9 +326,18 @@
 
 	/** Park left of lounge / near risk aisle - floor prop, not on trader desks. */
 	function defaultPosition(): ScenePosition {
-		if (!sceneFrame || !root) return { left: 220, top: 280 };
+		if (!sceneFrame || !root) return DESKTOP_DEFAULT_POSITION;
 		const frameRect = sceneFrame.getBoundingClientRect();
 		const scale = frameScale();
+		const floor = sceneFrame.querySelector('.office-floor');
+		if (sceneFrame.clientWidth <= 768 && floor instanceof HTMLElement) {
+			const floorRect = floor.getBoundingClientRect();
+			return {
+				left: (floorRect.right - frameRect.left) * scale.x - root.offsetWidth - 12,
+				top: (floorRect.bottom - frameRect.top) * scale.y - root.offsetHeight - 14
+			};
+		}
+		if (sceneFrame.clientWidth > 768) return DESKTOP_DEFAULT_POSITION;
 		const lounge = sceneFrame.querySelector('.lounge');
 		if (lounge) {
 			const loungeRect = lounge.getBoundingClientRect();
@@ -344,7 +354,6 @@
 				top: (aisleRect.bottom - frameRect.top) * scale.y - root.offsetHeight + 8
 			};
 		}
-		const floor = sceneFrame.querySelector('.office-floor');
 		if (!floor) return { left: 220, top: 280 };
 		const floorRect = floor.getBoundingClientRect();
 		return {
@@ -356,13 +365,22 @@
 	function place() {
 		if (!sceneFrame || !root || placed === true) return;
 		const fallback = defaultPosition();
-		setPosition(savedPosition?.left ?? fallback.left, savedPosition?.top ?? fallback.top);
+		const floor = sceneFrame.querySelector('.office-floor');
+		const mobileMinTop = floor instanceof HTMLElement ? floor.offsetTop : 0;
+		const useFallback = sceneFrame.clientWidth <= 768 && (!savedPosition || savedPosition.top < mobileMinTop);
+		setPosition(useFallback ? fallback.left : (savedPosition?.left ?? fallback.left), useFallback ? fallback.top : (savedPosition?.top ?? fallback.top));
 		placed = true;
 		ready = true;
 	}
 
 	function reflow() {
 		if (!ready || !root) return;
+		const floor = sceneFrame?.querySelector('.office-floor');
+		if (sceneFrame && sceneFrame.clientWidth <= 768 && floor instanceof HTMLElement && top < floor.offsetTop && !dragging) {
+			const fallback = defaultPosition();
+			setPosition(fallback.left, fallback.top);
+			return;
+		}
 		setPosition(left, top);
 	}
 

@@ -346,10 +346,10 @@
 	@keyframes fizz { 0% { opacity:0; transform:translate(0,5px); } 35% { opacity:1; } 100% { opacity:0; transform:translate(4px,-8px); } }
 	@keyframes spray { 50% { opacity:.45; height:10px; } }
 
-	.nameplate { position:absolute; bottom:0; left:5px; right:5px; z-index:10; min-height:30px; padding:3px 24px 3px 5px; background:#d0ad65; color:#2f1c12; border:2px solid #50321f; box-shadow:2px 2px 0 #25150d; font-family:var(--pixel, monospace); }
-	.who { font-size:7px; font-weight:900; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-	.role { font-size:5px; letter-spacing:.08em; opacity:.78; white-space:nowrap; }
-	.leverage { position:absolute; right:3px; top:4px; padding:2px 3px; font:900 7px var(--pixel, monospace); line-height:1; color:#17100b; background:var(--lev-color); border:1px solid #3a2418; cursor:pointer; }
+	.nameplate { position:absolute; bottom:0; left:5px; right:5px; z-index:10; display:grid; grid-template-columns:minmax(0, 1fr) auto; grid-template-rows:auto auto; column-gap:4px; align-items:center; min-height:30px; padding:3px 5px; background:#d0ad65; color:#2f1c12; border:2px solid #50321f; box-shadow:2px 2px 0 #25150d; font-family:var(--pixel, monospace); }
+	.who { grid-column:1; grid-row:1; min-width:0; font-size:7px; font-weight:900; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+	.role { grid-column:1; grid-row:2; min-width:0; font-size:5px; letter-spacing:.08em; opacity:.78; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+	.leverage { position:static; grid-column:2; grid-row:1 / span 2; align-self:center; padding:2px 3px; font:900 7px var(--pixel, monospace); line-height:1; color:#17100b; background:var(--lev-color); border:1px solid #3a2418; cursor:pointer; }
 	.leverage-input { width:31px; box-sizing:border-box; text-align:center; color:#f6e6bd; background:#17100b; border-color:#efc66f; cursor:text; }
 	.leverage-input::-webkit-inner-spin-button, .leverage-input::-webkit-outer-spin-button { margin:0; }
 	.leverage-input:focus { outline:1px solid #fff0aa; }
@@ -401,7 +401,7 @@
 	@media (max-width: 480px) {
 		.character { max-width: 96px; }
 		.who { font-size: 7px; }
-		.nameplate { padding: 3px 22px 3px 4px; min-height: 28px; }
+		.nameplate { min-height: 28px; padding: 3px 4px; column-gap: 3px; }
 	}
 	@media (prefers-reduced-motion: reduce) { .character, .person, .arm, .thought, .champagne-bottle, .bubble, .spray { animation:none !important; } }
 </style>

@@ -21,6 +21,7 @@
 
 	const STORAGE_KEY = 'phf-pet-pos';
 	const DRAG_THRESHOLD = 5;
+	const DESKTOP_DEFAULT_POSITION: ScenePosition = { left: 664, top: 549 };
 
 	let root = $state<HTMLDivElement>();
 	let left = $state(0);
@@ -74,9 +75,10 @@
 	}
 
 	function defaultPosition(): ScenePosition {
-		if (!sceneFrame || !root) return { left: 10, top: 10 };
+		if (!sceneFrame || !root) return DESKTOP_DEFAULT_POSITION;
+		if (sceneFrame.clientWidth > 768) return DESKTOP_DEFAULT_POSITION;
 		const floor = sceneFrame.querySelector('.office-floor');
-		if (!floor) return { left: 10, top: 10 };
+		if (!floor) return DESKTOP_DEFAULT_POSITION;
 		const frameRect = sceneFrame.getBoundingClientRect();
 		const floorRect = floor.getBoundingClientRect();
 		const scale = frameScale();
@@ -89,13 +91,22 @@
 	function place() {
 		if (!sceneFrame || !root || placed) return;
 		const fallback = defaultPosition();
-		setPosition(savedPosition?.left ?? fallback.left, savedPosition?.top ?? fallback.top);
+		const floor = sceneFrame.querySelector('.office-floor');
+		const mobileMinTop = floor instanceof HTMLElement ? floor.offsetTop : 0;
+		const useFallback = sceneFrame.clientWidth <= 768 && (!savedPosition || savedPosition.top < mobileMinTop);
+		setPosition(useFallback ? fallback.left : (savedPosition?.left ?? fallback.left), useFallback ? fallback.top : (savedPosition?.top ?? fallback.top));
 		placed = true;
 		ready = true;
 	}
 
 	function reflow() {
 		if (!ready || !root) return;
+		const floor = sceneFrame?.querySelector('.office-floor');
+		if (sceneFrame && sceneFrame.clientWidth <= 768 && floor instanceof HTMLElement && top < floor.offsetTop && !dragging) {
+			const fallback = defaultPosition();
+			setPosition(fallback.left, fallback.top);
+			return;
+		}
 		setPosition(left, top);
 	}
 

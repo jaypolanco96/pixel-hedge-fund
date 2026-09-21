@@ -31,6 +31,7 @@
 
 	const STORAGE_KEY = 'phf-fax-pos';
 	const DRAG_THRESHOLD = 5;
+	const DESKTOP_DEFAULT_POSITION: ScenePosition = { left: 805, top: 519 };
 
 	let root = $state<HTMLDivElement>();
 	let left = $state(10);
@@ -83,9 +84,10 @@
 	}
 
 	function defaultPosition(): ScenePosition {
-		if (!sceneFrame || !root) return { left: 10, top: 10 };
+		if (!sceneFrame || !root) return DESKTOP_DEFAULT_POSITION;
+		if (sceneFrame.clientWidth > 768) return DESKTOP_DEFAULT_POSITION;
 		const floor = sceneFrame.querySelector('.office-floor');
-		if (!floor) return { left: 10, top: 10 };
+		if (!floor) return DESKTOP_DEFAULT_POSITION;
 		const frameRect = sceneFrame.getBoundingClientRect();
 		const floorRect = floor.getBoundingClientRect();
 		const scale = frameScale();
@@ -172,6 +174,9 @@
 		activePointer = event.pointerId;
 		dragging = false;
 		suppressClick = false;
+		// Capture on press so touch drags that begin over the nested button keep
+		// reaching the wrapper, just like the foreground desk tools.
+		root.setPointerCapture(event.pointerId);
 	}
 
 	function onPointerMove(event: PointerEvent) {
@@ -179,7 +184,6 @@
 		if (!dragging && Math.hypot(event.clientX - startX, event.clientY - startY) < DRAG_THRESHOLD) return;
 		if (!dragging) {
 			dragging = true;
-			root?.setPointerCapture(event.pointerId);
 		}
 		event.preventDefault();
 		const frameRect = sceneFrame.getBoundingClientRect();

@@ -122,9 +122,9 @@
 		plant: 'phf-market-wire-plant-pos'
 	};
 	const WIRE_DECOR_DEFAULTS: Record<WireDecorId, { left: number; top: number }> = {
-		bull: { left: 1210, top: 216 },
-		cabinet: { left: 1195, top: 240 },
-		plant: { left: 1360, top: 215 }
+		bull: { left: 369, top: 219 },
+		cabinet: { left: 356, top: 245 },
+		plant: { left: 728, top: 219 }
 	};
 	let wireDecorEls: Partial<Record<WireDecorId, HTMLElement>> = {};
 	let wireDecorPositions = $state<Record<WireDecorId, { left: number; top: number; dragging: boolean }>>({
@@ -137,14 +137,20 @@
 	const LOUNGE_DECOR_KEYS: Record<LoungeDecorId, string> = {
 		fortune: 'phf-lounge-fortune-pos', loungePlant: 'phf-lounge-plant-pos'
 	};
+	const LOUNGE_DECOR_DEFAULTS: Record<LoungeDecorId, { left: number; top: number }> = {
+		fortune: { left: 295, top: 778 },
+		loungePlant: { left: 1264, top: 546 }
+	};
 	let loungeDecorEls: Partial<Record<LoungeDecorId, HTMLElement>> = {};
 	let loungeDecorPositions = $state<Record<LoungeDecorId, { left: number; top: number; dragging: boolean }>>({
 		fortune: { left: 0, top: 0, dragging: false }, loungePlant: { left: 0, top: 0, dragging: false }
 	});
 	const loungeDecorDrag: Partial<Record<LoungeDecorId, { pointerId: number; offsetX: number; offsetY: number }>> = {};
 	const OFFICE_FLAG_KEY = 'phf-office-flag-pos';
-	const OFFICE_FLAG_DEFAULT = { left: 1270, top: 310 };
+	const OFFICE_FLAG_DEFAULT = { left: 934, top: 901 };
 	const OFFICE_FLAG_INSET = 12;
+	const CLIPBOARD_DEFAULT = { left: 30, top: 184 };
+	const PRICE_PAD_DEFAULT = { left: 1150, top: 314 };
 	let officeFlagEl = $state<HTMLElement>();
 	let officeFlagPosition = $state({ ...OFFICE_FLAG_DEFAULT, dragging: false });
 	const officeFlagDrag: { pointerId: number | null; offsetX: number; offsetY: number } = { pointerId: null, offsetX: 0, offsetY: 0 };
@@ -224,11 +230,13 @@
 	function placeOfficeFlag() {
 		if (!sceneFrame || !officeFlagEl) return;
 		const saved = loadScenePosition(OFFICE_FLAG_KEY);
-		const source = saved ?? OFFICE_FLAG_DEFAULT;
+		const narrow = sceneFrame.clientWidth <= 768;
 		const maxLeft = Math.max(0, sceneFrame.clientWidth - officeFlagEl.offsetWidth);
 		const maxTop = Math.max(0, sceneFrame.clientHeight - officeFlagEl.offsetHeight);
 		const insetX = Math.min(OFFICE_FLAG_INSET, maxLeft / 2);
 		const insetY = Math.min(OFFICE_FLAG_INSET, maxTop / 2);
+		const mobileDefault = { left: maxLeft - insetX, top: insetY };
+		const source = narrow && (!saved || saved.left > maxLeft) ? mobileDefault : (saved ?? OFFICE_FLAG_DEFAULT);
 		officeFlagPosition = {
 			...officeFlagPosition,
 			left: Math.min(Math.max(insetX, source.left), maxLeft - insetX),
@@ -281,15 +289,11 @@
 
 	function placeLoungeDecor() {
 		if (!sceneFrame || !officeFloor) return;
-		const defaults: Record<LoungeDecorId, { left: number; top: number }> = {
-			fortune: { left: officeFloor.offsetLeft + officeFloor.clientWidth - 135, top: officeFloor.offsetTop + officeFloor.clientHeight - 33 },
-			loungePlant: { left: officeFloor.offsetLeft + officeFloor.clientWidth - 143, top: officeFloor.offsetTop + officeFloor.clientHeight - 144 }
-		};
 		for (const id of Object.keys(LOUNGE_DECOR_KEYS) as LoungeDecorId[]) {
 			const saved = loadScenePosition(LOUNGE_DECOR_KEYS[id]);
 			const el = loungeDecorEls[id];
 			if (!el) continue;
-			const source = saved ?? defaults[id];
+			const source = saved ?? LOUNGE_DECOR_DEFAULTS[id];
 			loungeDecorPositions = { ...loungeDecorPositions, [id]: {
 				...loungeDecorPositions[id], left: Math.max(0, Math.min(source.left, sceneFrame.clientWidth - el.offsetWidth)),
 				top: Math.max(0, Math.min(source.top, sceneFrame.clientHeight - el.offsetHeight))
@@ -372,13 +376,13 @@
 	};
 
 	const DESK_PROP_DEFAULTS: Record<DeskPropId, { left: number; top: number }> = {
-		pad: { left: 990, top: 28 },
-		calc: { left: 1086, top: 30 },
-		coffee: { left: 1134, top: 34 },
-		set: { left: 1178, top: 36 },
-		keyboard: { left: 790, top: 52 },
-		wsj: { left: 185, top: 20 },
-		legal: { left: 325, top: 16 }
+		pad: { left: 1065, top: 31 },
+		calc: { left: 1175, top: 77 },
+		coffee: { left: 1232, top: 17 },
+		set: { left: 1323, top: 78 },
+		keyboard: { left: 870, top: 69 },
+		wsj: { left: 232, top: 20 },
+		legal: { left: 384, top: 21 }
 	};
 
 	let foregroundDesk = $state<HTMLElement>();
@@ -628,15 +632,25 @@
 	}
 
 	function placeClipboard() {
-		if (!sceneFrame || !clipboardRoot || clipboardReady) return;
-		const w = clipboardRoot.offsetWidth || 246;
+		if (!sceneFrame || !clipboardRoot || !officeFloor || !foregroundDesk || clipboardReady) return;
 		const saved = loadScenePosition(CLIPBOARD_KEY);
-		setClipboardPosition(saved?.left ?? sceneFrame.clientWidth - w - 16, saved?.top ?? 155);
+		const narrow = sceneFrame.clientWidth <= 480;
+		const mobileDefault = { left: 8, top: deskSurfaceOffsetTop() + 556 };
+		const mobileMinTop = deskSurfaceOffsetTop();
+		const source = narrow && (!saved || saved.top < mobileMinTop)
+			? mobileDefault
+			: { left: saved?.left ?? CLIPBOARD_DEFAULT.left, top: saved?.top ?? CLIPBOARD_DEFAULT.top };
+		setClipboardPosition(source.left, source.top);
 		clipboardReady = true;
 	}
 
 	function reflowClipboard() {
-		if (!clipboardReady || !clipboardRoot) return;
+		if (!clipboardReady || !clipboardRoot || !sceneFrame || !foregroundDesk) return;
+		const mobileMinTop = deskSurfaceOffsetTop();
+		if (sceneFrame.clientWidth <= 480 && clipboardTop < mobileMinTop && !clipboardDragging) {
+			setClipboardPosition(8, deskSurfaceOffsetTop() + 556);
+			return;
+		}
 		setClipboardPosition(clipboardLeft, clipboardTop);
 	}
 
@@ -705,24 +719,33 @@
 	}
 
 	function defaultPricePadPosition() {
-		if (!sceneFrame || !pricePadRoot) return { left: 18, top: 18 };
-		const h = pricePadRoot.offsetHeight || 88;
-		return {
-			left: 18,
-			top: Math.max(0, sceneFrame.clientHeight - h - 18)
-		};
+		return PRICE_PAD_DEFAULT;
+	}
+
+	function mobilePricePadPosition() {
+		if (!foregroundDesk) return defaultPricePadPosition();
+		return { left: 12, top: deskSurfaceOffsetTop() + 448 };
 	}
 
 	function placePricePad() {
-		if (!sceneFrame || !pricePadRoot || pricePadPlaced) return;
+		if (!sceneFrame || !pricePadRoot || !foregroundDesk || pricePadPlaced) return;
 		const fallback = defaultPricePadPosition();
-		setPricePadPosition(pricePadSaved?.left ?? fallback.left, pricePadSaved?.top ?? fallback.top);
+		const narrow = sceneFrame.clientWidth <= 768;
+		const source = narrow && (!pricePadSaved || pricePadSaved.top < deskSurfaceOffsetTop())
+			? mobilePricePadPosition()
+			: { left: pricePadSaved?.left ?? fallback.left, top: pricePadSaved?.top ?? fallback.top };
+		setPricePadPosition(source.left, source.top);
 		pricePadPlaced = true;
 		pricePadReady = true;
 	}
 
 	function reflowPricePad() {
-		if (!pricePadReady || !pricePadRoot) return;
+		if (!pricePadReady || !pricePadRoot || !sceneFrame) return;
+		if (sceneFrame.clientWidth <= 768 && foregroundDesk && pricePadTop < deskSurfaceOffsetTop() && !pricePadDragging) {
+			const mobile = mobilePricePadPosition();
+			setPricePadPosition(mobile.left, mobile.top);
+			return;
+		}
 		setPricePadPosition(pricePadLeft, pricePadTop);
 	}
 
@@ -789,29 +812,57 @@
 	}
 
 	function saveCurrentDeskLayoutAsDefault() {
+		const deskTop = deskSurfaceOffsetTop();
 		for (const id of Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]) {
-			saveScenePosition(DESK_PROP_DEFAULT_KEYS[id], deskProps[id]);
+			saveScenePosition(DESK_PROP_DEFAULT_KEYS[id], {
+				left: deskProps[id].left,
+				top: deskProps[id].top - deskTop
+			});
 		}
+	}
+
+	function mobileDeskPropLayout(): Record<DeskPropId, { left: number; top: number }> {
+		const deskTop = deskSurfaceOffsetTop();
+		const mobileTop = deskTop + 224;
+		const phone = (sceneFrame?.clientWidth ?? 0) <= 480;
+		if (!phone || !sceneFrame) {
+			return {
+				wsj: { left: 8, top: mobileTop },
+				legal: { left: 150, top: mobileTop },
+				keyboard: { left: 8, top: mobileTop + 116 },
+				pad: { left: 154, top: mobileTop + 116 },
+				calc: { left: 250, top: mobileTop + 116 },
+				coffee: { left: 306, top: mobileTop + 116 },
+				set: { left: 356, top: mobileTop + 116 }
+			};
+		}
+		const width = sceneFrame.clientWidth;
+		return {
+			wsj: { left: 8, top: mobileTop },
+			legal: { left: Math.max(8, width - 113), top: mobileTop },
+			keyboard: { left: 8, top: mobileTop + 116 },
+			pad: { left: 154, top: mobileTop + 116 },
+			calc: { left: Math.max(8, width - 44), top: mobileTop + 116 },
+			coffee: { left: 8, top: mobileTop + 172 },
+			set: { left: 50, top: mobileTop + 172 }
+		};
 	}
 
 	function placeDeskProp(id: DeskPropId) {
 		if (deskProps[id].placed || !deskPropEls[id] || !sceneFrame || !foregroundDesk) return;
 		const saved = loadScenePosition(DESK_PROP_KEYS[id]);
-		const deskTop = deskSurfaceOffsetTop();
 		const narrow = sceneFrame.clientWidth <= 768;
-		const mobileTop = deskTop + 224;
-		const mobileLayout: Record<DeskPropId, { left: number; top: number }> = {
-			wsj: { left: 8, top: mobileTop },
-			legal: { left: 150, top: mobileTop },
-			keyboard: { left: 8, top: mobileTop + 116 },
-			pad: { left: 154, top: mobileTop + 116 },
-			calc: { left: 250, top: mobileTop + 116 },
-			coffee: { left: 306, top: mobileTop + 116 },
-			set: { left: 356, top: mobileTop + 116 }
-		};
+		const deskTop = deskSurfaceOffsetTop();
+		const mobileLayout = mobileDeskPropLayout();
+		const savedDefault = loadScenePosition(DESK_PROP_DEFAULT_KEYS[id]);
+		// Earlier builds stored default positions in scene coordinates. Normalize
+		// those once while keeping new defaults desk-relative.
+		const defaultTop = savedDefault
+			? (savedDefault.top >= deskTop ? savedDefault.top - deskTop : savedDefault.top)
+			: DESK_PROP_DEFAULTS[id].top;
 		const fallback = {
-			left: loadScenePosition(DESK_PROP_DEFAULT_KEYS[id])?.left ?? DESK_PROP_DEFAULTS[id].left,
-			top: (loadScenePosition(DESK_PROP_DEFAULT_KEYS[id])?.top ?? DESK_PROP_DEFAULTS[id].top) + deskTop
+			left: savedDefault?.left ?? DESK_PROP_DEFAULTS[id].left,
+			top: defaultTop + deskTop
 		};
 		// Migrate legacy desk-local saves (tops lived in the ~150px foreground strip).
 		let left = saved?.left ?? fallback.left;
@@ -838,13 +889,7 @@
 		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).forEach((id) => {
 			if (!deskProps[id].ready) return;
 			if (sceneFrame && foregroundDesk && sceneFrame.clientWidth <= 768) {
-				const mobileTop = deskSurfaceOffsetTop() + 224;
-				const mobileLayout: Record<DeskPropId, { left: number; top: number }> = {
-					wsj: { left: 8, top: mobileTop }, legal: { left: 150, top: mobileTop },
-					keyboard: { left: 8, top: mobileTop + 116 }, pad: { left: 154, top: mobileTop + 116 },
-					calc: { left: 250, top: mobileTop + 116 }, coffee: { left: 306, top: mobileTop + 116 },
-					set: { left: 356, top: mobileTop + 116 }
-				};
+				const mobileLayout = mobileDeskPropLayout();
 				const el = deskPropEls[id];
 				const offscreen = deskProps[id].left >= sceneFrame.clientWidth || deskProps[id].top < deskSurfaceOffsetTop() || deskProps[id].top > deskSurfaceOffsetTop() + foregroundDesk.clientHeight;
 				if (offscreen && !deskProps[id].dragging) {
@@ -1361,6 +1406,7 @@
 		reflowClipboard();
 		reflowPricePad();
 		reflowDeskProps();
+		placeOfficeFlag();
 	}}
 	onkeydown={(e) => {
 		if (e.key === 'Escape') pinnedId = null;
@@ -1594,7 +1640,7 @@
 					</div>
 				</div>
 				<div class="aisle">
-					<span>RISK<br />AISLE</span><i></i><i></i><i></i>
+					<span>RISK <br />AISLE</span><i></i><i></i><i></i>
 				</div>
 				<div class="desk-zone short-zone" class:active={signal?.bias === 'SHORT'}>
 					<div class="zone-sign"><span>SHORT BOOK</span><b>{shortOpen} OPEN</b></div>
@@ -2263,7 +2309,7 @@
 		position: relative;
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 7px;
+		gap: 0;
 		padding: 10px 8px 0;
 		background: #1e1513;
 	}
@@ -3133,7 +3179,7 @@
 	}
 	.foreground-monitor {
 		position: absolute;
-		left: 455px;
+		left: 50%;
 		bottom: 4px;
 		width: 325px;
 		height: 176px;
@@ -3144,6 +3190,7 @@
 		box-shadow:
 			inset 4px 4px #d4c9a6,
 			6px 6px 0 rgba(32, 14, 6, 0.45);
+		transform: translateX(-50%);
 		cursor: pointer;
 		z-index: 5;
 	}
@@ -3667,7 +3714,7 @@
 			max-width: calc(100vw - 16px);
 		}
 		.foreground-monitor {
-			left: 380px;
+			left: 50%;
 			width: 300px;
 		}
 		.keyboard-main {
@@ -3725,6 +3772,9 @@
 		}
 		.window-wall::after {
 			inset: 8px 6px 0;
+		}
+		.wire-decor-piece {
+			display: none;
 		}
 		.fund-sign {
 			margin: 10px 10px 8px;
@@ -3825,9 +3875,9 @@
 		}
 		.trader-row :global(.character) {
 			flex: 0 1 auto;
-			width: 96px;
-			max-width: 110px;
-			min-width: 84px;
+			width: 88px;
+			max-width: 96px;
+			min-width: 80px;
 		}
 		.trader-row :global(.character:nth-child(even)) {
 			transform: none;
@@ -3894,6 +3944,7 @@
 			max-width: 420px;
 			height: 200px;
 			margin: 0 auto;
+			transform: none;
 		}
 		.monitor-foot {
 			left: 50%;
@@ -3950,7 +4001,7 @@
 		.window-wall {
 			height: 120px;
 			padding: 6px 4px 0;
-			gap: 4px;
+			gap: 0;
 		}
 		.panoramic-skyline {
 			inset: 6px 4px 0;
@@ -4035,6 +4086,7 @@
 			max-width: none;
 			height: 190px;
 			margin: 0;
+			transform: none;
 		}
 		.book-stack,
 		.phone-main {
@@ -4086,6 +4138,16 @@
 		.desk-settings-btn.desk-prop {
 			width: 52px;
 			height: 42px;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.foreground-desk {
+			height: 860px;
+			min-height: 860px;
+		}
+		.foreground-monitor {
+			height: 180px;
 		}
 	}
 
