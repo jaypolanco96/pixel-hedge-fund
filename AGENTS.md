@@ -42,3 +42,13 @@ This workspace is the active Pixel Hedge Fund checkout. Treat the code and docs 
 - Prefer existing persistence helpers and UI primitives. Keep pair selection in URL/local storage as the app already does.
 - Run `npm run check` and `npm run build` after meaningful changes.
 - Use the local PHF skill at `.codex/skills/pixel-hedge-fund/SKILL.md` for implementation and review tasks.
+
+## Git: committing and pushing
+
+Claude Code pushed this repo successfully with plain git. There is no special trick.
+
+- Remote `origin` is `https://github.com/jaypolanco96/pixel-hedge-fund` over HTTPS, branch `main` tracks `origin/main`.
+- Git for Windows' system config sets `credential.helper = manager` (Git Credential Manager), which already holds the user's GitHub login. Do not add tokens, PATs, SSH keys, or credentials to the remote URL, files, or commands.
+- Only commit or push when the user asks. Never force-push, skip hooks, or change git config.
+- Workflow: `git status --short`, then `git add <specific files>` (not `-A`), then commit with a HEREDOC message (the existing style is `feat:` / `fix:` / `docs:` prefixes), then `git push origin main`, then `git status -sb` to confirm it is no longer ahead.
+- If a push is blocked, the cause is the sandbox rather than git: outbound network to github.com and access to the Windows credential manager are usually gated. Request approval to run `git push` unsandboxed / with network access, or ask the user to run it, instead of hunting for workarounds. If the error is an auth or non-fast-forward rejection, report the exact message and stop; do not rewrite history.

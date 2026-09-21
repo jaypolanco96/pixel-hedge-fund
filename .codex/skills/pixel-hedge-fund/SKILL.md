@@ -23,6 +23,10 @@ Keep the experience as a lived-in 1990s pixel hedge-fund office. Prefer diegetic
 
 Treat BloFin write routes as real-money capable. Preserve the explicit confirmation gate, keep assign/sync side-effect free, and do not expose API keys in source, docs, logs, context, skills, or artifacts. Do not add transfer or withdrawal endpoints. When editing trade UI, verify the confirmation state and the error/snapshot messaging paths.
 
+## Committing and pushing
+
+Only when the user asks. See "Git: committing and pushing" in `AGENTS.md`: stage specific files, commit with a HEREDOC message, then `git push origin main`. The HTTPS remote authenticates through the machine's Git Credential Manager, so never handle tokens. If the push is blocked, it is the sandbox (network or credential-manager access): ask for approval to run it unsandboxed or have the user run it. Never force-push.
+
 ## Implementation loop
 
 1. Identify the smallest relevant Svelte component, data module, route, or persistence helper.
