@@ -42,11 +42,14 @@ Positions come from live `/api/market/signal` (Supertrend + EMA21/55 + RSI + MAC
 
 | Tape | Desk mandate | Floor read |
 |------|--------------|------------|
-| Confluence ≥5, or ≥4 with structure / lower leverage | Same side as bias | **OPEN** at live Bybit mark, with BloFin as fallback. Stop = Supertrend. TP1 = 1.5R, TP2 = 2.5R |
+| Confluence ≥5, or ≥4 with structure / lower leverage | Same side as bias | **OPEN** in the simulated cast book. Each trader locks an entry-specific stop and TP1/TP2 plan using the Supertrend distance, ATR floor, and their leverage profile. |
+| High-confluence rejection, mixed MTF, RSI exhaustion | Opposite side, 5x/10x/25x only | **HEDGE OPEN**. A small counter-book trade may run alongside the trend book; it uses its own entry-locked risk plan. |
 | Confluence 2–4, not yet a fill | Same side | **Thinking** + thought cloud |
 | Bias against desk, or ST flipped | Opposite / invalid | **FLAT / Watching** — no invented fill |
 
-Hover / focus a trader → desk **clipboard**. Click to **pin** CRT snippet. Esc unpins.
+Lower-leverage traders have wider stops; higher-leverage traders use tighter stops and require larger reward multiples. A TP1 fill closes the simulated leg, shows a pixel cash-stack profit animation, and applies a 90-second re-entry cooldown to that trader. Stops and invalidations close simulated legs. These cast positions are visual simulations only and never send an order to Bybit or BloFin.
+
+Hover / focus a trader → desk **clipboard** to view that trader's entry, mark, unrealized PNL, risk stop, and individual targets. Click to **pin** CRT snippet. Esc unpins.
 
 ## Bybit mapping (multi-crypto)
 
