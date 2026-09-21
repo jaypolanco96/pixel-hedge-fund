@@ -12,12 +12,14 @@ export interface BloFinSecrets {
 	apiKey: string;
 	apiSecret: string;
 	passphrase: string;
+	brokerId?: string;
 	baseUrl: string;
 }
 
 export interface BybitSecrets {
 	apiKey: string;
 	apiSecret: string;
+	brokerId?: string;
 	/** Unused by Bybit v5 today — kept optional for desk form symmetry. */
 	passphrase?: string;
 	baseUrl: string;
@@ -34,6 +36,7 @@ export interface MaskedExchangeStatus {
 	apiKeyMasked: string | null;
 	secretMasked: string | null;
 	passphraseMasked: string | null;
+	brokerIdMasked?: string | null;
 	baseUrl: string;
 }
 
@@ -85,12 +88,14 @@ export function blofinStatusFrom(secrets: ExchangeSecretsFile): MaskedExchangeSt
 	const apiKey = (b.apiKey ?? '').trim();
 	const apiSecret = (b.apiSecret ?? '').trim();
 	const passphrase = (b.passphrase ?? '').trim();
+	const brokerId = (b.brokerId ?? '').trim();
 	const baseUrl = ((b.baseUrl ?? '').trim() || LIVE_BLOFIN_BASE).replace(/\/$/, '');
 	return {
 		configured: !!(apiKey && apiSecret && passphrase),
 		apiKeyMasked: mask(apiKey),
 		secretMasked: mask(apiSecret),
 		passphraseMasked: mask(passphrase),
+		brokerIdMasked: mask(brokerId),
 		baseUrl
 	};
 }
@@ -100,12 +105,14 @@ export function bybitStatusFrom(secrets: ExchangeSecretsFile): MaskedExchangeSta
 	const apiKey = (b.apiKey ?? '').trim();
 	const apiSecret = (b.apiSecret ?? '').trim();
 	const passphrase = (b.passphrase ?? '').trim();
+	const brokerId = (b.brokerId ?? '').trim();
 	const baseUrl = ((b.baseUrl ?? '').trim() || LIVE_BYBIT_BASE).replace(/\/$/, '');
 	return {
 		configured: !!(apiKey && apiSecret),
 		apiKeyMasked: mask(apiKey),
 		secretMasked: mask(apiSecret),
 		passphraseMasked: passphrase ? mask(passphrase) : null,
+		brokerIdMasked: mask(brokerId),
 		baseUrl
 	};
 }
@@ -128,6 +135,7 @@ export async function upsertBloFinSecrets(input: {
 	apiKey?: string;
 	apiSecret?: string;
 	passphrase?: string;
+	brokerId?: string;
 	baseUrl?: string;
 }): Promise<MaskedExchangeStatus> {
 	const cur = await readExchangeSecrets();
@@ -136,6 +144,7 @@ export async function upsertBloFinSecrets(input: {
 		apiKey: mergeSecretField(input.apiKey, prev.apiKey),
 		apiSecret: mergeSecretField(input.apiSecret, prev.apiSecret),
 		passphrase: mergeSecretField(input.passphrase, prev.passphrase),
+		brokerId: mergeSecretField(input.brokerId, prev.brokerId, { allowBlankClear: true }) || undefined,
 		baseUrl: ((input.baseUrl ?? prev.baseUrl ?? LIVE_BLOFIN_BASE) as string).trim().replace(/\/$/, '') ||
 			LIVE_BLOFIN_BASE
 	};
@@ -147,6 +156,7 @@ export async function upsertBybitSecrets(input: {
 	apiKey?: string;
 	apiSecret?: string;
 	passphrase?: string;
+	brokerId?: string;
 	baseUrl?: string;
 }): Promise<MaskedExchangeStatus> {
 	const cur = await readExchangeSecrets();
@@ -155,6 +165,7 @@ export async function upsertBybitSecrets(input: {
 		apiKey: mergeSecretField(input.apiKey, prev.apiKey),
 		apiSecret: mergeSecretField(input.apiSecret, prev.apiSecret),
 		passphrase: mergeSecretField(input.passphrase, prev.passphrase, { allowBlankClear: true }) || undefined,
+		brokerId: mergeSecretField(input.brokerId, prev.brokerId, { allowBlankClear: true }) || undefined,
 		baseUrl: ((input.baseUrl ?? prev.baseUrl ?? LIVE_BYBIT_BASE) as string).trim().replace(/\/$/, '') ||
 			LIVE_BYBIT_BASE
 	};
@@ -180,15 +191,17 @@ export function validateBloFinSecretsInput(input: {
 	apiKey?: string;
 	apiSecret?: string;
 	passphrase?: string;
+	brokerId?: string;
 	baseUrl?: string;
 }): MaskedExchangeStatus {
 	const apiKey = mergeSecretField(input.apiKey, undefined);
 	const apiSecret = mergeSecretField(input.apiSecret, undefined);
 	const passphrase = mergeSecretField(input.passphrase, undefined);
+	const brokerId = mergeSecretField(input.brokerId, undefined, { allowBlankClear: true }) || undefined;
 	const baseUrl =
 		((input.baseUrl ?? LIVE_BLOFIN_BASE) as string).trim().replace(/\/$/, '') || LIVE_BLOFIN_BASE;
 	return blofinStatusFrom({
-		blofin: { apiKey, apiSecret, passphrase, baseUrl }
+		blofin: { apiKey, apiSecret, passphrase, brokerId, baseUrl }
 	});
 }
 
@@ -197,16 +210,18 @@ export function validateBybitSecretsInput(input: {
 	apiKey?: string;
 	apiSecret?: string;
 	passphrase?: string;
+	brokerId?: string;
 	baseUrl?: string;
 }): MaskedExchangeStatus {
 	const apiKey = mergeSecretField(input.apiKey, undefined);
 	const apiSecret = mergeSecretField(input.apiSecret, undefined);
 	const passphrase =
 		mergeSecretField(input.passphrase, undefined, { allowBlankClear: true }) || undefined;
+	const brokerId = mergeSecretField(input.brokerId, undefined, { allowBlankClear: true }) || undefined;
 	const baseUrl =
 		((input.baseUrl ?? LIVE_BYBIT_BASE) as string).trim().replace(/\/$/, '') || LIVE_BYBIT_BASE;
 	return bybitStatusFrom({
-		bybit: { apiKey, apiSecret, passphrase, baseUrl }
+		bybit: { apiKey, apiSecret, passphrase, brokerId, baseUrl }
 	});
 }
 

@@ -39,7 +39,7 @@
 	import { initialSimClock, tickSimClock, applyForcedChristmasSnow, SIM_MINUTES_PER_REAL_SECOND } from '$lib/weather/timeCycle';
 	import { initialKong, tickKong } from '$lib/weather/kongEvent';
 	import { initialMariachi, tickMariachi } from '$lib/weather/mariachiEvent';
-	import { DEFAULT_DISPLAY, SYMBOLS, SYMBOL_CATEGORIES, resolveSymbol, symbolsInCategory, type SymbolCategory } from '$lib/data/symbols';
+	import { DEFAULT_DISPLAY, SYMBOLS, SYMBOL_CATEGORIES, resolveSymbol, spotWireSymbol, symbolsInCategory, type SymbolCategory } from '$lib/data/symbols';
 	import type {
 		Bar,
 		CandlesResponse,
@@ -68,6 +68,7 @@
 	let bars = $state<Bar[]>([]);
 	let legs = $state<TraderLeg[]>([]);
 	let book = $state<OpenBook>({});
+	let lastDecisionCandle = 0;
 	let err = $state<string | null>(null);
 	let animTick = $state(0);
 	let totalSimMinutes = $state(0);
@@ -102,6 +103,7 @@
 	let clipboardOffsetY = 0;
 
 	const PRICE_PAD_KEY = 'phf-price-pad-pos';
+	const WIRE_MARKET_KEY = 'phf-wire-market';
 	let pricePadRoot = $state<HTMLElement>();
 	let pricePadLeft = $state(18);
 	let pricePadTop = $state(0);
@@ -165,12 +167,16 @@
 
 	/** MARKET WIRE category filter */
 	let wireCategory = $state<SymbolCategory | 'all'>('all');
+	let wireMarket = $state<'futures' | 'spot'>('futures');
 	const wireSymbols = $derived(symbolsInCategory(wireCategory));
 	const filteredTapeQuotes = $derived(
 		tapeQuotes.filter((q) => {
 			if (wireCategory === 'all') return true;
 			return resolveSymbol(q.display).category === wireCategory;
 		})
+	);
+	const wireTokenQuotes = $derived(
+		filteredTapeQuotes.filter((q) => /(?:\d+(?:L|S)|\d+X(?:LONG|SHORT))$/i.test(q.display.replace(/USDT$/, '')))
 	);
 
 	/** WSJ headlines for active symbol */
@@ -692,6 +698,38 @@
 		}
 	}
 
+	function setWireMarket(market: 'futures' | 'spot') {
+		wireMarket = market;
+		try {
+			localStorage.setItem(WIRE_MARKET_KEY, market);
+		} catch {
+			/* ignore */
+		}
+		void pollTape(market);
+	}
+
+	function wireLabel(display: string): string {
+		return wireMarket === 'spot' ? spotWireSymbol(display) : resolveSymbol(display).label;
+	}
+
+	function wireDecimals(display: string, price: number): number {
+		const known = SYMBOLS.find((s) => s.display === display);
+		if (known) return known.decimals;
+		return price < 1 ? 8 : 4;
+	}
+
+	async function pollTape(market = wireMarket) {
+		try {
+			const res = await fetch(`/api/market/tape?market=${market}`);
+			if (!res.ok) throw new Error('Market Wire unavailable');
+			const tape = (await res.json()) as { market?: 'futures' | 'spot'; quotes?: QuoteResponse[] };
+			if (market !== wireMarket) return;
+			tapeQuotes = tape.quotes ?? [];
+		} catch (e) {
+			err = e instanceof Error ? e.message : 'Market Wire unavailable';
+		}
+	}
+
 	async function pollNews() {
 		const sym = activeDisplay;
 		try {
@@ -806,6 +844,7 @@
 		activeDisplay = def.display;
 		book = {};
 		legs = [];
+		lastDecisionCandle = 0;
 		quote = null;
 		signal = null;
 		bars = [];
@@ -822,12 +861,13 @@
 
 	async function pollMarket() {
 		const sym = activeDisplay;
+		const tapeMode = wireMarket;
 		try {
 			const [qRes, sRes, cRes, tRes] = await Promise.all([
 				fetch(`/api/market/quote?symbol=${encodeURIComponent(sym)}`),
 				fetch(`/api/market/signal?symbol=${encodeURIComponent(sym)}`),
 				fetch(`/api/market/candles?symbol=${encodeURIComponent(sym)}&tf=15m&limit=80`),
-				fetch('/api/market/tape')
+				fetch(`/api/market/tape?market=${tapeMode}`)
 			]);
 			if (!qRes.ok || !sRes.ok) throw new Error('Tape Wire unavailable');
 			const q = (await qRes.json()) as QuoteResponse;
@@ -837,12 +877,14 @@
 			quote = q;
 			signal = s;
 			if (cRes.ok) bars = ((await cRes.json()) as CandlesResponse).bars;
-			if (tRes.ok) {
+			if (tRes.ok && tapeMode === wireMarket) {
 				const tape = (await tRes.json()) as { quotes: QuoteResponse[] };
 				tapeQuotes = tape.quotes ?? [];
 			}
 			const mark = q.mark || q.price;
 			const def = resolveSymbol(sym);
+			const decisionCandle = bars.at(-2)?.t ?? bars.at(-1)?.t ?? 0;
+			const decisionPoint = decisionCandle !== 0 && decisionCandle !== lastDecisionCandle;
 			const result = reconcileBook(
 				book,
 				s,
@@ -850,8 +892,10 @@
 				mark,
 				q.sample || s.sample,
 				def.display,
-				def.kraken
+				def.kraken,
+				decisionPoint
 			);
+			if (decisionPoint) lastDecisionCandle = decisionCandle;
 			book = result.book;
 			legs = result.legs;
 			err = null;
@@ -872,6 +916,12 @@
 			initial = DEFAULT_DISPLAY;
 		}
 		activeDisplay = initial;
+		try {
+			const storedMarket = localStorage.getItem(WIRE_MARKET_KEY);
+			if (storedMarket === 'spot' || storedMarket === 'futures') wireMarket = storedMarket;
+		} catch {
+			/* ignore */
+		}
 		persistSymbol(initial);
 
 		let raf = 0;
@@ -1011,7 +1061,7 @@
 			<div class="wall-panel right-wall">
 				<div class="market-board">
 					<header>
-						<span>MARKET WIRE</span><i>{quote?.sample ? 'SAMPLE' : `LIVE ${activeDef.label}`}</i>
+						<span>MARKET WIRE · {wireMarket.toUpperCase()}</span><i>{quote?.sample ? 'SAMPLE' : `LIVE ${wireMarket === 'spot' ? 'SPOT' : activeDef.label}`}</i>
 					</header>
 
 					<div class="wire-cats" role="tablist" aria-label="Wire categories">
@@ -1026,6 +1076,11 @@
 							>{cat.label}</button>
 						{/each}
 					</div>
+					<div class="wire-market-toggle" role="group" aria-label="Market Wire venue">
+						<span>VENUE</span>
+						<button type="button" class:active={wireMarket === 'futures'} onclick={() => setWireMarket('futures')}>FUTURES</button>
+						<button type="button" class:active={wireMarket === 'spot'} onclick={() => setWireMarket('spot')}>SPOT</button>
+					</div>
 					<label class="channel-switch">
 						<span>CHANNEL</span>
 						<select value={activeDisplay} onchange={onChannelChange} aria-label="Active trading symbol">
@@ -1037,11 +1092,23 @@
 					{#if wireCategory === 'etf' || wireCategory === 'stock'}
 						<p class="wire-note">No live ETF/stock perps on desk venues — tabs reserved.</p>
 					{/if}
+					{#if wireMarket === 'spot' && wireTokenQuotes.length === 0}
+						<p class="wire-note">No live leveraged spot tokens returned by Bybit right now · checked SHIB3L / SHIB3S / SHIB5L / SHIB5S.</p>
+					{:else if wireMarket === 'spot'}
+						<div class="wire-token-heading">LEVERAGED SPOT TOKENS</div>
+						{#each wireTokenQuotes as tq (tq.display)}
+							<div class="wire-token-row">
+								<b>{wireLabel(tq.display)}</b>
+								<strong>{tq.price.toFixed(wireDecimals(tq.display, tq.price))}{tq.sample ? '*' : ''}</strong>
+								<em class:down={(tq.change24h ?? 0) < 0}>{tq.change24h == null ? '—' : `${tq.change24h >= 0 ? '+' : ''}${tq.change24h.toFixed(1)}%`}</em>
+							</div>
+						{/each}
+					{/if}
 					{#each filteredTapeQuotes.filter((q) => q.display !== activeDisplay).slice(0, 5) as tq (tq.display)}
 						<div>
-							<b>{resolveSymbol(tq.display).label}</b>
+							<b>{wireLabel(tq.display)}</b>
 							<strong
-								>{tq.price.toFixed(resolveSymbol(tq.display).decimals)}{tq.sample
+								>{tq.price.toFixed(wireDecimals(tq.display, tq.price))}{tq.sample
 									? '*'
 									: ''}</strong
 							>
@@ -1062,7 +1129,7 @@
 		</section>
 
 		<div class="ticker-anchor">
-			<TickerTape quotes={tapeQuotes} {activeDisplay} bias={signal?.bias ?? 'FLAT'} />
+			<TickerTape quotes={tapeQuotes} {activeDisplay} market={wireMarket} bias={signal?.bias ?? 'FLAT'} />
 		</div>
 
 		<section class="office-floor">
@@ -1576,6 +1643,7 @@
 	bind:open={quickTradeOpen}
 	{activeDisplay}
 	{quote}
+	{signal}
 	{priceDecimals}
 	presetTraderId={quickTradePresetTraderId}
 	onSelectSymbol={setSymbol}
@@ -1802,6 +1870,39 @@
 	.market-board header i {
 		color: #6ed898;
 		font-style: normal;
+	}
+	.wire-market-toggle {
+		display: flex !important;
+		grid-template-columns: none !important;
+		align-items: center;
+		gap: 3px !important;
+		margin-top: 5px !important;
+		font-size: 6px;
+		color: #9d886f;
+	}
+	.wire-market-toggle button {
+		padding: 3px 5px;
+		background: #1a1c16;
+		border: 1px solid #5a5134;
+		color: #9d886f;
+		font: 6px var(--mono);
+		cursor: pointer;
+	}
+	.wire-market-toggle button.active {
+		background: #efc870;
+		border-color: #efc870;
+		color: #0c0e0a;
+	}
+	.wire-token-heading {
+		display: block !important;
+		margin-top: 6px !important;
+		font-size: 6px;
+		color: #efc870;
+		letter-spacing: 0.06em;
+	}
+	.wire-token-row {
+		border-top: 1px solid #5a5134;
+		padding-top: 4px;
 	}
 	.channel-switch {
 		display: flex;

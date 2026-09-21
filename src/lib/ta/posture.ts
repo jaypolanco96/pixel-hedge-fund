@@ -44,6 +44,10 @@ function mandateMatch(side: Side, bias: Bias): boolean {
 	return (side === 'long' && bias === 'LONG') || (side === 'short' && bias === 'SHORT');
 }
 
+function oppositeBias(side: Side, bias: Bias): boolean {
+	return (side === 'long' && bias === 'SHORT') || (side === 'short' && bias === 'LONG');
+}
+
 function stAgainst(side: Side, dir: 1 | -1): boolean {
 	return (side === 'long' && dir === -1) || (side === 'short' && dir === 1);
 }
@@ -110,16 +114,9 @@ export function postureForTrader(
 		sample
 	};
 
-	if (!signal || bias === 'FLAT') {
-		return { ...base, posture: 'watching' as const, status: 'watching' as const };
-	}
-
-	if (!mandateMatch(trader.side, bias)) {
-		return { ...base, posture: 'counter' as const, status: 'flat' as const };
-	}
-
-	if (wantsOpen(trader, signal) && leg) {
-		// The effective trader definition is authoritative after a leverage edit.
+	if (leg) {
+		// An open leg remains open between closed-candle decisions. The book is
+		// the source of truth here; intrabar signal noise must not rewrite posture.
 		const pct = leg.unrealizedPnlUsd / (leg.notionalUsd / trader.leverage);
 		return {
 			...base,
@@ -129,13 +126,21 @@ export function postureForTrader(
 			mark: leg.mark,
 			unrealizedPnlUsd: leg.unrealizedPnlUsd,
 			unrealizedPnlPctMargin: pct,
-			stop: signal.risk.stop,
-			tp1: signal.risk.tp1,
-			tp2: signal.risk.tp2,
-			rrTp1: signal.risk.rr_tp1,
+			stop: signal?.risk.stop ?? leg.stop,
+			tp1: signal?.risk.tp1 ?? leg.tp1,
+			tp2: signal?.risk.tp2 ?? leg.tp2,
+			rrTp1: signal?.risk.rr_tp1,
 			invalidation: 'ST flip against side',
 			sample: sample || leg.sample
 		};
+	}
+
+	if (!signal || bias === 'FLAT') {
+		return { ...base, posture: 'watching' as const, status: 'watching' as const };
+	}
+
+	if (!mandateMatch(trader.side, bias)) {
+		return { ...base, posture: 'counter' as const, status: 'flat' as const };
 	}
 
 	if (isConsidering(trader, signal)) {
@@ -155,7 +160,10 @@ export function postureForTrader(
 	return { ...base, posture: 'watching', status: 'watching' };
 }
 
-/** Persist fills only for desks that still qualify. Entry = live mark at first open. */
+/**
+ * Reconcile at a closed-candle decision point. Existing legs persist between
+ * decisions and only leave on an explicit invalidation.
+ */
 export function reconcileBook(
 	book: OpenBook,
 	signal: SignalResponse | null,
@@ -163,14 +171,19 @@ export function reconcileBook(
 	mark: number,
 	sample: boolean,
 	displaySymbol = 'SOLUSDT',
-	krakenSymbol = 'PF_SOLUSD'
+	krakenSymbol = 'PF_SOLUSD',
+	decisionPoint = true
 ): { book: OpenBook; legs: TraderLeg[] } {
 	const next: OpenBook = {};
 	const legs: TraderLeg[] = [];
 	if (!signal || mark <= 0) return { book: {}, legs: [] };
 
 	for (const t of traders) {
-		if (!wantsOpen(t, signal)) continue;
+		const alreadyOpen = book[t.id] !== undefined;
+		if (!alreadyOpen && !wantsOpen(t, signal)) continue;
+		if (alreadyOpen && decisionPoint && (oppositeBias(t.side, signal.bias) || stAgainst(t.side, signal.supertrend.direction))) {
+			continue;
+		}
 		const entry = book[t.id] ?? mark;
 		next[t.id] = entry;
 		const leg = markLeg(t, entry, mark, sample, displaySymbol, krakenSymbol);

@@ -41,6 +41,7 @@ For **solo local dev**, env or `.secrets/exchanges.json` still work as fallbacks
 | `BLOFIN_API_KEY` | local only | API key (aliases: `BLOFIN_KEY`) |
 | `BLOFIN_API_SECRET` | local only | Secret (aliases: `BLOFIN_SECRET`) |
 | `BLOFIN_PASSPHRASE` | local only | Passphrase (aliases: `BLOFIN_PASS`) |
+| `BLOFIN_BROKER_ID` | local only | BloFin broker ID when the API key is broker-bound; sent on order placement |
 | `BLOFIN_BASE_URL` | no | Default **live**: `https://openapi.blofin.com`. Demo URL discouraged. |
 
 API key needs **TRADE** permission for writes (READ alone is not enough).
@@ -72,11 +73,15 @@ Linux box: same keys in `/workspace/pixel-hedge-fund/app/.env.local`, **or** use
 |------|----------|------------------|
 | `/api/blofin/leverage` | `POST /api/v1/account/set-leverage` | `instId`, `leverage`, `marginMode`, optional `positionSide` |
 | `/api/blofin/margin-mode` | `POST /api/v1/account/set-margin-mode` | `marginMode`: `isolated` \| `cross` |
-| `/api/blofin/order` | `POST /api/v1/trade/order` | `instId`, `marginMode`, `side`, `orderType`, `size`, optional `price` / `positionSide` / `reduceOnly` |
+| `/api/blofin/order` | `POST /api/v1/trade/order` | `instId`, `marginMode`, `side`, `orderType`, `size`, optional `price` / `positionSide` / `reduceOnly` / TP/SL trigger fields |
 | `/api/blofin/cancel` | `POST /api/v1/trade/cancel-order` | `instId` + `orderId` or `clientOrderId` |
 | `/api/blofin/close` | `POST /api/v1/trade/close-position` | `instId`, `marginMode`, `positionSide` |
 
 Unknown paths are rejected inside `blofin.ts` (GET/POST allowlists).
+
+### Bybit Quick Trade
+
+Quick Trade can target Bybit linear USDT contracts and spot symbols when Bybit keys are configured. The `/api/bybit/order` route signs `POST /v5/order/create`; linear orders attach full-position market TP1 and Supertrend SL with `MarkPrice` triggers, while spot orders use base-coin sizing and supported TP1 / SL fields. Bybit broker accounts can provide `BYBIT_BROKER_ID`, sent as the `X-Referer` broker header. All orders remain behind the same **LIVE ORDER — confirm** gate.
 
 ## Desk UI
 
@@ -84,7 +89,9 @@ Unknown paths are rejected inside `blofin.ts` (GET/POST allowlists).
 - **LOGIN**: per-visitor keys in browser session; confirm before save.
 - **Assign** maps a position → floor trader in `localStorage` (`phf-blofin-assignments`) and can **store a trade intent** (% funds, margin, leverage, order type, reduce-only).
 - **LIVE ORDER — confirm** is required before POST. No auto-fire on assign/sync alone.
-- Quick Trade: same options + confirm gate; Send enabled when live/writes ready.
+- Quick Trade: same options + confirm gate; aligned Chart Desk orders attach full-size TP1 and Supertrend SL using mark-price triggers with market execution (`-1`). The confirmation gate shows both attached levels before sending. Create is blocked when the selected side has no valid aligned levels.
+- Spot Quick Trade: choose `SPOT` in the market selector. BloFin sends `POST /api/v1/spot/trade/order`; Bybit sends a `spot` order through `/v5/order/create`. The gate shows the current TP1 / SL plan; Bybit spot sends supported TP1 / SL fields, while BloFin spot currently sends the entry and presents protection for review.
+- Leveraged tokens are spot products. PHF discovers currently listed venue symbols at runtime, including names such as `BTC3L` / `BTC3S` or the equivalent symbol returned by the exchange. Availability can change by venue and region, so only instruments reported as tradable by the public spot instrument endpoint are shown. Token orders use the live token price for sizing, require a spot sell to exit, and do not use futures leverage, liquidation protection, or attached futures TP/SL.
 
 ## Snapshot fallback (403 / network)
 

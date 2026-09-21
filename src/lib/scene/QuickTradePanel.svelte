@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { SYMBOLS } from '$lib/data/symbols';
 	import { TRADERS } from '$lib/characters/cast';
-	import type { QuoteResponse, Side } from '$lib/data/types';
+	import type { QuoteResponse, SignalResponse, Side } from '$lib/data/types';
 	import type {
 		BloFinBalanceResponse,
 		BloFinHealth,
@@ -10,6 +10,7 @@
 		BloFinPositionsResponse,
 		BloFinTradeWriteResponse
 	} from '$lib/data/blofinTypes';
+	import type { BybitBalanceResponse, BybitHealth, BybitTradeWriteResponse } from '$lib/data/bybitTypes';
 	import {
 		displayToBloFinInstId,
 		newIntentId,
@@ -28,6 +29,16 @@
 	import { loadLeverageOverrides } from '$lib/persist/leverage';
 	import { formatExchangeError, toastErr, toastOk } from '$lib/ui/toast';
 	import { exchangeFetch } from '$lib/client/exchangeHeaders';
+	import { bybitSpotSymbol, resolveSymbol } from '$lib/data/symbols';
+
+	type LeveragedToken = {
+		exchange: 'bybit' | 'blofin';
+		symbol: string;
+		instId: string;
+		base: string;
+		quote: string;
+		label: string;
+	};
 
 	const FUNDS_PCT_KEY = 'phf-quick-funds-pct';
 
@@ -55,6 +66,7 @@
 		open = $bindable(false),
 		activeDisplay = 'SOLUSDT',
 		quote = null,
+		signal = null,
 		priceDecimals = 2,
 		presetTraderId = null as string | null,
 		onSelectSymbol = (_d: string) => {},
@@ -63,6 +75,7 @@
 		open?: boolean;
 		activeDisplay?: string;
 		quote?: QuoteResponse | null;
+		signal?: SignalResponse | null;
 		priceDecimals?: number;
 		/** When set (floor click), apply trader side + leverage on open. */
 		presetTraderId?: string | null;
@@ -71,6 +84,8 @@
 	} = $props();
 
 	let side = $state<Side>('long');
+	let exchange = $state<'blofin' | 'bybit'>('blofin');
+	let marketType = $state<'futures' | 'spot'>('futures');
 	let fundsPct = $state(loadFundsPct());
 	let leverage = $state(10);
 	let traderId = $state('L10');
@@ -80,9 +95,15 @@
 	let reduceOnly = $state(false);
 	let overrideLev = $state(false);
 	let lastAppliedPreset = $state<string | null>(null);
+	let leveragedTokens = $state<LeveragedToken[]>([]);
+	let tokenSelection = $state('');
+	let tokenMark = $state(0);
+	let tokenLoading = $state(false);
 
 	let health = $state<BloFinHealth | null>(null);
 	let balance = $state<BloFinBalanceResponse | null>(null);
+	let bybitHealth = $state<BybitHealth | null>(null);
+	let bybitBalance = $state<BybitBalanceResponse | null>(null);
 	let loadingBal = $state(false);
 	let pending = $state<BloFinTradeIntent | null>(null);
 	let confirmOpen = $state(false);
@@ -90,8 +111,19 @@
 	let statusMsg = $state<string | null>(null);
 	let statusErr = $state(false);
 
-	const mark = $derived(quote?.mark || quote?.price || 0);
+	const activeToken = $derived(
+		leveragedTokens.find((t) => t.exchange === exchange && t.symbol === tokenSelection) ?? null
+	);
+	const availableTokens = $derived(leveragedTokens.filter((t) => t.exchange === exchange));
+	const isLeveragedToken = $derived(!!activeToken);
+	const pendingIsLeveragedToken = $derived(
+		!!pending && pending.marketType === 'spot' && pending.takeProfitPrice == null && pending.stopLossPrice == null
+	);
+	const mark = $derived(isLeveragedToken ? tokenMark : quote?.mark || quote?.price || 0);
 	const availableEquity = $derived.by(() => {
+		if (exchange === 'bybit') {
+			return bybitBalance?.coins.find((c) => c.coin.toUpperCase() === 'USDT')?.available ?? bybitBalance?.totalEquityUsd ?? 0;
+		}
 		if (!balance?.ok) return 0;
 		const usdt = balance.details.find((d) => d.currency.toUpperCase() === 'USDT');
 		if (usdt) return usdt.available;
@@ -99,15 +131,40 @@
 		return balance.details.reduce((s, d) => s + d.available, 0);
 	});
 	const sizing = $derived(
-		sizeFromFundsPct({ availableEquity, fundsPct, leverage, markPrice: mark })
+		marketType === 'spot'
+			? (() => {
+				const margin = Math.max(0, availableEquity) * (Math.min(100, Math.max(0, fundsPct)) / 100);
+				return { margin, notional: margin, size: mark > 0 ? margin / mark : 0 };
+			})()
+			: sizeFromFundsPct({ availableEquity, fundsPct, leverage, markPrice: mark })
 	);
 	const assigned = $derived(TRADERS.find((t) => t.id === traderId) ?? null);
 	const sideTraders = $derived(TRADERS.filter((t) => t.side === side));
-	const writesReady = $derived(!!health?.writesEnabled);
+	const writesReady = $derived(exchange === 'bybit' ? !!bybitHealth?.configured && bybitHealth.reachable !== false : !!health?.writesEnabled);
 	const networkBlocked = $derived(
-		!!health?.configured && (!!health?.networkBlocked || health?.reachable === false)
+		exchange === 'bybit' ? !!bybitHealth?.configured && bybitHealth.reachable === false : !!health?.configured && (!!health?.networkBlocked || health?.reachable === false)
 	);
-	const instId = $derived(displayToBloFinInstId(activeDisplay));
+	const activeConfigured = $derived(exchange === 'bybit' ? !!bybitHealth?.configured : !!health?.configured);
+	const activeLive = $derived(exchange === 'bybit' ? activeConfigured && !networkBlocked : health?.mode === 'live');
+	const instId = $derived(
+		activeToken
+			? activeToken.instId
+			: exchange === 'bybit'
+			? marketType === 'spot'
+				? bybitSpotSymbol(resolveSymbol(activeDisplay))
+				: resolveSymbol(activeDisplay).bybit
+			: displayToBloFinInstId(activeDisplay)
+	);
+	const protection = $derived.by(() => {
+		if (isLeveragedToken || !signal || !Number.isFinite(mark) || mark <= 0) return null;
+		const aligned = signal.bias === side.toUpperCase();
+		const stop = signal.risk.stop;
+		const takeProfit = signal.risk.tp1;
+		const valid = side === 'long' ? stop < mark && takeProfit > mark : stop > mark && takeProfit < mark;
+		return aligned && valid
+			? { stopLoss: stop, takeProfit, sample: signal.sample }
+			: null;
+	});
 
 	function close() {
 		confirmOpen = false;
@@ -141,6 +198,52 @@
 				if (!overrideLev) leverage = first.leverage;
 			}
 		}
+	}
+
+	function onExchangeChange() {
+		if (activeToken?.exchange !== exchange) tokenSelection = '';
+		loadAccount();
+	}
+
+	async function loadLeveragedTokens() {
+		tokenLoading = true;
+		try {
+			const res = await exchangeFetch('/api/market/leveraged-tokens');
+			if (!res.ok) throw new Error(`Token list HTTP ${res.status}`);
+			const body = (await res.json()) as { tokens?: LeveragedToken[] };
+			leveragedTokens = Array.isArray(body.tokens) ? body.tokens : [];
+		} catch (e) {
+			leveragedTokens = [];
+			statusMsg = `Leveraged token list unavailable · ${e instanceof Error ? e.message : String(e)}`;
+			statusErr = true;
+		} finally {
+			tokenLoading = false;
+		}
+	}
+
+	async function loadTokenMark(token: LeveragedToken) {
+		try {
+			const res = await exchangeFetch(`/api/market/leveraged-token-quote?exchange=${token.exchange}&symbol=${encodeURIComponent(token.instId)}`);
+			const body = (await res.json()) as { price?: number; mark?: number };
+			const price = Number(body.mark ?? body.price ?? 0);
+			tokenMark = Number.isFinite(price) ? price : 0;
+		} catch {
+			tokenMark = 0;
+		}
+	}
+
+	function onTokenChange() {
+		if (!activeToken) {
+			tokenMark = 0;
+			return;
+		}
+		marketType = 'spot';
+		void loadTokenMark(activeToken);
+	}
+
+	function onRegularSymbolChange(e: Event) {
+		tokenSelection = '';
+		onSelectSymbol((e.currentTarget as HTMLSelectElement).value);
 	}
 
 	function onTraderChange(e: Event) {
@@ -208,6 +311,15 @@
 	async function loadAccount() {
 		loadingBal = true;
 		try {
+			if (exchange === 'bybit') {
+				const [hRes, bRes] = await Promise.all([
+					exchangeFetch('/api/bybit/health'),
+					exchangeFetch('/api/bybit/balance')
+				]);
+				bybitHealth = (await hRes.json()) as BybitHealth;
+				bybitBalance = (await bRes.json()) as BybitBalanceResponse;
+				return;
+			}
 			const [hRes, bRes] = await Promise.all([
 				exchangeFetch('/api/blofin/health'),
 				exchangeFetch('/api/blofin/balance')
@@ -230,8 +342,10 @@
 			createdAt: new Date().toISOString(),
 			traderId,
 			instId,
-			display: activeDisplay,
+			exchange,
+			display: activeToken?.symbol ?? activeDisplay,
 			fundsPct,
+			marketType,
 			marginMode,
 			positionSide: positionSideFromTradeSide(side),
 			side: orderSideFromTradeSide(side),
@@ -244,6 +358,9 @@
 			estMargin: sz.margin,
 			availableEquity,
 			markPrice: mark,
+			stopLossPrice: protection?.stopLoss ?? null,
+			takeProfitPrice: protection?.takeProfit ?? null,
+			signalSample: protection?.sample ?? false,
 			source: 'quick'
 		};
 	}
@@ -256,6 +373,7 @@
 		if (leverage > 125) return 'Leverage over max (125×)';
 		if (!(sizing.size > 0)) return 'Size is empty — check % funds / mark / equity';
 		if (availableEquity <= 0) return 'No available equity loaded';
+		if (!isLeveragedToken && !protection) return 'No valid TP1 / Supertrend stop for this side — wait for an aligned Chart Desk signal';
 		if (orderType === 'limit' && !(limitPrice && limitPrice > 0)) return 'Limit order needs a price';
 		return null;
 	}
@@ -288,15 +406,15 @@
 		}
 		storeIntent();
 		if (!(pending && pending.estSize > 0)) return;
-		if (!health?.configured) {
+		if (!writesReady) {
 			statusErr = true;
-			statusMsg = 'BloFin keys not configured — open Desk LOGIN';
+			statusMsg = `${exchange === 'bybit' ? 'Bybit' : 'BloFin'} keys not configured or unreachable — open Desk LOGIN`;
 			toastErr('Keys missing', statusMsg);
 			return;
 		}
 		if (networkBlocked) {
 			statusErr = true;
-			statusMsg = 'BloFin network blocked — cannot place live order';
+			statusMsg = `${exchange === 'bybit' ? 'Bybit' : 'BloFin'} network blocked — cannot place live order`;
 			toastErr('Network blocked', statusMsg);
 			return;
 		}
@@ -309,6 +427,79 @@
 		statusErr = false;
 		statusMsg = 'Sending live order…';
 		try {
+			if (exchange === 'bybit') {
+				const bybitRes = await exchangeFetch('/api/bybit/order', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						category: pending.marketType === 'spot' ? 'spot' : 'linear',
+						symbol: pending.instId,
+						side: pending.side === 'buy' ? 'Buy' : 'Sell',
+						orderType: pending.orderType === 'market' ? 'Market' : 'Limit',
+						qty: String(Number(pending.estSize.toFixed(pending.marketType === 'spot' ? 8 : 4))),
+						price: pending.orderType === 'limit' ? String(pending.price) : undefined,
+						...(pending.marketType === 'spot'
+							? {
+								marketUnit: 'baseCoin',
+								...(pending.takeProfitPrice != null && pending.stopLossPrice != null
+									? {
+										takeProfit: String(pending.takeProfitPrice),
+										stopLoss: String(pending.stopLossPrice),
+										tpOrderType: 'Market',
+										slOrderType: 'Market'
+									}
+									: {})
+							}
+							: {
+								positionIdx: pending.positionSide === 'long' ? 1 : 2,
+								reduceOnly: pending.reduceOnly,
+								takeProfit: String(pending.takeProfitPrice),
+								stopLoss: String(pending.stopLossPrice),
+								tpTriggerBy: 'MarkPrice',
+								slTriggerBy: 'MarkPrice'
+							}
+						)
+					})
+				});
+				const bybit = (await bybitRes.json()) as BybitTradeWriteResponse;
+				if (!bybit.ok) throw new Error(formatExchangeError(bybit));
+				const placed = pending;
+				removeTradeIntent(pending.id);
+				statusMsg = `BYBIT LIVE OK · ${pending.instId} ${pending.side} · ${fmt(pending.estSize, 4)}`;
+				toastOk('Bybit order live', statusMsg);
+				statusErr = false;
+				confirmOpen = false;
+				pending = null;
+				await loadAccount();
+				return;
+			}
+
+			if (pending.marketType === 'spot') {
+				const spotRes = await exchangeFetch('/api/blofin/spot-order', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						instType: 'SPOT',
+						instId: pending.instId,
+						side: pending.side,
+						orderType: pending.orderType,
+						size: String(Number(pending.estSize.toFixed(8))),
+						price: pending.orderType === 'limit' ? String(pending.price) : undefined,
+						targetCurrency: 'base_currency'
+					})
+				});
+				const spot = (await spotRes.json()) as BloFinTradeWriteResponse;
+				if (!spot.ok) throw new Error(formatExchangeError(spot));
+				removeTradeIntent(pending.id);
+				statusMsg = `BLOFIN SPOT LIVE OK · ${pending.instId} · ${fmt(pending.estSize, 8)}`;
+				toastOk('BloFin spot order live', statusMsg);
+				statusErr = false;
+				confirmOpen = false;
+				pending = null;
+				await loadAccount();
+				return;
+			}
+
 			const mmRes = await exchangeFetch('/api/blofin/margin-mode', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -338,6 +529,14 @@
 				size: String(Number(pending.estSize.toFixed(4))),
 				positionSide: pending.positionSide
 			};
+			if (pending.takeProfitPrice != null && pending.stopLossPrice != null) {
+				orderBody.tpTriggerPrice = String(pending.takeProfitPrice);
+				orderBody.tpOrderPrice = '-1';
+				orderBody.tpTriggerPriceType = 'mark';
+				orderBody.slTriggerPrice = String(pending.stopLossPrice);
+				orderBody.slOrderPrice = '-1';
+				orderBody.slTriggerPriceType = 'mark';
+			}
 			if (pending.orderType === 'limit' && pending.price != null) {
 				orderBody.price = String(pending.price);
 			}
@@ -394,6 +593,16 @@
 			traderId = side === 'long' ? 'L10' : 'S10';
 		}
 		void loadAccount();
+		void loadLeveragedTokens();
+	});
+
+	$effect(() => {
+		if (activeToken) {
+			marketType = 'spot';
+			void loadTokenMark(activeToken);
+		} else {
+			tokenMark = 0;
+		}
 	});
 </script>
 
@@ -405,21 +614,21 @@
 		<header class="titlebar">
 			<div class="leds">
 				<i class:on={writesReady} class:warn={!writesReady}></i>
-				<i class:live={health?.mode === 'live'}></i>
-				<i class:ok={!!health?.ok}></i>
+				<i class:live={activeLive}></i>
+				<i class:ok={activeConfigured && !networkBlocked}></i>
 			</div>
-			<strong>CREATE POSITION · {health?.mode === 'live' ? 'LIVE' : (health?.mode ?? '—').toUpperCase()}</strong>
+			<strong>CREATE POSITION · {exchange.toUpperCase()} · {activeLive ? 'LIVE' : '—'}</strong>
 			<button type="button" class="x" onclick={close} aria-label="Close quick trade">×</button>
 		</header>
 
-		{#if networkBlocked && health?.configured}
-			<div class="banner warn">BloFin unreachable from this network (403). Keys OK — use VPN or deploy server-side.</div>
-		{:else if health?.fromSnapshot}
+		{#if networkBlocked && activeConfigured}
+			<div class="banner warn">{exchange === 'bybit' ? 'Bybit' : 'BloFin'} unreachable from this network. Keys OK — use VPN or deploy server-side.</div>
+		{:else if exchange === 'blofin' && health?.fromSnapshot}
 			<div class="banner cache">SNAPSHOT / CACHE — offline desk copy (not demo)</div>
 		{:else if writesReady}
 			<div class="banner live">FUND TRADER WITH % EQUITY · Confirm LIVE required before POST</div>
 		{:else}
-			<div class="banner warn">KEYS NOT SET · open Desk LOGIN (browser session)</div>
+			<div class="banner warn">{exchange.toUpperCase()} KEYS NOT SET · open Desk LOGIN (browser session)</div>
 		{/if}
 
 		<div class="body">
@@ -430,7 +639,23 @@
 				<div class="hero-pct">{fmt(fundsPct, 0)}%</div>
 				<input type="range" min="0" max="100" step="1" bind:value={fundsPct} aria-label="Percent of funds" />
 				<input type="number" min="0" max="100" step="0.1" bind:value={fundsPct} aria-label="Percent of funds number" />
-				<em class="hero-hint">0% = no order · sizes from available equity × leverage ÷ mark</em>
+				<em class="hero-hint">0% = no order · {marketType === 'spot' ? 'spot size = funds ÷ mark' : 'futures size = funds × leverage ÷ mark'}</em>
+			</label>
+
+			<label class="field">
+				<span>EXCHANGE</span>
+				<select bind:value={exchange} onchange={onExchangeChange}>
+					<option value="blofin">BloFin</option>
+					<option value="bybit">Bybit</option>
+				</select>
+			</label>
+
+			<label class="field">
+				<span>MARKET</span>
+				<select bind:value={marketType} aria-label="Market type">
+					<option value="futures">FUTURES / PERPETUAL</option>
+					<option value="spot">SPOT</option>
+				</select>
 			</label>
 
 			<label class="field">
@@ -453,12 +678,23 @@
 				<span>SYMBOL</span>
 				<select
 					value={activeDisplay}
-					onchange={(e) => onSelectSymbol((e.currentTarget as HTMLSelectElement).value)}
+					onchange={onRegularSymbolChange}
 				>
 					{#each SYMBOLS as s (s.display)}
 						<option value={s.display}>{s.display}</option>
 					{/each}
 				</select>
+			</label>
+
+			<label class="field">
+				<span>LEVERAGED TOKEN {tokenLoading ? '· loading…' : ''}</span>
+				<select bind:value={tokenSelection} onchange={onTokenChange} aria-label="Leveraged token">
+					<option value="">REGULAR SYMBOL</option>
+					{#each availableTokens as token (token.exchange + token.instId)}
+						<option value={token.symbol}>{token.label}</option>
+					{/each}
+				</select>
+				<em class="field-note">{isLeveragedToken ? 'Spot product · no liquidation · venue token price' : 'Venue-listed 3L / 3S and similar spot products appear here'}</em>
 			</label>
 
 			<label class="field">
@@ -469,9 +705,9 @@
 				</select>
 			</label>
 
-			<label class="field">
+			<label class="field" class:disabled-field={marketType === 'spot'}>
 				<span>LEVERAGE {overrideLev ? '(override)' : '(from trader)'}</span>
-				<input type="number" min="1" max="125" step="1" bind:value={leverage} aria-label="Leverage" />
+				<input type="number" min="1" max="125" step="1" bind:value={leverage} aria-label="Leverage" disabled={marketType === 'spot'} />
 				<label class="check">
 					<input type="checkbox" bind:checked={overrideLev} />
 					override trader desk leverage
@@ -502,9 +738,10 @@
 				<div><dt>INST</dt><dd class="mono">{instId}</dd></div>
 				<div><dt>MARK</dt><dd>{mark ? fmt(mark, priceDecimals) : '—'}</dd></div>
 				<div><dt>AVAIL EQ</dt><dd>${fmt(availableEquity, 2)}{loadingBal ? ' …' : ''}</dd></div>
-				<div><dt>MARGIN</dt><dd>${fmt(sizing.margin, 2)}</dd></div>
-				<div><dt>NOTIONAL</dt><dd>${fmt(sizing.notional, 2)}</dd></div>
+			<div><dt>{marketType === 'spot' ? 'FUNDS' : 'MARGIN'}</dt><dd>${fmt(sizing.margin, 2)}</dd></div>
+			<div><dt>{marketType === 'spot' ? 'VALUE' : 'NOTIONAL'}</dt><dd>${fmt(sizing.notional, 2)}</dd></div>
 				<div><dt>EST SIZE</dt><dd>{fmt(sizing.size, 4)} cts</dd></div>
+				<div><dt>STOP / TP1</dt><dd>{isLeveragedToken ? 'SPOT EXIT PLAN' : protection ? `${fmt(protection.stopLoss, priceDecimals)} / ${fmt(protection.takeProfit, priceDecimals)}` : 'WAITING FOR ALIGNED SIGNAL'}</dd></div>
 				<div>
 					<dt>ASSIGNED</dt>
 					<dd>{assigned ? `${assigned.name} · ${assigned.side.toUpperCase()}` : '—'}</dd>
@@ -526,7 +763,7 @@
 					CREATE POSITION
 				</button>
 			</div>
-			<p class="hint">Store never POSTs. Create arms CONFIRM LIVE. Esc / × closes.</p>
+			<p class="hint">{isLeveragedToken ? 'Leveraged token is a spot product; TP1 / SL are an exit plan and are not attached to the entry.' : marketType === 'spot' ? 'Spot entry only; TP1 / SL are shown as the current plan.' : 'Create attaches full-size TP1 + Supertrend SL at mark, then arms CONFIRM LIVE.'} Esc / × closes.</p>
 		</div>
 		<footer>
 			{networkBlocked ? 'NETWORK BLOCKED' : writesReady ? 'LIVE READY' : 'KEYS MISSING'} · CONFIRM LIVE required · never auto-fires · key {FUNDS_PCT_KEY}
@@ -546,7 +783,13 @@
 				{#if pending.reduceOnly}
 					<br />reduce-only
 				{/if}
+				{#if pending.signalSample}<br />SAMPLE signal — verify before sending{/if}
 			</p>
+			<div class="confirm-levels" aria-label="Attached take profit and stop loss">
+				<div><span>TP1</span><b>{pendingIsLeveragedToken ? 'SPOT EXIT' : fmt(pending.takeProfitPrice ?? 0, priceDecimals)}</b></div>
+				<div><span>SL</span><b>{pendingIsLeveragedToken ? 'SPOT EXIT' : fmt(pending.stopLossPrice ?? 0, priceDecimals)}</b></div>
+			<small>{pendingIsLeveragedToken ? 'Leveraged token · no TP/SL attached · sell to exit' : pending.marketType === 'spot' ? (pending.exchange === 'bybit' ? 'Bybit spot TP1 / SL attached · market exits' : 'BloFin spot plan shown for review · protection is not attached to the entry') : 'Attached protection · mark-price triggers · market exits'}</small>
+			</div>
 			<div class="confirm-actions">
 				<button type="button" class="ghost" disabled={sending} onclick={() => (confirmOpen = false)}>CANCEL</button>
 				<button type="button" class="danger" disabled={sending} onclick={confirmLiveOrder}>
@@ -626,6 +869,7 @@
 		text-shadow: 0 0 12px rgba(255, 200, 80, 0.35);
 	}
 	.hero-hint { font-size: 7px; opacity: 0.65; font-style: normal; letter-spacing: 0.03em; }
+	.field-note { font-size: 7px; opacity: 0.65; font-style: normal; letter-spacing: 0.02em; }
 	.field { display: flex; flex-direction: column; gap: 4px; font-size: 8px; letter-spacing: 0.06em; }
 	.field select,
 	.field input[type='number'],
@@ -671,6 +915,14 @@
 	}
 	.confirm strong { display: block; font-size: 11px; letter-spacing: 0.1em; margin-bottom: 8px; color: #ff766a; }
 	.confirm p { font-size: 9px; line-height: 1.5; margin: 0 0 12px; }
+	.confirm-levels {
+		display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0 0 12px;
+		padding: 8px; background: #160b09; border: 2px solid #8f392f;
+	}
+	.confirm-levels div { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; }
+	.confirm-levels span { color: #ffb0a4; }
+	.confirm-levels b { color: #fff0d8; }
+	.confirm-levels small { grid-column: 1 / -1; font-size: 7px; opacity: 0.75; }
 	.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 	.danger { background: #8f392f; border: 2px solid #ff766a; color: #ffe0d9; }
 </style>

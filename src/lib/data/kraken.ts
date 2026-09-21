@@ -12,7 +12,7 @@ import {
 	TAPE_DISPLAYS,
 	type SymbolDef
 } from './symbols';
-import { fetchBybitQuote, fetchBybitQuotesFor } from './bybit';
+import { fetchBybitQuote, fetchBybitQuotesFor, fetchBybitSpotLeveragedQuotes, fetchBybitSpotQuotesFor } from './bybit';
 
 export { resolveSymbol, SYMBOLS, DEFAULT_DISPLAY, TAPE_DISPLAYS } from './symbols';
 
@@ -111,7 +111,16 @@ export async function fetchQuote(symbolInput?: string | null): Promise<QuoteResp
 }
 
 /** Live quotes for multi-crypto tape — Kraken batch + Bybit fill-in. SAMPLE per miss. */
-export async function fetchTapeQuotes(): Promise<QuoteResponse[]> {
+export type TapeMarket = 'futures' | 'spot';
+
+export async function fetchTapeQuotes(market: TapeMarket = 'futures'): Promise<QuoteResponse[]> {
+	if (market === 'spot') {
+		const [spotMap, leveraged] = await Promise.all([
+			fetchBybitSpotQuotesFor(SYMBOLS),
+			fetchBybitSpotLeveragedQuotes()
+		]);
+		return [...SYMBOLS.map((def) => spotMap.get(def.display) ?? sampleQuote(def.display)), ...leveraged];
+	}
 	const krakenDefs = SYMBOLS.filter((d) => hasKraken(d) && d.quoteVenue === 'kraken');
 	const bybitDefs = SYMBOLS.filter((d) => !hasKraken(d) || d.quoteVenue === 'bybit');
 

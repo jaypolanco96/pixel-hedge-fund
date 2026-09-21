@@ -6,6 +6,7 @@ export type BloFinMarginMode = 'isolated' | 'cross';
 export type BloFinPositionSide = 'long' | 'short' | 'net';
 export type BloFinOrderSide = 'buy' | 'sell';
 export type BloFinOrderType = 'market' | 'limit';
+export type BloFinTriggerPriceType = 'last' | 'mark' | 'index';
 
 export interface BloFinHealth {
 	ok: boolean;
@@ -120,6 +121,24 @@ export interface BloFinPlaceOrderBody {
 	price?: string | number;
 	positionSide?: BloFinPositionSide;
 	reduceOnly?: boolean;
+	clientOrderId?: string;
+	tpTriggerPrice?: string | number;
+	tpOrderPrice?: string | number;
+	tpTriggerPriceType?: BloFinTriggerPriceType;
+	slTriggerPrice?: string | number;
+	slOrderPrice?: string | number;
+	slTriggerPriceType?: BloFinTriggerPriceType;
+	brokerId?: string;
+}
+
+export interface BloFinSpotPlaceOrderBody {
+	instType: 'SPOT';
+	instId: string;
+	side: BloFinOrderSide;
+	orderType: BloFinOrderType;
+	size: string | number;
+	price?: string | number;
+	targetCurrency?: 'base_currency' | 'quote_currency';
 	clientOrderId?: string;
 }
 

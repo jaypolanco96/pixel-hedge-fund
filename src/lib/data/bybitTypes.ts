@@ -55,6 +55,38 @@ export interface BybitPositionsResponse {
 	note?: string;
 }
 
+export type BybitOrderType = 'Market' | 'Limit';
+
+export interface BybitPlaceOrderBody {
+	category: 'linear' | 'spot';
+	symbol: string;
+	side: 'Buy' | 'Sell';
+	orderType: BybitOrderType;
+	qty: string;
+	price?: string;
+	timeInForce?: 'GTC' | 'IOC' | 'FOK' | 'PostOnly';
+	positionIdx?: 0 | 1 | 2;
+	orderLinkId?: string;
+	reduceOnly?: boolean;
+	takeProfit?: string;
+	stopLoss?: string;
+	tpTriggerBy?: 'MarkPrice' | 'IndexPrice' | 'LastPrice';
+	slTriggerBy?: 'MarkPrice' | 'IndexPrice' | 'LastPrice';
+	tpslMode?: 'Full' | 'Partial';
+	tpOrderType?: 'Market' | 'Limit';
+	slOrderType?: 'Market' | 'Limit';
+}
+
+export interface BybitTradeWriteResponse {
+	ok: boolean;
+	configured?: boolean;
+	orderId?: string;
+	orderLinkId?: string;
+	error?: string;
+	code?: string;
+	msg?: string;
+}
+
 export interface BybitTickerRow {
 	symbol: string;
 	lastPrice: number;

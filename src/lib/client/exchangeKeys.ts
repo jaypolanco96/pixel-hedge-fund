@@ -9,12 +9,14 @@ export interface BloFinClientKeys {
 	apiKey: string;
 	apiSecret: string;
 	passphrase: string;
+	brokerId?: string;
 	baseUrl: string;
 }
 
 export interface BybitClientKeys {
 	apiKey: string;
 	apiSecret: string;
+	brokerId?: string;
 	passphrase?: string;
 	baseUrl: string;
 }
@@ -29,6 +31,7 @@ export interface MaskedKeyStatus {
 	apiKeyMasked: string | null;
 	secretMasked: string | null;
 	passphraseMasked: string | null;
+	brokerIdMasked?: string | null;
 	baseUrl: string;
 }
 
@@ -91,6 +94,7 @@ export function blofinStatusFromClient(keys: ExchangeClientKeys): MaskedKeyStatu
 		apiKeyMasked: maskSecret(apiKey),
 		secretMasked: maskSecret(apiSecret),
 		passphraseMasked: maskSecret(passphrase),
+		brokerIdMasked: maskSecret(b?.brokerId),
 		baseUrl
 	};
 }
@@ -106,6 +110,7 @@ export function bybitStatusFromClient(keys: ExchangeClientKeys): MaskedKeyStatus
 		apiKeyMasked: maskSecret(apiKey),
 		secretMasked: maskSecret(apiSecret),
 		passphraseMasked: passphrase ? maskSecret(passphrase) : null,
+		brokerIdMasked: maskSecret(b?.brokerId),
 		baseUrl
 	};
 }
@@ -114,6 +119,7 @@ export function upsertBloFinClientKeys(input: {
 	apiKey?: string;
 	apiSecret?: string;
 	passphrase?: string;
+	brokerId?: string;
 	baseUrl?: string;
 }): MaskedKeyStatus {
 	const cur = loadExchangeKeys();
@@ -122,6 +128,7 @@ export function upsertBloFinClientKeys(input: {
 		apiKey: resolveSecretField(input.apiKey ?? '', prev?.apiKey),
 		apiSecret: resolveSecretField(input.apiSecret ?? '', prev?.apiSecret),
 		passphrase: resolveSecretField(input.passphrase ?? '', prev?.passphrase),
+		brokerId: resolveSecretField(input.brokerId ?? '', prev?.brokerId) || undefined,
 		baseUrl:
 			((input.baseUrl ?? prev?.baseUrl ?? LIVE_BLOFIN_BASE) as string).trim().replace(/\/$/, '') ||
 			LIVE_BLOFIN_BASE
@@ -134,6 +141,7 @@ export function upsertBybitClientKeys(input: {
 	apiKey?: string;
 	apiSecret?: string;
 	passphrase?: string;
+	brokerId?: string;
 	baseUrl?: string;
 }): MaskedKeyStatus {
 	const cur = loadExchangeKeys();
@@ -142,6 +150,7 @@ export function upsertBybitClientKeys(input: {
 	const next: BybitClientKeys = {
 		apiKey: resolveSecretField(input.apiKey ?? '', prev?.apiKey),
 		apiSecret: resolveSecretField(input.apiSecret ?? '', prev?.apiSecret),
+		brokerId: resolveSecretField(input.brokerId ?? '', prev?.brokerId) || undefined,
 		passphrase: pass || undefined,
 		baseUrl:
 			((input.baseUrl ?? prev?.baseUrl ?? LIVE_BYBIT_BASE) as string).trim().replace(/\/$/, '') ||

@@ -23,6 +23,7 @@ import type {
 	BloFinOrder,
 	BloFinOrdersResponse,
 	BloFinPlaceOrderBody,
+	BloFinSpotPlaceOrderBody,
 	BloFinPosition,
 	BloFinPositionsResponse,
 	BloFinSetLeverageBody,
@@ -58,6 +59,7 @@ const ALLOWED_POST = new Set([
 	'/api/v1/account/set-leverage',
 	'/api/v1/account/set-margin-mode',
 	'/api/v1/trade/order',
+	'/api/v1/spot/trade/order',
 	'/api/v1/trade/cancel-order',
 	'/api/v1/trade/close-position'
 ]);
@@ -66,6 +68,7 @@ export interface BloFinConfig {
 	apiKey: string;
 	apiSecret: string;
 	passphrase: string;
+	brokerId?: string;
 	baseUrl: string;
 	mode: BloFinMode;
 	configured: boolean;
@@ -105,6 +108,7 @@ function readBloFinSecretsFile(): {
 	apiKey?: string;
 	apiSecret?: string;
 	passphrase?: string;
+	brokerId?: string;
 	baseUrl?: string;
 } {
 	try {
@@ -129,6 +133,7 @@ export function getBloFinConfig(): BloFinConfig {
 			apiKey: fromReq.apiKey.trim(),
 			apiSecret: fromReq.apiSecret.trim(),
 			passphrase: fromReq.passphrase.trim(),
+			brokerId: fromReq.brokerId?.trim() || undefined,
 			baseUrl,
 			mode,
 			configured: true
@@ -139,6 +144,7 @@ export function getBloFinConfig(): BloFinConfig {
 	const apiKey = (env.BLOFIN_API_KEY ?? env.BLOFIN_KEY ?? file.apiKey ?? '').trim();
 	const apiSecret = (env.BLOFIN_API_SECRET ?? env.BLOFIN_SECRET ?? file.apiSecret ?? '').trim();
 	const passphrase = (env.BLOFIN_PASSPHRASE ?? env.BLOFIN_PASS ?? file.passphrase ?? '').trim();
+	const brokerId = (env.BLOFIN_BROKER_ID ?? file.brokerId ?? '').trim();
 	const rawBase = (env.BLOFIN_BASE_URL ?? env.BLOFIN_BASE ?? file.baseUrl ?? '').trim();
 	const baseUrl = (rawBase || LIVE_BASE || SECRETS_LIVE_BLOFIN).replace(/\/$/, '');
 	const mode: BloFinMode = /demo/i.test(baseUrl) ? 'demo' : 'live';
@@ -146,6 +152,7 @@ export function getBloFinConfig(): BloFinConfig {
 		apiKey,
 		apiSecret,
 		passphrase,
+		brokerId: brokerId || undefined,
 		baseUrl,
 		mode,
 		configured: !!(apiKey && apiSecret && passphrase)
@@ -218,7 +225,10 @@ async function blofinGet<T = unknown>(pathWithQuery: string): Promise<Ok<T> | Fa
 		if (code !== '0' && code !== '') {
 			return {
 				ok: false,
-				error: json.msg || `BloFin code ${code}`,
+				error:
+					code === '152012'
+						? 'BloFin brokerId is required for this API key. Add BLOFIN_BROKER_ID or enter it in Desk Login.'
+						: json.msg || `BloFin code ${code}`,
 				status: res.status,
 				code,
 				msg: json.msg
@@ -285,7 +295,10 @@ async function blofinPost<T = unknown>(
 		if (code !== '0' && code !== '') {
 			return {
 				ok: false,
-				error: json.msg || `BloFin code ${code}`,
+				error:
+					code === '152012'
+						? 'BloFin brokerId is required for this API key. Add BLOFIN_BROKER_ID or enter it in Desk Login.'
+						: json.msg || `BloFin code ${code}`,
 				status: res.status,
 				code,
 				msg: json.msg
@@ -809,6 +822,7 @@ export async function placeOrder(body: BloFinPlaceOrderBody): Promise<BloFinTrad
 		orderType: body.orderType,
 		size: String(size)
 	};
+	if (cfg.brokerId) payload.brokerId = cfg.brokerId;
 	if (body.orderType === 'limit') {
 		const price = strField(body.price);
 		if (!price || !(Number(price) > 0)) {
@@ -822,7 +836,69 @@ export async function placeOrder(body: BloFinPlaceOrderBody): Promise<BloFinTrad
 	if (body.reduceOnly === true) payload.reduceOnly = true;
 	const coid = strField(body.clientOrderId);
 	if (coid) payload.clientOrderId = coid;
+	const tpTrigger = strField(body.tpTriggerPrice);
+	const tpOrder = strField(body.tpOrderPrice);
+	const slTrigger = strField(body.slTriggerPrice);
+	const slOrder = strField(body.slOrderPrice);
+	if ((tpTrigger && !tpOrder) || (!tpTrigger && tpOrder)) {
+		return { ok: false, mode: cfg.mode, path, error: 'tpTriggerPrice and tpOrderPrice must be provided together' };
+	}
+	if ((slTrigger && !slOrder) || (!slTrigger && slOrder)) {
+		return { ok: false, mode: cfg.mode, path, error: 'slTriggerPrice and slOrderPrice must be provided together' };
+	}
+	if (tpTrigger) {
+		if (!(Number(tpTrigger) > 0)) return { ok: false, mode: cfg.mode, path, error: 'tpTriggerPrice must be positive' };
+		payload.tpTriggerPrice = tpTrigger;
+		payload.tpOrderPrice = tpOrder;
+		payload.tpTriggerPriceType = body.tpTriggerPriceType ?? 'mark';
+	}
+	if (slTrigger) {
+		if (!(Number(slTrigger) > 0)) return { ok: false, mode: cfg.mode, path, error: 'slTriggerPrice must be positive' };
+		payload.slTriggerPrice = slTrigger;
+		payload.slOrderPrice = slOrder;
+		payload.slTriggerPriceType = body.slTriggerPriceType ?? 'mark';
+	}
 
+	const res = await blofinPost(path, payload);
+	return writeResult(path, res, cfg);
+}
+
+export async function placeSpotOrder(body: BloFinSpotPlaceOrderBody): Promise<BloFinTradeWriteResponse> {
+	const cfg = getBloFinConfig();
+	const path = '/api/v1/spot/trade/order';
+	const instId = strField(body.instId);
+	const size = strField(body.size);
+	if (body.instType !== 'SPOT' || !instId || !size) {
+		return { ok: false, mode: cfg.mode, path, error: 'SPOT instType, instId, and size are required' };
+	}
+	if (body.side !== 'buy' && body.side !== 'sell') {
+		return { ok: false, mode: cfg.mode, path, error: 'side must be buy|sell' };
+	}
+	if (!['market', 'limit'].includes(body.orderType)) {
+		return { ok: false, mode: cfg.mode, path, error: 'orderType must be market|limit' };
+	}
+	const sizeNum = Number(size);
+	if (!Number.isFinite(sizeNum) || sizeNum <= 0) {
+		return { ok: false, mode: cfg.mode, path, error: 'size must be a positive number' };
+	}
+	const payload: Record<string, unknown> = {
+		instType: 'SPOT',
+		instId,
+		side: body.side,
+		orderType: body.orderType,
+		size: String(size)
+	};
+	if (cfg.brokerId) payload.brokerId = cfg.brokerId;
+	if (body.targetCurrency) payload.targetCurrency = body.targetCurrency;
+	if (body.orderType === 'limit') {
+		const price = strField(body.price);
+		if (!price || !(Number(price) > 0)) {
+			return { ok: false, mode: cfg.mode, path, error: 'spot limit orders require a positive price' };
+		}
+		payload.price = price;
+	}
+	const coid = strField(body.clientOrderId);
+	if (coid) payload.clientOrderId = coid;
 	const res = await blofinPost(path, payload);
 	return writeResult(path, res, cfg);
 }

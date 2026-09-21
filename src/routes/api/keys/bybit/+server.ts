@@ -21,6 +21,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		apiKey: body.apiKey != null ? String(body.apiKey) : undefined,
 		apiSecret: body.apiSecret != null ? String(body.apiSecret) : undefined,
 		passphrase: body.passphrase != null ? String(body.passphrase) : undefined,
+		brokerId: body.brokerId != null ? String(body.brokerId) : undefined,
 		baseUrl: body.baseUrl != null ? String(body.baseUrl) : undefined
 	};
 

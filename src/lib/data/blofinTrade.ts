@@ -29,6 +29,12 @@ export interface BloFinTradeIntent {
 	estMargin: number;
 	availableEquity: number;
 	markPrice: number;
+	exchange?: 'blofin' | 'bybit';
+	marketType?: 'futures' | 'spot';
+	/** Protective levels copied from the current Chart Desk signal. */
+	stopLossPrice?: number | null;
+	takeProfitPrice?: number | null;
+	signalSample?: boolean;
 	/** Optional link to existing BloFin position */
 	positionId?: string;
 	source: 'desk' | 'quick';

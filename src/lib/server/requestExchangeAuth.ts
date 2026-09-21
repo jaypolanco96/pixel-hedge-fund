@@ -14,10 +14,12 @@ import {
 export const PHF_BLOFIN_KEY = 'x-phf-blofin-key';
 export const PHF_BLOFIN_SECRET = 'x-phf-blofin-secret';
 export const PHF_BLOFIN_PASS = 'x-phf-blofin-pass';
+export const PHF_BLOFIN_BROKER = 'x-phf-blofin-broker';
 export const PHF_BLOFIN_BASE = 'x-phf-blofin-base';
 export const PHF_BYBIT_KEY = 'x-phf-bybit-key';
 export const PHF_BYBIT_SECRET = 'x-phf-bybit-secret';
 export const PHF_BYBIT_BASE = 'x-phf-bybit-base';
+export const PHF_BYBIT_BROKER = 'x-phf-bybit-broker';
 
 export interface RequestExchangeAuth {
 	blofin?: BloFinSecrets;
@@ -36,12 +38,14 @@ export function parseExchangeAuthFromRequest(request: Request): RequestExchangeA
 	const bfKey = header(request, PHF_BLOFIN_KEY);
 	const bfSecret = header(request, PHF_BLOFIN_SECRET);
 	const bfPass = header(request, PHF_BLOFIN_PASS);
+	const bfBroker = header(request, PHF_BLOFIN_BROKER);
 	const bfBase = header(request, PHF_BLOFIN_BASE);
 	if (bfKey && bfSecret && bfPass) {
 		out.blofin = {
 			apiKey: bfKey,
 			apiSecret: bfSecret,
 			passphrase: bfPass,
+			brokerId: bfBroker || undefined,
 			baseUrl: (bfBase || LIVE_BLOFIN_BASE).replace(/\/$/, '')
 		};
 	}
@@ -49,10 +53,12 @@ export function parseExchangeAuthFromRequest(request: Request): RequestExchangeA
 	const byKey = header(request, PHF_BYBIT_KEY);
 	const bySecret = header(request, PHF_BYBIT_SECRET);
 	const byBase = header(request, PHF_BYBIT_BASE);
+	const byBroker = header(request, PHF_BYBIT_BROKER);
 	if (byKey && bySecret) {
 		out.bybit = {
 			apiKey: byKey,
 			apiSecret: bySecret,
+			brokerId: byBroker || undefined,
 			baseUrl: (byBase || LIVE_BYBIT_BASE).replace(/\/$/, '')
 		};
 	}

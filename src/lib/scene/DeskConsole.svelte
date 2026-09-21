@@ -71,10 +71,12 @@
 	let blofinKey = $state('');
 	let blofinSecret = $state('');
 	let blofinPass = $state('');
+	let blofinBrokerId = $state('');
 	let blofinBase = $state('https://openapi.blofin.com');
 	let bybitKey = $state('');
 	let bybitSecret = $state('');
 	let bybitPass = $state('');
+	let bybitBrokerId = $state('');
 	let bybitBase = $state('https://api.bybit.com');
 	let keysStatus = $state<{
 		ok?: boolean;
@@ -83,6 +85,7 @@
 			apiKeyMasked: string | null;
 			secretMasked?: string | null;
 			passphraseMasked?: string | null;
+			brokerIdMasked?: string | null;
 			baseUrl: string;
 		};
 		bybit?: {
@@ -90,6 +93,7 @@
 			apiKeyMasked: string | null;
 			secretMasked?: string | null;
 			passphraseMasked?: string | null;
+			brokerIdMasked?: string | null;
 			baseUrl: string;
 		};
 	} | null>(null);
@@ -148,9 +152,11 @@
 			if (bf?.apiKeyMasked) blofinKey = bf.apiKeyMasked;
 			if (bf?.secretMasked) blofinSecret = bf.secretMasked;
 			if (bf?.passphraseMasked) blofinPass = bf.passphraseMasked;
+			if (bf?.brokerIdMasked) blofinBrokerId = bf.brokerIdMasked;
 			if (by?.apiKeyMasked) bybitKey = by.apiKeyMasked;
 			if (by?.secretMasked) bybitSecret = by.secretMasked;
 			if (by?.passphraseMasked) bybitPass = by.passphraseMasked;
+			if (by?.brokerIdMasked) bybitBrokerId = by.brokerIdMasked;
 		} catch (e) {
 			keysErr = true;
 			keysMsg = e instanceof Error ? e.message : String(e);
@@ -172,6 +178,7 @@
 				apiKey: blofinKey,
 				apiSecret: blofinSecret,
 				passphrase: blofinPass,
+				brokerId: blofinBrokerId,
 				baseUrl: blofinBase || 'https://openapi.blofin.com'
 			});
 			if (!localStatus.configured) {
@@ -185,6 +192,7 @@
 					apiKey: stored?.apiKey,
 					apiSecret: stored?.apiSecret,
 					passphrase: stored?.passphrase,
+					brokerId: stored?.brokerId,
 					baseUrl: stored?.baseUrl || 'https://openapi.blofin.com'
 				})
 			});
@@ -222,6 +230,7 @@
 				apiKey: bybitKey,
 				apiSecret: bybitSecret,
 				passphrase: bybitPass || undefined,
+				brokerId: bybitBrokerId || undefined,
 				baseUrl: bybitBase || 'https://api.bybit.com'
 			});
 			if (!localStatus.configured) {
@@ -235,6 +244,7 @@
 					apiKey: stored?.apiKey,
 					apiSecret: stored?.apiSecret,
 					passphrase: stored?.passphrase,
+					brokerId: stored?.brokerId,
 					baseUrl: stored?.baseUrl || 'https://api.bybit.com'
 				})
 			});
@@ -801,6 +811,9 @@
 						<label class="field"><span>PASSPHRASE</span>
 							<input type="password" autocomplete="off" bind:value={blofinPass} placeholder="****" />
 						</label>
+						<label class="field"><span>BROKER ID (if required)</span>
+							<input type="password" autocomplete="off" bind:value={blofinBrokerId} placeholder="broker id" />
+						</label>
 						<label class="field"><span>BASE URL</span>
 							<input type="text" bind:value={blofinBase} placeholder="https://openapi.blofin.com" />
 						</label>
@@ -819,6 +832,9 @@
 						</label>
 						<label class="field"><span>PASSPHRASE (optional)</span>
 							<input type="password" autocomplete="off" bind:value={bybitPass} placeholder="optional" />
+						</label>
+						<label class="field"><span>BROKER ID (if required)</span>
+							<input type="password" autocomplete="off" bind:value={bybitBrokerId} placeholder="broker id" />
 						</label>
 						<label class="field"><span>BASE URL</span>
 							<input type="text" bind:value={bybitBase} placeholder="https://api.bybit.com" />

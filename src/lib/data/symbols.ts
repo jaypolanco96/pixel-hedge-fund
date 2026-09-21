@@ -16,6 +16,8 @@ export interface SymbolDef {
 	kraken: string;
 	/** Bybit linear USDT perpetual symbol (always set for tape fill-in). */
 	bybit: string;
+	/** Bybit spot symbol; defaults to the linear symbol when omitted. */
+	bybitSpot?: string;
 	canonical: string;
 	/** Rough SAMPLE mid when live fetch fails — labeled sample only. */
 	sampleMid: number;
@@ -167,6 +169,7 @@ export const SYMBOLS: readonly SymbolDef[] = [
 		display: 'SHIBUSDT',
 		kraken: '',
 		bybit: 'SHIB1000USDT',
+		bybitSpot: 'SHIBUSDT',
 		canonical: 'CRYPTO:BYBIT:SHIB1000USDT',
 		sampleMid: 0.000018,
 		decimals: 8,
@@ -319,6 +322,18 @@ export function isKnownDisplay(display: string): boolean {
 
 export function hasKraken(def: SymbolDef): boolean {
 	return !!def.kraken;
+}
+
+export function bybitSpotSymbol(def: SymbolDef): string {
+	return def.bybitSpot ?? def.bybit;
+}
+
+/** Human-facing spot wire ticker: omit USDT and show regular pairs as USD. */
+export function spotWireSymbol(input: string): string {
+	const raw = input.toUpperCase();
+	const base = raw.replace(/USDT$/, '');
+	if (/(?:\d+(?:L|S)|\d+X(?:LONG|SHORT))$/i.test(base)) return base;
+	return `${base}USD`;
 }
 
 export function symbolsInCategory(cat: SymbolCategory | 'all'): SymbolDef[] {

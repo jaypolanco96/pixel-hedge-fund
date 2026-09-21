@@ -1,20 +1,27 @@
 <script lang="ts">
 	import type { Bias, QuoteResponse } from '$lib/data/types';
-	import { resolveSymbol } from '$lib/data/symbols';
+	import { SYMBOLS, resolveSymbol, spotWireSymbol } from '$lib/data/symbols';
 
 	let {
 		quotes = [],
 		activeDisplay = 'SOLUSDT',
+		market = 'futures',
 		bias = 'FLAT'
 	}: {
 		quotes?: QuoteResponse[];
 		activeDisplay?: string;
+		market?: 'futures' | 'spot';
 		bias?: Bias;
 	} = $props();
 
 	function fmtPrice(q: QuoteResponse): string {
 		const def = resolveSymbol(q.display);
-		return q.price.toFixed(def.decimals);
+		const known = SYMBOLS.some((s) => s.display === q.display);
+		return q.price.toFixed(known ? def.decimals : q.price < 1 ? 8 : 4);
+	}
+
+	function label(q: QuoteResponse): string {
+		return market === 'spot' ? spotWireSymbol(q.display) : q.display;
 	}
 
 	function fmtChg(q: QuoteResponse): string {
@@ -27,13 +34,14 @@
 			quotes.length > 0
 				? quotes.map((q) => {
 						const tag = q.sample ? ' SAMPLE' : '';
-						return `${q.display} ${fmtPrice(q)} ${fmtChg(q)}${tag}`.trim();
+						return `${label(q)} ${fmtPrice(q)} ${fmtChg(q)}${tag}`.trim();
 					})
 				: [`${activeDisplay} —`];
 		const active = quotes.find((q) => q.display === activeDisplay);
+		const activeDef = resolveSymbol(activeDisplay);
 		const markLine = active
-			? `${resolveSymbol(active.display).kraken} MARK ${active.mark.toFixed(resolveSymbol(active.display).decimals)}${active.sample ? ' SAMPLE' : ''}`
-			: `${resolveSymbol(activeDisplay).kraken} MARK —`;
+			? `${market === 'spot' ? spotWireSymbol(active.display) : activeDef.kraken} MARK ${active.mark.toFixed(activeDef.decimals)}${active.sample ? ' SAMPLE' : ''}`
+			: `${market === 'spot' ? spotWireSymbol(activeDisplay) : activeDef.kraken} MARK —`;
 		const anySample = quotes.some((q) => q.sample);
 		const allSample = quotes.length > 0 && quotes.every((q) => q.sample);
 		return [
@@ -42,7 +50,7 @@
 			`DESK ${activeDisplay} · BIAS ${bias}`,
 			'RESEARCH / DISCIPLINE / RETURNS',
 			'RISK FIRST · SIZE SECOND',
-			allSample ? 'SAMPLE DATA' : anySample ? 'MIXED LIVE / SAMPLE' : 'KRAKEN FUTURES LIVE'
+			allSample ? 'SAMPLE DATA' : anySample ? 'MIXED LIVE / SAMPLE' : market === 'spot' ? 'BYBIT SPOT LIVE' : 'KRAKEN FUTURES LIVE'
 		];
 	});
 </script>
