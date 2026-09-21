@@ -209,6 +209,7 @@
 	bind:this={root}
 	class="fax-wrap"
 	class:is-dragging={dragging}
+	style:z-index={open ? 300010 : 12}
 	style:left={`${left}px`}
 	style:top={`${top}px`}
 	style:visibility={ready ? 'visible' : 'hidden'}
@@ -426,7 +427,7 @@
 		border: 3px solid #9c7040;
 		box-shadow: 6px 6px 0 rgba(10, 5, 2, 0.65);
 		color: #f0e4cf;
-		z-index: 40;
+		z-index: 1;
 		padding: 8px;
 		font-family: var(--mono, monospace);
 	}

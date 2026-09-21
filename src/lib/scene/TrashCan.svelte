@@ -174,6 +174,7 @@
 	bind:this={root}
 	class="trash-wrap"
 	class:is-dragging={dragging}
+	style:z-index={open ? 300010 : 12}
 	style:left={`${left}px`}
 	style:top={`${top}px`}
 	style:visibility={ready ? 'visible' : 'hidden'}
@@ -291,7 +292,7 @@
 		border: 3px solid #6a7a5a;
 		box-shadow: 6px 6px 0 rgba(10, 5, 2, 0.65);
 		color: #e8dcc0;
-		z-index: 40;
+		z-index: 1;
 		padding: 8px;
 		font-family: var(--mono, monospace);
 		transform: rotate(-0.6deg);

@@ -97,6 +97,7 @@
 	let blofinAssignments = $state<BloFinAssignments>({});
 	let blofinOverlay = $state<Record<string, string>>({});
 	let sceneFrame = $state<HTMLDivElement>();
+	let officeFloor = $state<HTMLElement>();
 	let clipboardRoot = $state<HTMLElement>();
 	let clipboardLeft = $state(16);
 	let clipboardTop = $state(155);
@@ -126,6 +127,15 @@
 		plant: { ...WIRE_DECOR_DEFAULTS.plant, dragging: false }
 	});
 	const wireDecorDrag: Partial<Record<WireDecorId, { pointerId: number; offsetX: number; offsetY: number }>> = {};
+	type LoungeDecorId = 'fortune' | 'loungePlant';
+	const LOUNGE_DECOR_KEYS: Record<LoungeDecorId, string> = {
+		fortune: 'phf-lounge-fortune-pos', loungePlant: 'phf-lounge-plant-pos'
+	};
+	let loungeDecorEls: Partial<Record<LoungeDecorId, HTMLElement>> = {};
+	let loungeDecorPositions = $state<Record<LoungeDecorId, { left: number; top: number; dragging: boolean }>>({
+		fortune: { left: 0, top: 0, dragging: false }, loungePlant: { left: 0, top: 0, dragging: false }
+	});
+	const loungeDecorDrag: Partial<Record<LoungeDecorId, { pointerId: number; offsetX: number; offsetY: number }>> = {};
 	let pricePadRoot = $state<HTMLElement>();
 	let pricePadLeft = $state(18);
 	let pricePadTop = $state(0);
@@ -197,6 +207,63 @@
 				delete wireDecorEls[id];
 			}
 		};
+	}
+
+	function bindLoungeDecor(node: HTMLElement, id: LoungeDecorId) {
+		loungeDecorEls[id] = node;
+		return { destroy() { delete loungeDecorEls[id]; } };
+	}
+
+	function placeLoungeDecor() {
+		if (!sceneFrame || !officeFloor) return;
+		const defaults: Record<LoungeDecorId, { left: number; top: number }> = {
+			fortune: { left: officeFloor.offsetLeft + officeFloor.clientWidth - 135, top: officeFloor.offsetTop + officeFloor.clientHeight - 33 },
+			loungePlant: { left: officeFloor.offsetLeft + officeFloor.clientWidth - 143, top: officeFloor.offsetTop + officeFloor.clientHeight - 144 }
+		};
+		for (const id of Object.keys(LOUNGE_DECOR_KEYS) as LoungeDecorId[]) {
+			const saved = loadScenePosition(LOUNGE_DECOR_KEYS[id]);
+			const el = loungeDecorEls[id];
+			if (!el) continue;
+			const source = saved ?? defaults[id];
+			loungeDecorPositions = { ...loungeDecorPositions, [id]: {
+				...loungeDecorPositions[id], left: Math.max(0, Math.min(source.left, sceneFrame.clientWidth - el.offsetWidth)),
+				top: Math.max(0, Math.min(source.top, sceneFrame.clientHeight - el.offsetHeight))
+			} };
+		}
+	}
+
+	function onLoungeDecorPointerDown(id: LoungeDecorId, event: PointerEvent) {
+		const el = loungeDecorEls[id];
+		if (!el || !sceneFrame || loungeDecorDrag[id] || (event.pointerType === 'mouse' && event.button !== 0)) return;
+		const rect = sceneFrame.getBoundingClientRect();
+		loungeDecorDrag[id] = { pointerId: event.pointerId, offsetX: (event.clientX - rect.left) * sceneFrame.clientWidth / rect.width - loungeDecorPositions[id].left, offsetY: (event.clientY - rect.top) * sceneFrame.clientHeight / rect.height - loungeDecorPositions[id].top };
+		loungeDecorPositions = { ...loungeDecorPositions, [id]: { ...loungeDecorPositions[id], dragging: true } };
+		el.setPointerCapture(event.pointerId);
+		event.preventDefault();
+	}
+
+	function onLoungeDecorPointerMove(id: LoungeDecorId, event: PointerEvent) {
+		const meta = loungeDecorDrag[id];
+		const el = loungeDecorEls[id];
+		if (!meta || meta.pointerId !== event.pointerId || !el || !sceneFrame) return;
+		const rect = sceneFrame.getBoundingClientRect();
+		const scaleX = sceneFrame.clientWidth / rect.width;
+		const scaleY = sceneFrame.clientHeight / rect.height;
+		const left = Math.max(0, Math.min(sceneFrame.clientWidth - el.offsetWidth, (event.clientX - rect.left) * scaleX - meta.offsetX));
+		const top = Math.max(0, Math.min(sceneFrame.clientHeight - el.offsetHeight, (event.clientY - rect.top) * scaleY - meta.offsetY));
+		loungeDecorPositions = { ...loungeDecorPositions, [id]: { ...loungeDecorPositions[id], left, top } };
+		event.preventDefault();
+	}
+
+	function onLoungeDecorPointerUp(id: LoungeDecorId, event: PointerEvent) {
+		const meta = loungeDecorDrag[id];
+		const el = loungeDecorEls[id];
+		if (!meta || meta.pointerId !== event.pointerId) return;
+		const position = loungeDecorPositions[id];
+		saveScenePosition(LOUNGE_DECOR_KEYS[id], position);
+		loungeDecorPositions = { ...loungeDecorPositions, [id]: { ...position, dragging: false } };
+		delete loungeDecorDrag[id];
+		if (el?.hasPointerCapture(event.pointerId)) el.releasePointerCapture(event.pointerId);
 	}
 
 	function clampWireDecorToScene() {
@@ -626,6 +693,17 @@
 		if (deskProps[id].placed || !deskPropEls[id] || !sceneFrame || !foregroundDesk) return;
 		const saved = loadScenePosition(DESK_PROP_KEYS[id]);
 		const deskTop = deskSurfaceOffsetTop();
+		const narrow = sceneFrame.clientWidth <= 768;
+		const mobileTop = deskTop + 224;
+		const mobileLayout: Record<DeskPropId, { left: number; top: number }> = {
+			wsj: { left: 8, top: mobileTop },
+			legal: { left: 150, top: mobileTop },
+			keyboard: { left: 8, top: mobileTop + 116 },
+			pad: { left: 154, top: mobileTop + 116 },
+			calc: { left: 250, top: mobileTop + 116 },
+			coffee: { left: 306, top: mobileTop + 116 },
+			set: { left: 356, top: mobileTop + 116 }
+		};
 		const fallback = {
 			left: DESK_PROP_DEFAULTS[id].left,
 			top: DESK_PROP_DEFAULTS[id].top + deskTop
@@ -633,6 +711,10 @@
 		// Migrate legacy desk-local saves (tops lived in the ~150px foreground strip).
 		let left = saved?.left ?? fallback.left;
 		let top = saved?.top ?? fallback.top;
+		if (narrow && (!saved || saved.left >= sceneFrame.clientWidth || saved.top < deskTop || saved.top > deskTop + foregroundDesk.clientHeight)) {
+			left = mobileLayout[id].left;
+			top = mobileLayout[id].top;
+		}
 		if (saved && saved.top <= 160 && deskTop > 0) {
 			top = saved.top + deskTop;
 		}
@@ -650,6 +732,22 @@
 	function reflowDeskProps() {
 		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).forEach((id) => {
 			if (!deskProps[id].ready) return;
+			if (sceneFrame && foregroundDesk && sceneFrame.clientWidth <= 768) {
+				const mobileTop = deskSurfaceOffsetTop() + 224;
+				const mobileLayout: Record<DeskPropId, { left: number; top: number }> = {
+					wsj: { left: 8, top: mobileTop }, legal: { left: 150, top: mobileTop },
+					keyboard: { left: 8, top: mobileTop + 116 }, pad: { left: 154, top: mobileTop + 116 },
+					calc: { left: 250, top: mobileTop + 116 }, coffee: { left: 306, top: mobileTop + 116 },
+					set: { left: 356, top: mobileTop + 116 }
+				};
+				const el = deskPropEls[id];
+				const offscreen = deskProps[id].left >= sceneFrame.clientWidth || deskProps[id].top < deskSurfaceOffsetTop() || deskProps[id].top > deskSurfaceOffsetTop() + foregroundDesk.clientHeight;
+				if (offscreen && !deskProps[id].dragging) {
+					setDeskPropPos(id, mobileLayout[id].left, mobileLayout[id].top);
+					return;
+				}
+				void el;
+			}
 			setDeskPropPos(id, deskProps[id].left, deskProps[id].top);
 		});
 	}
@@ -1063,9 +1161,13 @@
 			const saved = loadScenePosition(WIRE_DECOR_KEYS[id]);
 			if (saved) wireDecorPositions = { ...wireDecorPositions, [id]: { ...wireDecorPositions[id], ...saved } };
 		}
-		const onSceneResize = () => clampWireDecorToScene();
+		const onSceneResize = () => {
+			clampWireDecorToScene();
+			placeLoungeDecor();
+		};
 		window.addEventListener('resize', onSceneResize);
 		requestAnimationFrame(clampWireDecorToScene);
+		requestAnimationFrame(placeLoungeDecor);
 		void (async () => {
 			const asg = blofinAssignments;
 			if (!Object.keys(asg).length) return;
@@ -1324,7 +1426,7 @@
 			<TickerTape quotes={tapeQuotes} {activeDisplay} market={wireMarket} bias={signal?.bias ?? 'FLAT'} />
 		</div>
 
-		<section class="office-floor">
+		<section class="office-floor" bind:this={officeFloor}>
 			<div class="floor-light"></div>
 			<div class="back-staff" aria-label="Management and research desks">
 				<div class="staff-zone-sign"><span>FLOOR MANAGEMENT</span><b>STAFF</b></div>
@@ -1397,12 +1499,34 @@
 
 			<div class="lounge" aria-hidden="true">
 				<div class="sofa"><i></i><i></i></div>
-				<div class="coffee-table"><span>FORTUNE</span></div>
-				<div class="plant"><i></i><i></i><i></i></div>
 			</div>
 
 
 		</section>
+		<div
+			class="coffee-table lounge-decor-piece"
+			class:is-dragging={loungeDecorPositions.fortune.dragging}
+			use:bindLoungeDecor={'fortune'}
+			style={`left: ${loungeDecorPositions.fortune.left}px; top: ${loungeDecorPositions.fortune.top}px;`}
+			role="button" tabindex="0" aria-label="Drag Fortune table decoration" title="Drag Fortune table"
+			onpointerdown={(e) => onLoungeDecorPointerDown('fortune', e)}
+			onpointermove={(e) => onLoungeDecorPointerMove('fortune', e)}
+			onpointerup={(e) => onLoungeDecorPointerUp('fortune', e)}
+			onpointercancel={(e) => onLoungeDecorPointerUp('fortune', e)}
+			onlostpointercapture={(e) => onLoungeDecorPointerUp('fortune', e)}
+		><span>FORTUNE</span></div>
+		<div
+			class="plant lounge-decor-piece lounge-plant"
+			class:is-dragging={loungeDecorPositions.loungePlant.dragging}
+			use:bindLoungeDecor={'loungePlant'}
+			style={`left: ${loungeDecorPositions.loungePlant.left}px; top: ${loungeDecorPositions.loungePlant.top}px;`}
+			role="button" tabindex="0" aria-label="Drag lounge plant decoration" title="Drag lounge plant"
+			onpointerdown={(e) => onLoungeDecorPointerDown('loungePlant', e)}
+			onpointermove={(e) => onLoungeDecorPointerMove('loungePlant', e)}
+			onpointerup={(e) => onLoungeDecorPointerUp('loungePlant', e)}
+			onpointercancel={(e) => onLoungeDecorPointerUp('loungePlant', e)}
+			onlostpointercapture={(e) => onLoungeDecorPointerUp('loungePlant', e)}
+		><i></i><i></i><i></i></div>
 
 		{#if deskSettings.showFax && !deskSettings.hideAllDraggables}
 			<FaxMachine
@@ -1526,23 +1650,31 @@
 			}}
 		>
 			<header>THE WALL STREET JOURNAL</header>
-			{#if newsHeadlines[0]}
+			{#if newsHeadlines[0] && !wsjExpanded}
 				<b class="wsj-hed"
 					>{activeDef.label}: {newsHeadlines[0].title.slice(0, 48)}{newsHeadlines[0].title
 						.length > 48
 						? '…'
 						: ''}</b
 				>
-			{:else}
+			{:else if !wsjExpanded}
 				<b class="wsj-hed">Markets Watch<br />{activeDef.label}</b>
 			{/if}
 			{#if newsSample}<em class="wsj-sample">SAMPLE</em>{/if}
 			{#if wsjExpanded}
-				<ul class="wsj-more">
-					{#each newsHeadlines as h, i (i)}
-						<li>{h.source}: {h.title}</li>
-					{/each}
-				</ul>
+				<div class="wsj-edition">
+					<p class="wsj-kicker">MARKET EDITION · {activeDef.label}</p>
+					{#if newsHeadlines[0]}
+						<h2>{newsHeadlines[0].title}</h2>
+						<p class="wsj-byline">{newsHeadlines[0].source} · full wire headline</p>
+					{/if}
+					<p class="wsj-dek">Latest complete headlines for the active market. Click the paper again to fold it up.</p>
+					<ul class="wsj-more">
+						{#each newsHeadlines.slice(1) as h, i (i)}
+							<li><strong>{h.source}</strong> — {h.title}</li>
+						{/each}
+					</ul>
+				</div>
 			{/if}
 		</div>
 		<div
@@ -2471,10 +2603,25 @@
 		font-size: 5px;
 		transform: rotate(-7deg);
 	}
-	.lounge .plant {
-		right: 86px;
-		bottom: 61px;
+	.lounge-decor-piece {
+		position: absolute;
+		z-index: 65;
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+	}
+	.lounge-decor-piece.is-dragging {
+		z-index: 95;
+		cursor: grabbing;
+	}
+	.lounge-decor-piece.coffee-table {
+		bottom: auto;
+	}
+	.lounge-plant {
+		right: auto;
+		bottom: auto;
 		transform: scale(0.78);
+		transform-origin: bottom left;
 	}
 
 	.clipboard-panel {
@@ -2934,25 +3081,58 @@
 	.wsj.expanded,
 	.wsj:has(.wsj-more) {
 		height: auto;
-		max-height: 240px;
-		min-height: 94px;
+		width: min(390px, calc(100vw - 28px));
+		max-height: min(480px, calc(100vh - 28px));
+		min-height: 300px;
 		/* Must stay above .foreground-desk (z 55) — old z-index:18 hid the paper under the wood */
-		z-index: 90;
-		overflow: hidden;
-		box-shadow: 4px 6px 0 rgba(20, 10, 4, 0.45);
+		z-index: 300005;
+		overflow: auto;
+		box-shadow: 7px 9px 0 rgba(20, 10, 4, 0.5);
+		transform: rotate(-1deg);
+		padding: 12px;
+	}
+	.wsj.expanded header {
+		font-size: 12px;
+		border-bottom-width: 3px;
+	}
+	.wsj-edition {
+		color: #2d2a25;
+	}
+	.wsj-kicker,
+	.wsj-byline,
+	.wsj-dek {
+		margin: 7px 0;
+		font: 10px/1.25 Georgia, serif;
+	}
+	.wsj-kicker {
+		font-family: var(--mono, monospace);
+		font-size: 8px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+	}
+	.wsj-edition h2 {
+		margin: 5px 0;
+		font: bold 20px/1.05 Georgia, serif;
+		letter-spacing: -0.025em;
+	}
+	.wsj-byline {
+		font-weight: 700;
+	}
+	.wsj-dek {
+		padding: 7px 0;
+		border-top: 1px solid #554d41;
+		border-bottom: 1px solid #554d41;
 	}
 	.wsj-more {
-		margin: 4px 0 0;
-		padding: 0 0 0 8px;
-		font: 6px Georgia, serif;
-		line-height: 1.25;
-		max-height: 110px;
-		overflow: auto;
+		margin: 8px 0 0;
+		padding: 0 0 0 18px;
+		font: 12px/1.3 Georgia, serif;
 		box-sizing: border-box;
 	}
 	.wsj-more li {
-		overflow: hidden;
-		text-overflow: ellipsis;
+		margin: 0 0 8px;
+		overflow: visible;
+		text-overflow: clip;
 	}
 	.pos-note {
 		color: #7a3a2a !important;
@@ -3601,6 +3781,79 @@
 			right: 8px;
 			bottom: max(8px, env(safe-area-inset-bottom, 8px));
 			font-size: 10px;
+		}
+	}
+
+	/* Keep the foreground desk's small tools available on touch layouts. The
+	 * desktop tools remain independently positioned; mobile gets a compact,
+	 * readable second row below the CRT. */
+	@media (max-width: 768px) {
+		.foreground-desk {
+			height: 360px;
+			min-height: 360px;
+			padding: 0;
+			display: block;
+		}
+		.foreground-monitor {
+			position: absolute !important;
+			left: 10px;
+			top: 12px;
+			bottom: auto;
+			width: calc(100% - 20px);
+			max-width: none;
+			height: 190px;
+			margin: 0;
+		}
+		.book-stack,
+		.phone-main {
+			display: none !important;
+		}
+		.wsj.desk-prop,
+		.legal-pad.desk-prop,
+		.keyboard-main.desk-prop,
+		.mouse-pad.desk-prop,
+		.calculator.desk-prop,
+		.coffee.desk-prop,
+		.desk-settings-btn.desk-prop {
+			display: block !important;
+			position: absolute !important;
+			bottom: auto !important;
+			margin: 0;
+		}
+		.wsj.desk-prop {
+			width: 132px;
+			height: 94px;
+		}
+		.wsj.desk-prop.expanded {
+			width: min(390px, calc(100vw - 28px));
+			height: auto;
+			max-height: min(480px, calc(100vh - 28px));
+		}
+		.legal-pad.desk-prop {
+			width: 105px;
+			height: 105px;
+			min-height: 0;
+			font-size: 7px;
+		}
+		.keyboard-main.desk-prop {
+			width: 140px;
+			height: 48px;
+		}
+		.mouse-pad.desk-prop {
+			width: 86px;
+			height: 48px;
+		}
+		.calculator.desk-prop {
+			width: 36px;
+			height: 46px;
+		}
+		.coffee.desk-prop {
+			width: 32px;
+			height: 40px;
+		}
+		.desk-settings-btn.desk-prop {
+			width: 52px;
+			height: 42px;
 		}
 	}
 
