@@ -104,13 +104,24 @@
 
 	const PRICE_PAD_KEY = 'phf-price-pad-pos';
 	const WIRE_MARKET_KEY = 'phf-wire-market';
-	const WIRE_DECOR_KEY = 'phf-market-wire-decor-pos';
-	let rightWall = $state<HTMLElement>();
-	let wireDecorEl = $state<HTMLElement>();
-	let wireDecor = $state({ left: 14, top: 215, dragging: false });
-	let wireDecorPointerId: number | null = null;
-	let wireDecorOffsetX = 0;
-	let wireDecorOffsetY = 0;
+	type WireDecorId = 'bull' | 'cabinet' | 'plant';
+	const WIRE_DECOR_KEYS: Record<WireDecorId, string> = {
+		bull: 'phf-market-wire-bull-pos',
+		cabinet: 'phf-market-wire-cabinet-pos',
+		plant: 'phf-market-wire-plant-pos'
+	};
+	const WIRE_DECOR_DEFAULTS: Record<WireDecorId, { left: number; top: number }> = {
+		bull: { left: 1210, top: 216 },
+		cabinet: { left: 1195, top: 240 },
+		plant: { left: 1360, top: 215 }
+	};
+	let wireDecorEls: Partial<Record<WireDecorId, HTMLElement>> = {};
+	let wireDecorPositions = $state<Record<WireDecorId, { left: number; top: number; dragging: boolean }>>({
+		bull: { ...WIRE_DECOR_DEFAULTS.bull, dragging: false },
+		cabinet: { ...WIRE_DECOR_DEFAULTS.cabinet, dragging: false },
+		plant: { ...WIRE_DECOR_DEFAULTS.plant, dragging: false }
+	});
+	const wireDecorDrag: Partial<Record<WireDecorId, { pointerId: number; offsetX: number; offsetY: number }>> = {};
 	let pricePadRoot = $state<HTMLElement>();
 	let pricePadLeft = $state(18);
 	let pricePadTop = $state(0);
@@ -122,38 +133,54 @@
 	let pricePadOffsetY = 0;
 	let pricePadSaved = $state<{ left: number; top: number } | null>(null);
 
-	function onWireDecorPointerDown(event: PointerEvent) {
-		const el = wireDecorEl;
-		if (!el || wireDecorPointerId !== null) return;
+	function onWireDecorPointerDown(id: WireDecorId, event: PointerEvent) {
+		const el = wireDecorEls[id];
+		if (!el || wireDecorDrag[id]) return;
 		if (event.pointerType === 'mouse' && event.button !== 0) return;
 		const rect = el.getBoundingClientRect();
-		wireDecorOffsetX = event.clientX - rect.left;
-		wireDecorOffsetY = event.clientY - rect.top;
-		wireDecorPointerId = event.pointerId;
-		wireDecor = { ...wireDecor, dragging: true };
+		wireDecorDrag[id] = {
+			pointerId: event.pointerId,
+			offsetX: event.clientX - rect.left,
+			offsetY: event.clientY - rect.top
+		};
+		wireDecorPositions = { ...wireDecorPositions, [id]: { ...wireDecorPositions[id], dragging: true } };
 		el.setPointerCapture(event.pointerId);
 		event.preventDefault();
 	}
 
-	function onWireDecorPointerMove(event: PointerEvent) {
-		if (wireDecorPointerId !== event.pointerId || !rightWall || !wireDecorEl) return;
-		const parentRect = rightWall.getBoundingClientRect();
-		const scaleX = parentRect.width > 0 ? rightWall.clientWidth / parentRect.width : 1;
-		const scaleY = parentRect.height > 0 ? rightWall.clientHeight / parentRect.height : 1;
-		const width = wireDecorEl.offsetWidth;
-		const height = wireDecorEl.offsetHeight;
-		const left = Math.max(0, Math.min(rightWall.clientWidth - width, (event.clientX - parentRect.left) * scaleX - wireDecorOffsetX));
-		const top = Math.max(0, Math.min(rightWall.clientHeight - height, (event.clientY - parentRect.top) * scaleY - wireDecorOffsetY));
-		wireDecor = { ...wireDecor, left, top };
+	function onWireDecorPointerMove(id: WireDecorId, event: PointerEvent) {
+		const meta = wireDecorDrag[id];
+		const el = wireDecorEls[id];
+		if (!meta || meta.pointerId !== event.pointerId || !sceneFrame || !el) return;
+		const parentRect = sceneFrame.getBoundingClientRect();
+		const scaleX = parentRect.width > 0 ? sceneFrame.clientWidth / parentRect.width : 1;
+		const scaleY = parentRect.height > 0 ? sceneFrame.clientHeight / parentRect.height : 1;
+		const width = el.offsetWidth;
+		const height = el.offsetHeight;
+		const left = Math.max(0, Math.min(sceneFrame.clientWidth - width, (event.clientX - parentRect.left) * scaleX - meta.offsetX));
+		const top = Math.max(0, Math.min(sceneFrame.clientHeight - height, (event.clientY - parentRect.top) * scaleY - meta.offsetY));
+		wireDecorPositions = { ...wireDecorPositions, [id]: { ...wireDecorPositions[id], left, top } };
 		event.preventDefault();
 	}
 
-	function onWireDecorPointerUp(event: PointerEvent) {
-		if (wireDecorPointerId !== event.pointerId) return;
-		saveScenePosition(WIRE_DECOR_KEY, { left: wireDecor.left, top: wireDecor.top });
-		wireDecor = { ...wireDecor, dragging: false };
-		if (wireDecorEl?.hasPointerCapture(event.pointerId)) wireDecorEl.releasePointerCapture(event.pointerId);
-		wireDecorPointerId = null;
+	function onWireDecorPointerUp(id: WireDecorId, event: PointerEvent) {
+		const meta = wireDecorDrag[id];
+		const el = wireDecorEls[id];
+		if (!meta || meta.pointerId !== event.pointerId) return;
+		const position = wireDecorPositions[id];
+		saveScenePosition(WIRE_DECOR_KEYS[id], position);
+		wireDecorPositions = { ...wireDecorPositions, [id]: { ...position, dragging: false } };
+		if (el?.hasPointerCapture(event.pointerId)) el.releasePointerCapture(event.pointerId);
+		delete wireDecorDrag[id];
+	}
+
+	function bindWireDecor(node: HTMLElement, id: WireDecorId) {
+		wireDecorEls[id] = node;
+		return {
+			destroy() {
+				delete wireDecorEls[id];
+			}
+		};
 	}
 
 
@@ -972,8 +999,10 @@
 		leverageOverrides = loadLeverageOverrides();
 		blofinAssignments = loadBloFinAssignments();
 		pricePadSaved = loadScenePosition(PRICE_PAD_KEY);
-		const savedWireDecor = loadScenePosition(WIRE_DECOR_KEY);
-		if (savedWireDecor) wireDecor = { ...wireDecor, ...savedWireDecor };
+		for (const id of Object.keys(WIRE_DECOR_KEYS) as WireDecorId[]) {
+			const saved = loadScenePosition(WIRE_DECOR_KEYS[id]);
+			if (saved) wireDecorPositions = { ...wireDecorPositions, [id]: { ...wireDecorPositions[id], ...saved } };
+		}
 		void (async () => {
 			const asg = blofinAssignments;
 			if (!Object.keys(asg).length) return;
@@ -1102,7 +1131,7 @@
 				<StickyNotes />
 			</div>
 
-			<div class="wall-panel right-wall" bind:this={rightWall}>
+			<div class="wall-panel right-wall">
 				<div class="market-board">
 					<header>
 						<span>MARKET WIRE · {wireMarket.toUpperCase()}</span><i>{quote?.sample ? 'SAMPLE' : `LIVE ${wireMarket === 'spot' ? 'SPOT' : activeDef.label}`}</i>
@@ -1169,26 +1198,41 @@
 					{/each}
 					</div>
 				</div>
-				<div
-					class="bull-cabinet wire-decor"
-					class:is-dragging={wireDecor.dragging}
-					role="button"
-					tabindex="0"
-					aria-label="Market Wire decorations; drag to move"
-					bind:this={wireDecorEl}
-					style={`left: ${wireDecor.left}px; top: ${wireDecor.top}px;`}
-					title="Drag market wire decorations"
-					onpointerdown={onWireDecorPointerDown}
-					onpointermove={onWireDecorPointerMove}
-					onpointerup={onWireDecorPointerUp}
-					onpointercancel={onWireDecorPointerUp}
-				>
-					<div class="bull">♞</div>
-					<div class="cabinet"><i></i><i></i><i></i></div>
-					<div class="plant tall"><i></i><i></i><i></i></div>
-				</div>
 			</div>
 		</section>
+		<div
+			class="bull wire-decor-piece"
+			class:is-dragging={wireDecorPositions.bull.dragging}
+			use:bindWireDecor={'bull'}
+			style={`left: ${wireDecorPositions.bull.left}px; top: ${wireDecorPositions.bull.top}px;`}
+			role="button" tabindex="0" aria-label="Drag market bull decoration" title="Drag market bull"
+			onpointerdown={(e) => onWireDecorPointerDown('bull', e)}
+			onpointermove={(e) => onWireDecorPointerMove('bull', e)}
+			onpointerup={(e) => onWireDecorPointerUp('bull', e)}
+			onpointercancel={(e) => onWireDecorPointerUp('bull', e)}
+		>♞</div>
+		<div
+			class="cabinet wire-decor-piece"
+			class:is-dragging={wireDecorPositions.cabinet.dragging}
+			use:bindWireDecor={'cabinet'}
+			style={`left: ${wireDecorPositions.cabinet.left}px; top: ${wireDecorPositions.cabinet.top}px;`}
+			role="button" tabindex="0" aria-label="Drag market cabinet decoration" title="Drag market cabinet"
+			onpointerdown={(e) => onWireDecorPointerDown('cabinet', e)}
+			onpointermove={(e) => onWireDecorPointerMove('cabinet', e)}
+			onpointerup={(e) => onWireDecorPointerUp('cabinet', e)}
+			onpointercancel={(e) => onWireDecorPointerUp('cabinet', e)}
+		><i></i><i></i><i></i></div>
+		<div
+			class="plant tall wire-decor-piece"
+			class:is-dragging={wireDecorPositions.plant.dragging}
+			use:bindWireDecor={'plant'}
+			style={`left: ${wireDecorPositions.plant.left}px; top: ${wireDecorPositions.plant.top}px;`}
+			role="button" tabindex="0" aria-label="Drag market plant decoration" title="Drag market plant"
+			onpointerdown={(e) => onWireDecorPointerDown('plant', e)}
+			onpointermove={(e) => onWireDecorPointerMove('plant', e)}
+			onpointerup={(e) => onWireDecorPointerUp('plant', e)}
+			onpointercancel={(e) => onWireDecorPointerUp('plant', e)}
+		><i></i><i></i><i></i></div>
 
 		<div class="ticker-anchor">
 			<TickerTape quotes={tapeQuotes} {activeDisplay} market={wireMarket} bias={signal?.bias ?? 'FLAT'} />
@@ -2022,26 +2066,6 @@
 	.market-board em.down {
 		color: #ed6c59;
 	}
-	.bull-cabinet {
-		position: absolute;
-		left: 14px;
-		right: 14px;
-		bottom: 8px;
-		height: 72px;
-	}
-	.bull-cabinet.wire-decor {
-		left: 14px;
-		right: auto;
-		bottom: auto;
-		z-index: 20;
-		cursor: grab;
-		touch-action: none;
-		user-select: none;
-	}
-	.bull-cabinet.wire-decor.is-dragging {
-		z-index: 90;
-		cursor: grabbing;
-	}
 	.cabinet {
 		position: absolute;
 		left: 33px;
@@ -2100,6 +2124,32 @@
 	.plant i:nth-child(3) {
 		transform: rotate(-42deg);
 		height: 36px;
+	}
+	.wire-decor-piece {
+		position: absolute;
+		left: auto;
+		top: auto;
+		right: auto;
+		bottom: auto;
+		z-index: 70;
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+	}
+	.wire-decor-piece.is-dragging {
+		z-index: 95;
+		cursor: grabbing;
+	}
+	.wire-decor-piece.bull {
+		font-size: 25px;
+	}
+	.wire-decor-piece.cabinet {
+		left: auto;
+		bottom: auto;
+	}
+	.wire-decor-piece.plant.tall {
+		right: auto;
+		bottom: auto;
 	}
 
 	.office-floor {
@@ -3155,14 +3205,6 @@
 			border-left: 0;
 			border-top: 4px solid #24140e;
 			min-height: 160px;
-		}
-		.bull-cabinet {
-			position: relative;
-			left: auto;
-			right: auto;
-			bottom: auto;
-			height: 56px;
-			margin: 0 12px 8px;
 		}
 		.window-wall {
 			height: 160px;
