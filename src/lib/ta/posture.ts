@@ -44,12 +44,38 @@ export interface BookEntry {
 	tp1: number;
 	tp2: number;
 	strategy: 'trend' | 'hedge';
+	rrTp1: number;
+	rrTp2: number;
 }
 export type OpenBook = Record<string, BookEntry>;
 export interface TakeProfitEvent {
 	traderId: string;
 	pnlUsd: number;
 	target: 'TP1' | 'TP2';
+}
+
+const RISK_PROFILE: Record<number, { stop: number; tp1: number; tp2: number }> = {
+	5: { stop: 1.28, tp1: 1.35, tp2: 2.25 },
+	10: { stop: 1.14, tp1: 1.5, tp2: 2.5 },
+	25: { stop: 1, tp1: 1.65, tp2: 2.7 },
+	50: { stop: 0.84, tp1: 1.8, tp2: 2.9 },
+	100: { stop: 0.7, tp1: 2, tp2: 3.1 }
+};
+
+function riskPlan(trader: TraderDef, signal: SignalResponse, entry: number, strategy: 'trend' | 'hedge') {
+	const profile = RISK_PROFILE[trader.leverage] ?? RISK_PROFILE[25];
+	const baseRisk = Math.max(Math.abs(entry - signal.risk.stop), signal.atr['14'] * 0.7, entry * 0.0015);
+	const risk = baseRisk * profile.stop;
+	const rrTp1 = strategy === 'hedge' ? Math.min(profile.tp1, 1.35) : profile.tp1;
+	const rrTp2 = strategy === 'hedge' ? Math.min(profile.tp2, 2.1) : profile.tp2;
+	const long = trader.side === 'long';
+	return {
+		stop: long ? entry - risk : entry + risk,
+		tp1: long ? entry + risk * rrTp1 : entry - risk * rrTp1,
+		tp2: long ? entry + risk * rrTp2 : entry - risk * rrTp2,
+		rrTp1,
+		rrTp2
+	};
 }
 
 function mandateMatch(side: Side, bias: Bias): boolean {
@@ -151,7 +177,7 @@ export function postureForTrader(
 			stop: leg.stop ?? signal?.risk.stop,
 			tp1: leg.tp1 ?? signal?.risk.tp1,
 			tp2: leg.tp2 ?? signal?.risk.tp2,
-			rrTp1: signal?.risk.rr_tp1,
+			rrTp1: leg.rrTp1 ?? signal?.risk.rr_tp1,
 			invalidation: 'ST flip against side',
 			sample: sample || leg.sample
 		};
@@ -217,15 +243,15 @@ export function reconcileBook(
 			leg.stop = existing.stop;
 			leg.tp1 = existing.tp1;
 			leg.tp2 = existing.tp2;
-		} else if (leg.strategy === 'hedge') {
-			const risk = Math.max(Math.abs(mark - signal.risk.stop), mark * 0.0025);
-			leg.stop = t.side === 'long' ? entry - risk : entry + risk;
-			leg.tp1 = t.side === 'long' ? entry + risk * 1.5 : entry - risk * 1.5;
-			leg.tp2 = t.side === 'long' ? entry + risk * 2.5 : entry - risk * 2.5;
+			leg.rrTp1 = existing.rrTp1;
+			leg.rrTp2 = existing.rrTp2;
 		} else {
-			leg.stop = signal.risk.stop;
-			leg.tp1 = signal.risk.tp1;
-			leg.tp2 = signal.risk.tp2;
+			const plan = riskPlan(t, signal, entry, leg.strategy);
+			leg.stop = plan.stop;
+			leg.tp1 = plan.tp1;
+			leg.tp2 = plan.tp2;
+			leg.rrTp1 = plan.rrTp1;
+			leg.rrTp2 = plan.rrTp2;
 		}
 		const targetReached = leg.tp1 != null && (
 			(t.side === 'long' && leg.tp1 > entry && mark >= leg.tp1)
@@ -235,7 +261,12 @@ export function reconcileBook(
 			takeProfits.push({ traderId: t.id, pnlUsd: leg.unrealizedPnlUsd, target: 'TP1' });
 			continue;
 		}
-		next[t.id] = { entryMark: entry, stop: leg.stop!, tp1: leg.tp1!, tp2: leg.tp2!, strategy: leg.strategy };
+		const stopReached = leg.stop != null && (
+			(t.side === 'long' && mark <= leg.stop)
+			|| (t.side === 'short' && mark >= leg.stop)
+		);
+		if (alreadyOpen && stopReached) continue;
+		next[t.id] = { entryMark: entry, stop: leg.stop!, tp1: leg.tp1!, tp2: leg.tp2!, strategy: leg.strategy, rrTp1: leg.rrTp1!, rrTp2: leg.rrTp2! };
 		legs.push(leg);
 	}
 	return { book: next, legs, takeProfits };

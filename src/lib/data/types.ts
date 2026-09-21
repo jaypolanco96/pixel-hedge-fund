@@ -114,6 +114,8 @@ export interface TraderLeg {
 	tp2?: number;
 	/** Simulated floor-book mandate. Never represents an exchange order. */
 	strategy?: 'trend' | 'hedge';
+	rrTp1?: number;
+	rrTp2?: number;
 }
 
 export type DayPhase = 'dawn' | 'day' | 'golden' | 'dusk' | 'night';

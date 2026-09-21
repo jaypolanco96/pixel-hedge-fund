@@ -74,6 +74,7 @@
 	let book = $state<OpenBook>({});
 	type TakeProfitFlash = { pnlUsd: number; target: 'TP1' | 'TP2'; expiresAt: number };
 	let takeProfitFlashes = $state<Record<string, TakeProfitFlash>>({});
+	let takeProfitCooldowns = $state<Record<string, number>>({});
 	let lastDecisionCandle = 0;
 	let marketRequest = 0;
 	let tapeRequest = 0;
@@ -1237,10 +1238,12 @@
 			const def = resolveSymbol(sym);
 			const decisionCandle = completedBars(bars, 15 * 60_000).at(-1)?.t ?? 0;
 			const decisionPoint = decisionCandle !== 0 && decisionCandle !== lastDecisionCandle;
+			const now = Date.now();
+			const eligibleTraders = traders.filter((trader) => book[trader.id] || (takeProfitCooldowns[trader.id] ?? 0) <= now);
 			const result = reconcileBook(
 				book,
 				s,
-				traders,
+				eligibleTraders,
 				mark,
 				q.sample || s.sample || candles.sample,
 				def.display,
@@ -1250,7 +1253,10 @@
 			if (decisionPoint) lastDecisionCandle = decisionCandle;
 			book = result.book;
 			legs = result.legs;
-			for (const profit of result.takeProfits) showTakeProfit(profit.traderId, profit.pnlUsd, profit.target);
+			for (const profit of result.takeProfits) {
+				showTakeProfit(profit.traderId, profit.pnlUsd, profit.target);
+				takeProfitCooldowns = { ...takeProfitCooldowns, [profit.traderId]: now + 90_000 };
+			}
 			reconcileTraderTimes(result.book);
 			err = null;
 		} catch (e) {
@@ -2021,15 +2027,15 @@
 						>
 					</div>
 					<div>
-						<dt>STOP . SUPERTREND</dt>
+					<dt>STOP . RISK</dt>
 						<dd class="negative">{fmt(inspectedPosture.stop)}</dd>
 					</div>
 					<div>
-						<dt>TP1 . 1.5R</dt>
+					<dt>TP1 . {inspectedPosture.rrTp1?.toFixed(2) ?? '1.50'}R</dt>
 						<dd class="positive">{fmt(inspectedPosture.tp1)}</dd>
 					</div>
 					<div>
-						<dt>TP2 . 2.5R</dt>
+					<dt>TP2 . TRAIL</dt>
 						<dd class="positive">{fmt(inspectedPosture.tp2)}</dd>
 					</div>
 				</dl>
