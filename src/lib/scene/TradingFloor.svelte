@@ -104,6 +104,13 @@
 
 	const PRICE_PAD_KEY = 'phf-price-pad-pos';
 	const WIRE_MARKET_KEY = 'phf-wire-market';
+	const WIRE_DECOR_KEY = 'phf-market-wire-decor-pos';
+	let rightWall = $state<HTMLElement>();
+	let wireDecorEl = $state<HTMLElement>();
+	let wireDecor = $state({ left: 14, top: 215, dragging: false });
+	let wireDecorPointerId: number | null = null;
+	let wireDecorOffsetX = 0;
+	let wireDecorOffsetY = 0;
 	let pricePadRoot = $state<HTMLElement>();
 	let pricePadLeft = $state(18);
 	let pricePadTop = $state(0);
@@ -114,6 +121,40 @@
 	let pricePadOffsetX = 0;
 	let pricePadOffsetY = 0;
 	let pricePadSaved = $state<{ left: number; top: number } | null>(null);
+
+	function onWireDecorPointerDown(event: PointerEvent) {
+		const el = wireDecorEl;
+		if (!el || wireDecorPointerId !== null) return;
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		const rect = el.getBoundingClientRect();
+		wireDecorOffsetX = event.clientX - rect.left;
+		wireDecorOffsetY = event.clientY - rect.top;
+		wireDecorPointerId = event.pointerId;
+		wireDecor = { ...wireDecor, dragging: true };
+		el.setPointerCapture(event.pointerId);
+		event.preventDefault();
+	}
+
+	function onWireDecorPointerMove(event: PointerEvent) {
+		if (wireDecorPointerId !== event.pointerId || !rightWall || !wireDecorEl) return;
+		const parentRect = rightWall.getBoundingClientRect();
+		const scaleX = parentRect.width > 0 ? rightWall.clientWidth / parentRect.width : 1;
+		const scaleY = parentRect.height > 0 ? rightWall.clientHeight / parentRect.height : 1;
+		const width = wireDecorEl.offsetWidth;
+		const height = wireDecorEl.offsetHeight;
+		const left = Math.max(0, Math.min(rightWall.clientWidth - width, (event.clientX - parentRect.left) * scaleX - wireDecorOffsetX));
+		const top = Math.max(0, Math.min(rightWall.clientHeight - height, (event.clientY - parentRect.top) * scaleY - wireDecorOffsetY));
+		wireDecor = { ...wireDecor, left, top };
+		event.preventDefault();
+	}
+
+	function onWireDecorPointerUp(event: PointerEvent) {
+		if (wireDecorPointerId !== event.pointerId) return;
+		saveScenePosition(WIRE_DECOR_KEY, { left: wireDecor.left, top: wireDecor.top });
+		wireDecor = { ...wireDecor, dragging: false };
+		if (wireDecorEl?.hasPointerCapture(event.pointerId)) wireDecorEl.releasePointerCapture(event.pointerId);
+		wireDecorPointerId = null;
+	}
 
 
 	/** Individual desk props — each drags alone; positions in localStorage. */
@@ -931,6 +972,8 @@
 		leverageOverrides = loadLeverageOverrides();
 		blofinAssignments = loadBloFinAssignments();
 		pricePadSaved = loadScenePosition(PRICE_PAD_KEY);
+		const savedWireDecor = loadScenePosition(WIRE_DECOR_KEY);
+		if (savedWireDecor) wireDecor = { ...wireDecor, ...savedWireDecor };
 		void (async () => {
 			const asg = blofinAssignments;
 			if (!Object.keys(asg).length) return;
@@ -1059,7 +1102,7 @@
 				<StickyNotes />
 			</div>
 
-			<div class="wall-panel right-wall">
+			<div class="wall-panel right-wall" bind:this={rightWall}>
 				<div class="market-board">
 					<header>
 						<span>MARKET WIRE · {wireMarket.toUpperCase()}</span><i>{quote?.sample ? 'SAMPLE' : `LIVE ${wireMarket === 'spot' ? 'SPOT' : activeDef.label}`}</i>
@@ -1126,7 +1169,20 @@
 					{/each}
 					</div>
 				</div>
-				<div class="bull-cabinet">
+				<div
+					class="bull-cabinet wire-decor"
+					class:is-dragging={wireDecor.dragging}
+					role="button"
+					tabindex="0"
+					aria-label="Market Wire decorations; drag to move"
+					bind:this={wireDecorEl}
+					style={`left: ${wireDecor.left}px; top: ${wireDecor.top}px;`}
+					title="Drag market wire decorations"
+					onpointerdown={onWireDecorPointerDown}
+					onpointermove={onWireDecorPointerMove}
+					onpointerup={onWireDecorPointerUp}
+					onpointercancel={onWireDecorPointerUp}
+				>
 					<div class="bull">♞</div>
 					<div class="cabinet"><i></i><i></i><i></i></div>
 					<div class="plant tall"><i></i><i></i><i></i></div>
@@ -1972,6 +2028,19 @@
 		right: 14px;
 		bottom: 8px;
 		height: 72px;
+	}
+	.bull-cabinet.wire-decor {
+		left: 14px;
+		right: auto;
+		bottom: auto;
+		z-index: 20;
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+	}
+	.bull-cabinet.wire-decor.is-dragging {
+		z-index: 90;
+		cursor: grabbing;
 	}
 	.cabinet {
 		position: absolute;
