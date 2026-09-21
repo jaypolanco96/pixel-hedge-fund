@@ -370,6 +370,7 @@ async function loadLinearTickers(): Promise<Map<string, BybitTickerRow>> {
 				markPrice: num(row.markPrice ?? row.lastPrice),
 				bid1Price: num(row.bid1Price ?? row.lastPrice),
 				ask1Price: num(row.ask1Price ?? row.lastPrice),
+				turnover24h: num(row.turnover24h),
 				// Bybit price24hPcnt is a fraction (0.01 = 1%)
 				change24hPct: num(row.price24hPcnt) * 100
 			});
@@ -407,6 +408,7 @@ async function loadSpotTickers(): Promise<Map<string, BybitTickerRow>> {
 				markPrice: last,
 				bid1Price: num(row.bid1Price ?? last),
 				ask1Price: num(row.ask1Price ?? last),
+				turnover24h: num(row.turnover24h),
 				change24hPct: num(row.price24hPcnt) * 100
 			});
 		}
@@ -457,7 +459,8 @@ export function quoteFromBybitTicker(def: SymbolDef, tick: BybitTickerRow): Quot
 		t: Date.now(),
 		provider: 'bybit',
 		sample: false,
-		change24h: tick.change24hPct
+		change24h: tick.change24hPct,
+		volume24h: tick.turnover24h
 	};
 }
 
@@ -486,6 +489,53 @@ export async function fetchBybitQuotesFor(
 		else out.set(def.display, sampleQuote(def.display));
 	}
 	return out;
+}
+
+function baseCoin(symbol: string): string {
+	return symbol.replace(/USDT$|USDC$|USD$/i, '').toUpperCase();
+}
+
+function classifyCoin(base: string): QuoteResponse['category'] {
+	if (/^(DOGE|SHIB|PEPE|WIF|BONK|FLOKI|BRETT|BOME|MEME|MOG|TURBO|1000SHIB|1000PEPE)$/.test(base)) return 'meme';
+	if (/^(LINK|AAVE|UNI|MKR|LDO|CRV|COMP|SNX|SUSHI|DYDX|JUP|RAY|CAKE)$/.test(base)) return 'defi';
+	if (/^(FET|TAO|RENDER|RNDR|NEAR|GRT|ARKM|WLD|AGIX|VIRTUAL|IO)$/.test(base)) return 'ai';
+	if (/^(SOL|ADA|AVAX|DOT|ATOM|NEAR|SUI|APT|SEI|TON|TRX|ALGO|XLM|HBAR|ICP|EGLD|KAS)$/.test(base)) return 'layer1';
+	if (/^(BTC|XBT|ETH|XRP|BNB|LTC|BCH)$/.test(base)) return 'majors';
+	if (/^(SPY|QQQ|IWM|DIA|TLT|GLD|SLV)$/.test(base)) return 'etf';
+	if (/^(TSLA|MSTR|COIN|NVDA|AAPL|AMZN|META|MSFT|GOOGL|HOOD)$/.test(base)) return 'stock';
+	return 'majors';
+}
+
+function dynamicBybitQuote(tick: BybitTickerRow): QuoteResponse {
+	const base = baseCoin(tick.symbol);
+	const price = tick.lastPrice;
+	return {
+		symbol: `CRYPTO:BYBIT:${tick.symbol}`,
+		display: `${base}USDT`,
+		price,
+		mark: tick.markPrice || price,
+		bid: tick.bid1Price || price,
+		ask: tick.ask1Price || price,
+		t: Date.now(),
+		provider: 'bybit',
+		sample: false,
+		change24h: tick.change24hPct,
+		volume24h: tick.turnover24h,
+		category: classifyCoin(base),
+		venue: 'BYBIT',
+		label: base,
+		decimals: price < 0.001 ? 8 : price < 1 ? 6 : price < 100 ? 3 : 2
+	};
+}
+
+/** Top 20 USDT linear contracts by Bybit's 24h quote turnover. */
+export async function fetchBybitTopVolumeQuotes(limit = 20): Promise<QuoteResponse[]> {
+	const rows = [...(await loadLinearTickers()).values()]
+		.filter((tick) => /USDT$/i.test(tick.symbol) && tick.lastPrice > 0 && tick.turnover24h > 0)
+		.filter((tick) => !/(3L|3S|5L|5S|2L|2S|UP|DOWN)USDT$/i.test(tick.symbol))
+		.sort((a, b) => b.turnover24h - a.turnover24h)
+		.slice(0, limit);
+	return rows.map(dynamicBybitQuote);
 }
 
 /** Batch public spot quotes keyed by PHF display symbol. */

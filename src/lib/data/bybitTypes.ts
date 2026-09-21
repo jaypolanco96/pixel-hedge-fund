@@ -95,4 +95,6 @@ export interface BybitTickerRow {
 	ask1Price: number;
 	/** Percent points (e.g. 1.25 = +1.25%). */
 	change24hPct: number;
+	/** 24h quote turnover in USDT/USD. */
+	turnover24h: number;
 }

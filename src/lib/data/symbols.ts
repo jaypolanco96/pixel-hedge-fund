@@ -6,7 +6,9 @@
  * Candles/signal stay on Kraken when mapped; Bybit-only symbols use SAMPLE candles/signal.
  */
 
-export type SymbolCategory = 'majors' | 'meme' | 'defi' | 'ai' | 'etf' | 'stock' | 'layer1';
+import type { MarketCategory } from './types';
+
+export type SymbolCategory = MarketCategory;
 
 export type QuoteVenue = 'kraken' | 'bybit';
 

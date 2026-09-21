@@ -6,6 +6,7 @@ export type Tf = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
 export type VolState = 'quiet' | 'normal' | 'wild';
 export type StructureTag = 'pullback' | 'breakout' | 'rejection' | 'none';
 export type ConfluenceBand = 'weak' | 'tradeable' | 'high';
+export type MarketCategory = 'majors' | 'meme' | 'defi' | 'ai' | 'etf' | 'stock' | 'layer1';
 export type AnimState = 'idle' | 'type' | 'phone' | 'walk' | 'point' | 'celebrate' | 'stress';
 export type FloorStatus = 'open' | 'thinking' | 'watching' | 'flat' | 'stress' | 'celebrating';
 
@@ -35,9 +36,14 @@ export interface QuoteResponse {
 	bid: number;
 	ask: number;
 	t: number;
-	provider: 'kraken-futures' | 'bybit' | 'sample';
+	provider: 'kraken-futures' | 'bybit' | 'blofin' | 'sample';
 	sample: boolean;
 	change24h?: number;
+	volume24h?: number;
+	category?: MarketCategory;
+	venue?: 'BYBIT' | 'BLOFIN' | 'KRAKEN';
+	label?: string;
+	decimals?: number;
 }
 
 export interface SignalResponse {

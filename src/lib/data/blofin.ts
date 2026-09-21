@@ -30,6 +30,7 @@ import type {
 	BloFinSetMarginModeBody,
 	BloFinTradeWriteResponse
 } from './blofinTypes';
+import type { QuoteResponse } from './types';
 
 export type {
 	BloFinBalanceResponse,
@@ -45,6 +46,72 @@ export type {
 /** Live production root — demo URL is never the default. */
 const LIVE_BASE = 'https://openapi.blofin.com';
 const DEMO_BASE = 'https://demo-trading-openapi.blofin.com';
+
+let publicTickerCache: { at: number; rows: QuoteResponse[] } | null = null;
+const PUBLIC_TICKER_TTL_MS = 10_000;
+
+function classifyBloFinCoin(base: string): QuoteResponse['category'] {
+	if (/^(DOGE|SHIB|PEPE|WIF|BONK|FLOKI|BRETT|BOME|MEME|MOG|TURBO)$/.test(base)) return 'meme';
+	if (/^(LINK|AAVE|UNI|MKR|LDO|CRV|COMP|SNX|SUSHI|DYDX|JUP|RAY|CAKE)$/.test(base)) return 'defi';
+	if (/^(FET|TAO|RENDER|RNDR|NEAR|GRT|ARKM|WLD|AGIX|VIRTUAL|IO)$/.test(base)) return 'ai';
+	if (/^(SOL|ADA|AVAX|DOT|ATOM|NEAR|SUI|APT|SEI|TON|TRX|ALGO|XLM|HBAR|ICP|EGLD|KAS)$/.test(base)) return 'layer1';
+	if (/^(BTC|XBT|ETH|XRP|BNB|LTC|BCH)$/.test(base)) return 'majors';
+	if (/^(SPY|QQQ|IWM|DIA|TLT|GLD|SLV)$/.test(base)) return 'etf';
+	if (/^(TSLA|MSTR|COIN|NVDA|AAPL|AMZN|META|MSFT|GOOGL|HOOD)$/.test(base)) return 'stock';
+	return 'majors';
+}
+
+/** Top 20 public BloFin USDT swaps by 24h quote volume. */
+export async function fetchBloFinTopVolumeQuotes(limit = 20): Promise<QuoteResponse[]> {
+	if (publicTickerCache && Date.now() - publicTickerCache.at < PUBLIC_TICKER_TTL_MS) {
+		return publicTickerCache.rows.slice(0, limit);
+	}
+	try {
+		const res = await fetch(`${LIVE_BASE}/api/v1/market/tickers`, {
+			headers: { Accept: 'application/json' },
+			signal: AbortSignal.timeout(10_000)
+		});
+		if (!res.ok) throw new Error(`BloFin public tickers HTTP ${res.status}`);
+		const body = (await res.json()) as {
+			code?: string | number;
+			data?: Array<Record<string, unknown>>;
+		};
+		if (body.code != null && String(body.code) !== '0') throw new Error(`BloFin public tickers code ${body.code}`);
+		const rows = (body.data ?? [])
+			.map((row) => {
+				const instId = String(row.instId ?? '').toUpperCase();
+				const base = instId.replace(/-USDT$|-USDC$/i, '');
+				const price = num(row.last);
+				const volume = num(row.volCurrency24h) * price;
+				return { instId, base, price, volume, row };
+			})
+			.filter((row) => /-USDT$/.test(row.instId) && row.price > 0 && row.volume > 0)
+			.sort((a, b) => b.volume - a.volume)
+			.slice(0, limit)
+			.map(({ instId, base, price, volume, row }) => ({
+				symbol: `CRYPTO:BLOFIN:${instId}`,
+				display: `${base}USDT`,
+				price,
+				mark: price,
+				bid: num(row.bidPrice ?? price),
+				ask: num(row.askPrice ?? price),
+				t: num(row.ts, Date.now()),
+				provider: 'blofin' as const,
+				sample: false,
+				change24h: num(row.open24h) ? ((price / num(row.open24h) - 1) * 100) : undefined,
+				volume24h: volume,
+				category: classifyBloFinCoin(base),
+				venue: 'BLOFIN' as const,
+				label: base,
+				decimals: price < 0.001 ? 8 : price < 1 ? 6 : price < 100 ? 3 : 2
+			}));
+		publicTickerCache = { at: Date.now(), rows };
+		return rows;
+	} catch (err) {
+		console.warn('[BloFin] public tickers failed', err);
+		return publicTickerCache?.rows.slice(0, limit) ?? [];
+	}
+}
 
 /** Allowlisted GET paths only. */
 const ALLOWED_GET = new Set([

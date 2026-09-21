@@ -17,11 +17,11 @@
 	function fmtPrice(q: QuoteResponse): string {
 		const def = resolveSymbol(q.display);
 		const known = SYMBOLS.some((s) => s.display === q.display);
-		return q.price.toFixed(known ? def.decimals : q.price < 1 ? 8 : 4);
+		return q.price.toFixed(q.decimals ?? (known ? def.decimals : q.price < 1 ? 8 : 4));
 	}
 
 	function label(q: QuoteResponse): string {
-		return market === 'spot' ? spotWireSymbol(q.display) : q.display;
+		return q.label ? `${q.label}·${q.venue ?? 'WIRE'}` : market === 'spot' ? spotWireSymbol(q.display) : q.display;
 	}
 
 	function fmtChg(q: QuoteResponse): string {

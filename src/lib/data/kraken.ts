@@ -12,7 +12,8 @@ import {
 	TAPE_DISPLAYS,
 	type SymbolDef
 } from './symbols';
-import { fetchBybitQuote, fetchBybitQuotesFor, fetchBybitSpotLeveragedQuotes, fetchBybitSpotQuotesFor } from './bybit';
+import { fetchBybitQuote, fetchBybitQuotesFor, fetchBybitSpotLeveragedQuotes, fetchBybitSpotQuotesFor, fetchBybitTopVolumeQuotes } from './bybit';
+import { fetchBloFinTopVolumeQuotes } from './blofin';
 
 export { resolveSymbol, SYMBOLS, DEFAULT_DISPLAY, TAPE_DISPLAYS } from './symbols';
 
@@ -133,7 +134,7 @@ export async function fetchTapeQuotes(market: TapeMarket = 'futures'): Promise<Q
 
 	const bybitMap = await fetchBybitQuotesFor(bybitDefs.length ? bybitDefs : SYMBOLS.filter((d) => !hasKraken(d)));
 
-	return SYMBOLS.map((def) => {
+	const baseQuotes = SYMBOLS.map((def) => {
 		if (hasKraken(def) && def.quoteVenue === 'kraken') {
 			const tick = krakenRows.find((t) => t.symbol === def.kraken);
 			if (tick && tick.last != null) {
@@ -150,6 +151,22 @@ export async function fetchTapeQuotes(market: TapeMarket = 'futures'): Promise<Q
 		const q = bybitMap.get(def.display);
 		return q ?? sampleQuote(def.display);
 	});
+
+	// Add the public top-volume lists from both derivatives venues. If a coin
+	// appears on both lists, keep the venue with the larger 24h quote volume.
+	const [bybitTop, blofinTop] = await Promise.all([
+		fetchBybitTopVolumeQuotes(20),
+		fetchBloFinTopVolumeQuotes(20)
+	]);
+	const topByDisplay = new Map<string, QuoteResponse>();
+	for (const q of [...bybitTop, ...blofinTop]) {
+		const previous = topByDisplay.get(q.display);
+		if (!previous || (q.volume24h ?? 0) > (previous.volume24h ?? 0)) topByDisplay.set(q.display, q);
+	}
+	return [
+		...topByDisplay.values(),
+		...baseQuotes.filter((q) => !topByDisplay.has(q.display))
+	];
 }
 
 export async function fetchCandles(

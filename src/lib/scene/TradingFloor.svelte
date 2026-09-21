@@ -172,7 +172,7 @@
 	const filteredTapeQuotes = $derived(
 		tapeQuotes.filter((q) => {
 			if (wireCategory === 'all') return true;
-			return resolveSymbol(q.display).category === wireCategory;
+			return (q.category ?? resolveSymbol(q.display).category) === wireCategory;
 		})
 	);
 	const wireTokenQuotes = $derived(
@@ -708,11 +708,12 @@
 		void pollTape(market);
 	}
 
-	function wireLabel(display: string): string {
-		return wireMarket === 'spot' ? spotWireSymbol(display) : resolveSymbol(display).label;
+	function wireLabel(display: string, q?: QuoteResponse): string {
+		return q?.label ? `${q.label} · ${q.venue ?? 'WIRE'}` : wireMarket === 'spot' ? spotWireSymbol(display) : resolveSymbol(display).label;
 	}
 
-	function wireDecimals(display: string, price: number): number {
+	function wireDecimals(display: string, price: number, q?: QuoteResponse): number {
+		if (q?.decimals != null) return q.decimals;
 		const known = SYMBOLS.find((s) => s.display === display);
 		if (known) return known.decimals;
 		return price < 1 ? 8 : 4;
@@ -1092,23 +1093,27 @@
 					{#if wireCategory === 'etf' || wireCategory === 'stock'}
 						<p class="wire-note">No live ETF/stock perps on desk venues — tabs reserved.</p>
 					{/if}
+					{#if wireMarket === 'futures'}
+						<p class="wire-note">TOP 20 VOLUME · BYBIT + BLOFIN</p>
+					{/if}
 					{#if wireMarket === 'spot' && wireTokenQuotes.length === 0}
 						<p class="wire-note">No live leveraged spot tokens returned by Bybit right now · checked SHIB3L / SHIB3S / SHIB5L / SHIB5S.</p>
 					{:else if wireMarket === 'spot'}
 						<div class="wire-token-heading">LEVERAGED SPOT TOKENS</div>
 						{#each wireTokenQuotes as tq (tq.display)}
 							<div class="wire-token-row">
-								<b>{wireLabel(tq.display)}</b>
-								<strong>{tq.price.toFixed(wireDecimals(tq.display, tq.price))}{tq.sample ? '*' : ''}</strong>
+								<b>{wireLabel(tq.display, tq)}</b>
+								<strong>{tq.price.toFixed(wireDecimals(tq.display, tq.price, tq))}{tq.sample ? '*' : ''}</strong>
 								<em class:down={(tq.change24h ?? 0) < 0}>{tq.change24h == null ? '—' : `${tq.change24h >= 0 ? '+' : ''}${tq.change24h.toFixed(1)}%`}</em>
 							</div>
 						{/each}
 					{/if}
-					{#each filteredTapeQuotes.filter((q) => q.display !== activeDisplay).slice(0, 5) as tq (tq.display)}
-						<div>
-							<b>{wireLabel(tq.display)}</b>
+					<div class="wire-quote-list">
+					{#each filteredTapeQuotes.filter((q) => q.display !== activeDisplay).slice(0, 20) as tq (tq.display)}
+						<div class="wire-quote-row">
+							<b>{wireLabel(tq.display, tq)}</b>
 							<strong
-								>{tq.price.toFixed(wireDecimals(tq.display, tq.price))}{tq.sample
+								>{tq.price.toFixed(wireDecimals(tq.display, tq.price, tq))}{tq.sample
 									? '*'
 									: ''}</strong
 							>
@@ -1119,6 +1124,7 @@
 							>
 						</div>
 					{/each}
+					</div>
 				</div>
 				<div class="bull-cabinet">
 					<div class="bull">♞</div>
@@ -1927,6 +1933,20 @@
 		cursor: pointer;
 	}
 	.market-board > div {
+		display: grid;
+		grid-template-columns: 1fr auto 37px;
+		gap: 6px;
+		margin-top: 5px;
+		font-size: 6px;
+	}
+	.market-board .wire-quote-list {
+		display: block;
+		max-height: 190px;
+		overflow-y: auto;
+		margin-top: 5px;
+		padding-right: 3px;
+	}
+	.market-board .wire-quote-row {
 		display: grid;
 		grid-template-columns: 1fr auto 37px;
 		gap: 6px;
