@@ -143,6 +143,7 @@
 	const loungeDecorDrag: Partial<Record<LoungeDecorId, { pointerId: number; offsetX: number; offsetY: number }>> = {};
 	const OFFICE_FLAG_KEY = 'phf-office-flag-pos';
 	const OFFICE_FLAG_DEFAULT = { left: 1270, top: 310 };
+	const OFFICE_FLAG_INSET = 12;
 	let officeFlagEl = $state<HTMLElement>();
 	let officeFlagPosition = $state({ ...OFFICE_FLAG_DEFAULT, dragging: false });
 	const officeFlagDrag: { pointerId: number | null; offsetX: number; offsetY: number } = { pointerId: null, offsetX: 0, offsetY: 0 };
@@ -223,7 +224,15 @@
 		if (!sceneFrame || !officeFlagEl) return;
 		const saved = loadScenePosition(OFFICE_FLAG_KEY);
 		const source = saved ?? OFFICE_FLAG_DEFAULT;
-		officeFlagPosition = { ...officeFlagPosition, left: Math.max(0, Math.min(source.left, sceneFrame.clientWidth - officeFlagEl.offsetWidth)), top: Math.max(0, Math.min(source.top, sceneFrame.clientHeight - officeFlagEl.offsetHeight)) };
+		const maxLeft = Math.max(0, sceneFrame.clientWidth - officeFlagEl.offsetWidth);
+		const maxTop = Math.max(0, sceneFrame.clientHeight - officeFlagEl.offsetHeight);
+		const insetX = Math.min(OFFICE_FLAG_INSET, maxLeft / 2);
+		const insetY = Math.min(OFFICE_FLAG_INSET, maxTop / 2);
+		officeFlagPosition = {
+			...officeFlagPosition,
+			left: Math.min(Math.max(insetX, source.left), maxLeft - insetX),
+			top: Math.min(Math.max(insetY, source.top), maxTop - insetY)
+		};
 	}
 	function onOfficeFlagPointerDown(event: PointerEvent) {
 		if (!officeFlagEl || !sceneFrame || officeFlagDrag.pointerId !== null) return;
@@ -241,7 +250,15 @@
 		const rect = sceneFrame.getBoundingClientRect();
 		const scaleX = rect.width > 0 ? sceneFrame.clientWidth / rect.width : 1;
 		const scaleY = rect.height > 0 ? sceneFrame.clientHeight / rect.height : 1;
-		officeFlagPosition = { ...officeFlagPosition, left: Math.max(0, Math.min(sceneFrame.clientWidth - officeFlagEl.offsetWidth, (event.clientX - rect.left) * scaleX - officeFlagDrag.offsetX)), top: Math.max(0, Math.min(sceneFrame.clientHeight - officeFlagEl.offsetHeight, (event.clientY - rect.top) * scaleY - officeFlagDrag.offsetY)) };
+		const maxLeft = Math.max(0, sceneFrame.clientWidth - officeFlagEl.offsetWidth);
+		const maxTop = Math.max(0, sceneFrame.clientHeight - officeFlagEl.offsetHeight);
+		const insetX = Math.min(OFFICE_FLAG_INSET, maxLeft / 2);
+		const insetY = Math.min(OFFICE_FLAG_INSET, maxTop / 2);
+		officeFlagPosition = {
+			...officeFlagPosition,
+			left: Math.min(Math.max(insetX, (event.clientX - rect.left) * scaleX - officeFlagDrag.offsetX), maxLeft - insetX),
+			top: Math.min(Math.max(insetY, (event.clientY - rect.top) * scaleY - officeFlagDrag.offsetY), maxTop - insetY)
+		};
 		event.preventDefault();
 	}
 	function onOfficeFlagPointerUp(event: PointerEvent) {
@@ -2522,7 +2539,7 @@
 
 	.office-flag {
 		position: absolute;
-		z-index: 8;
+		z-index: 72;
 		width: 92px;
 		height: 64px;
 		color: #d7bd80;
@@ -2538,26 +2555,54 @@
 	}
 	.flag-pole {
 		position: absolute;
-		top: 0;
-		left: 7px;
-		width: 4px;
-		height: 53px;
-		background: #bd8b4d;
-		box-shadow: 2px 0 #4b2c1b;
+		top: -2px;
+		left: 5px;
+		z-index: 3;
+		width: 7px;
+		height: 58px;
+		box-sizing: border-box;
+		background: #c08a48;
+		border: 1px solid #43291b;
+		box-shadow: 2px 0 #e0ad5d, 4px 0 #4b2c1b;
+		pointer-events: none;
+	}
+	.flag-pole::before {
+		content: '';
+		position: absolute;
+		top: -5px;
+		left: -3px;
+		width: 11px;
+		height: 5px;
+		box-sizing: border-box;
+		background: #d7a45a;
+		border: 1px solid #43291b;
+	}
+	.flag-pole::after {
+		content: '';
+		position: absolute;
+		bottom: -4px;
+		left: -4px;
+		width: 15px;
+		height: 4px;
+		background: #744625;
+		border: 1px solid #3a2116;
 	}
 	.flag-cloth {
 		position: absolute;
 		top: 3px;
-		left: 11px;
+		left: 10px;
+		z-index: 1;
 		width: 70px;
 		height: 38px;
+		box-sizing: border-box;
 		display: grid;
 		place-items: center;
+		overflow: hidden;
 		background: #24150f;
 		border: 2px solid #8f6539;
 		box-shadow: 3px 3px 0 rgba(0,0,0,.35);
 	}
-	.flag-cloth img { display:block; width:100%; height:100%; object-fit:cover; image-rendering:auto; }
+	.flag-cloth img { display:block; min-width:0; min-height:0; max-width:100%; max-height:100%; width:100%; height:100%; object-fit:cover; image-rendering:auto; }
 	.floor-light {
 		position: absolute;
 		inset: 0;

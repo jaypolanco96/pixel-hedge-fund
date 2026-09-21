@@ -375,7 +375,7 @@
 	.status-badge[data-status='flat'] { background:#554a46; color:#c9bfb4; }
 	.status-badge[data-status='stress'] { background:#8f392f; color:#ffe0d9; }
 	.status-badge[data-status='celebrating'] { background:#2e7958; color:#edffb8; }
-	.staff-note { position:absolute; top:27px; left:2px; right:2px; z-index:15; min-height:17px; padding:2px 4px; background:#f2e3b7; color:#39291c; border:2px solid #5c4129; box-shadow:2px 2px 0 rgba(30,15,7,.5); font:5px/1.2 var(--mono,monospace); transform:rotate(-1deg); }
+	.staff-note { position:absolute; top:14px; left:1px; right:1px; z-index:24; min-height:24px; padding:4px 5px; box-sizing:border-box; background:#fff0bf; color:#24170e; border:2px solid #5c4129; box-shadow:3px 3px 0 rgba(30,15,7,.55); font:700 8px/1.25 var(--pixel,var(--mono,monospace)); letter-spacing:.01em; text-align:center; transform:rotate(-1deg); }
 
 	.thought { position:absolute; left:50%; bottom:118px; transform:translateX(-50%); z-index:30; min-width:0; max-width:min(115px, 96%); padding:5px 7px; color:#2e241c; background:#fff8da; border:2px solid #4c3827; box-shadow:3px 3px 0 rgba(38,20,10,.35); border-radius:11px; text-align:center; font:7px/1.2 var(--pixel,monospace); animation:float 1.9s ease-in-out infinite; }
 	.thought i,.thought b { position:absolute; border:2px solid #4c3827; background:#fff8da; border-radius:50%; }
@@ -394,7 +394,7 @@
 		.leverage { font-size: 8px; padding: 3px 4px; }
 		.leverage-input { width:38px; }
 		.status-badge { font-size: 7px; padding: 3px 5px; }
-		.staff-note { font-size: 6px; }
+		.staff-note { font-size: 7px; }
 		.activity { font-size: 6px; }
 		.thought { font-size: 8px; max-width: min(120px, 98%); }
 	}
