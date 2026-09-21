@@ -115,10 +115,28 @@
 		leverageDraft = String(trader?.leverage ?? '');
 		editingLeverage = false;
 	}
+	let durationDraft = $state<string | null>(null);
+	function startDurationEdit(event: Event) {
+		event.stopPropagation();
+		durationDraft = String(tradeDurationMinutes ?? '');
+	}
 	function commitTradeDuration(event: Event) {
 		event.stopPropagation();
-		const next = Number((event.currentTarget as HTMLInputElement).value);
-		if (Number.isInteger(next) && next >= 0 && next <= 100000) onTradeDurationCommit(next);
+		const draft = durationDraft;
+		durationDraft = null;
+		if (draft == null || draft.trim() === '') return;
+		const next = Number(draft);
+		if (!Number.isInteger(next) || next < 0 || next > 100000) return;
+		onTradeDurationCommit(next);
+	}
+	function durationKeydown(event: KeyboardEvent) {
+		event.stopPropagation();
+		const input = event.currentTarget as HTMLInputElement;
+		if (event.key === 'Enter') input.blur();
+		else if (event.key === 'Escape') {
+			durationDraft = null;
+			input.blur();
+		}
 	}
 
 	$effect(() => {
@@ -196,7 +214,7 @@
 		<div class="activity">
 			<span>{activity}</span>
 			{#if trader}
-				<label class="trade-duration">TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={tradeDurationMinutes ?? ''} disabled={tradeDurationMinutes == null} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} oninput={commitTradeDuration} onchange={commitTradeDuration} onkeydown={(event) => { event.stopPropagation(); if (event.key === 'Enter') { commitTradeDuration(event); (event.currentTarget as HTMLInputElement).blur(); } }} />m</label>
+				<label class="trade-duration">TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={durationDraft ?? tradeDurationMinutes ?? ''} disabled={tradeDurationMinutes == null} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} onfocus={startDurationEdit} oninput={(event) => { durationDraft = (event.currentTarget as HTMLInputElement).value; }} onblur={commitTradeDuration} onkeydown={durationKeydown} />m</label>
 			{/if}
 		</div>
 	</div>
