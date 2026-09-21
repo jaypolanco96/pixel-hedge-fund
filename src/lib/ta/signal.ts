@@ -65,7 +65,7 @@ function structureTag(
 export function computeSignal(
 	setupBars: Bar[],
 	regimeBars: Bar[],
-	opts: { sample: boolean; provider: 'kraken-futures' | 'bybit' | 'blofin' | 'sample'; symbol?: string }
+	opts: { sample: boolean; provider: 'bybit' | 'blofin' | 'sample'; symbol?: string }
 ): SignalResponse {
 	if (setupBars.length < 55 || regimeBars.length < 55 ||
 		!setupBars.every(validBar) || !regimeBars.every(validBar)) {

@@ -1,0 +1,33 @@
+---
+name: pixel-hedge-fund
+description: Build, debug, review, and extend the Pixel Hedge Fund SvelteKit office sim using its established Kraken Futures, TA posture, pixel-scene, persistence, and BloFin safety conventions.
+---
+
+# Pixel Hedge Fund
+
+Use this skill for work in the Pixel Hedge Fund repository. Read `AGENTS.md`, then inspect the current code and the relevant README or `BLOFIN.md` section before making a decision. The repository is the source of truth; this skill captures durable product decisions recovered from Grokbot.
+
+## Preserve the product
+
+Keep the experience as a lived-in 1990s pixel hedge-fund office. Prefer diegetic scene elements such as CRTs, boards, ticker tape, paper, fax, desks, and props over floating dashboard panels. Keep the foreground desk camera, NYC window skyline, Empire State silhouette, and rain-on-glass treatment coherent when changing scene layout.
+
+## Market and signal behavior
+
+- Use Kraken Futures as the canonical tape. Use the existing symbol mapping, especially `SOLUSDT` → `PF_SOLUSD` and `BTCUSDT` → `PF_XBTUSD`.
+- Use the existing 15m setup plus 4h regime signal path and its Supertrend, EMA, RSI, MACD, and ATR inputs.
+- Propagate `sample: true` through fallbacks. Label sample data visibly and never imply it is live.
+- Keep trader posture derived from bias, confluence, and structure. Open positions may show risk detail; considering traders get thought clouds; weak, conflicting, or unavailable signals must not create fake fills.
+- Gate celebrations and stress effects on open posture. Preserve the cast MTM model and its sample inheritance.
+
+## Live trading safety
+
+Treat BloFin write routes as real-money capable. Preserve the explicit confirmation gate, keep assign/sync side-effect free, and do not expose API keys in source, docs, logs, context, skills, or artifacts. Do not add transfer or withdrawal endpoints. When editing trade UI, verify the confirmation state and the error/snapshot messaging paths.
+
+## Implementation loop
+
+1. Identify the smallest relevant Svelte component, data module, route, or persistence helper.
+2. Check existing types and current signal/sample semantics before adding state.
+3. Make the smallest coherent change and preserve responsive scene behavior, drag bounds, and local persistence where applicable.
+4. Run `npm run check` and `npm run build`; report failures with the affected path and reason.
+
+For visual changes, inspect the running page or a screenshot when available and verify that props do not cover trader nameplates, thought clouds, or the active HUD. For market changes, test both live-shaped and `sample: true` payloads. For BloFin changes, inspect both configured and snapshot/network-blocked paths without using live writes as a test shortcut.

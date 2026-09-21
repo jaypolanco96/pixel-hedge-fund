@@ -213,7 +213,7 @@ export function buildFaxReport(
 				line(
 					qSample
 						? 'FUNDING-STYLE NOTE: SAMPLE tape — do not treat as live funding or mark.'
-						: 'FUNDING-STYLE NOTE: Live Kraken Futures mark/bid/ask. Funding rate not in this feed.'
+						: 'FUNDING-STYLE NOTE: Live Bybit/BloFin mark, bid, and ask. Funding rate is not in this feed.'
 				),
 				'',
 				signal

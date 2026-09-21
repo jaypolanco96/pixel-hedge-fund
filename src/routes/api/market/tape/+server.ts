@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { fetchTapeQuotes, type TapeMarket } from '$lib/data/kraken';
+import { fetchTapeQuotes, type TapeMarket } from '$lib/data/market';
 import type { RequestHandler } from './$types';
 
 /** Multi-crypto ticker tape quotes (live where possible, SAMPLE-labeled per miss). */

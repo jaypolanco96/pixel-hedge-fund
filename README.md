@@ -42,24 +42,24 @@ Positions come from live `/api/market/signal` (Supertrend + EMA21/55 + RSI + MAC
 
 | Tape | Desk mandate | Floor read |
 |------|--------------|------------|
-| Confluence ≥5, or ≥4 with structure / lower leverage | Same side as bias | **OPEN** at live Kraken mark. Stop = Supertrend. TP1 = 1.5R, TP2 = 2.5R |
+| Confluence ≥5, or ≥4 with structure / lower leverage | Same side as bias | **OPEN** at live Bybit mark, with BloFin as fallback. Stop = Supertrend. TP1 = 1.5R, TP2 = 2.5R |
 | Confluence 2–4, not yet a fill | Same side | **Thinking** + thought cloud |
 | Bias against desk, or ST flipped | Opposite / invalid | **FLAT / Watching** — no invented fill |
 
 Hover / focus a trader → desk **clipboard**. Click to **pin** CRT snippet. Esc unpins.
 
-## Kraken mapping (multi-crypto)
+## Bybit mapping (multi-crypto)
 
-| Display | Kraken Futures | Notes |
+| Display | Bybit linear | Notes |
 |---------|----------------|-------|
-| **BTCUSDT** | **`PF_XBTUSD`** | BTC listed as XBT |
-| **ETHUSDT** | **`PF_ETHUSD`** | |
-| **XRPUSDT** | **`PF_XRPUSD`** | |
-| **SOLUSDT** | **`PF_SOLUSD`** | Default |
-| **ADAUSDT** | **`PF_ADAUSD`** | |
-| **DOGEUSDT** | **`PF_DOGEUSD`** | |
-| **LINKUSDT** | **`PF_LINKUSD`** | |
-| **AVAXUSDT** | **`PF_AVAXUSD`** | |
+| **BTCUSDT** | **`BTCUSDT`** | BTC listed as XBT |
+| **ETHUSDT** | **`ETHUSDT`** | |
+| **XRPUSDT** | **`XRPUSDT`** | |
+| **SOLUSDT** | **`SOLUSDT`** | Default |
+| **ADAUSDT** | **`ADAUSDT`** | |
+| **DOGEUSDT** | **`DOGEUSDT`** | |
+| **LINKUSDT** | **`LINKUSDT`** | |
+| **AVAXUSDT** | **`AVAXUSDT`** | |
 
 - `GET /api/market/quote?symbol=SOLUSDT`
 - `GET /api/market/candles?symbol=ETHUSDT&tf=15m`

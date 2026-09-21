@@ -171,7 +171,7 @@ export function reconcileBook(
 	mark: number,
 	sample: boolean,
 	displaySymbol = 'SOLUSDT',
-	krakenSymbol = 'PF_SOLUSD',
+	exchangeSymbol = 'SOLUSDT',
 	decisionPoint = true
 ): { book: OpenBook; legs: TraderLeg[] } {
 	const next: OpenBook = {};
@@ -186,7 +186,7 @@ export function reconcileBook(
 		}
 		const entry = book[t.id] ?? mark;
 		next[t.id] = entry;
-		const leg = markLeg(t, entry, mark, sample, displaySymbol, krakenSymbol);
+		const leg = markLeg(t, entry, mark, sample, displaySymbol, exchangeSymbol);
 		leg.stop = signal.risk.stop;
 		leg.tp1 = signal.risk.tp1;
 		leg.tp2 = signal.risk.tp2;

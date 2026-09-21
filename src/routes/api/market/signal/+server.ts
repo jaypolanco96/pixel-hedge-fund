@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { completedBars } from '$lib/data/validation';
-import { fetchCandles, resolveSymbol } from '$lib/data/kraken';
+import { fetchCandles } from '$lib/data/market';
+import { resolveSymbol } from '$lib/data/symbols';
 import { computeSignal } from '$lib/ta/signal';
 import type { RequestHandler } from './$types';
 

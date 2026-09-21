@@ -23,7 +23,7 @@ export interface CandlesResponse {
 	symbol: string;
 	display: string;
 	tf: Tf;
-	provider: 'kraken-futures' | 'bybit' | 'blofin' | 'sample';
+	provider: 'bybit' | 'blofin' | 'sample';
 	sample: boolean;
 	bars: Bar[];
 }
@@ -36,12 +36,12 @@ export interface QuoteResponse {
 	bid: number;
 	ask: number;
 	t: number;
-	provider: 'kraken-futures' | 'bybit' | 'blofin' | 'sample';
+	provider: 'bybit' | 'blofin' | 'sample';
 	sample: boolean;
 	change24h?: number;
 	volume24h?: number;
 	category?: MarketCategory;
-	venue?: 'BYBIT' | 'BLOFIN' | 'KRAKEN';
+	venue?: 'BYBIT' | 'BLOFIN';
 	label?: string;
 	decimals?: number;
 }
@@ -69,7 +69,7 @@ export interface SignalResponse {
 		rr_tp1: number;
 	};
 	sample: boolean;
-	provider: 'kraken-futures' | 'bybit' | 'blofin' | 'sample';
+	provider: 'bybit' | 'blofin' | 'sample';
 }
 
 // Trader leverage is user-editable within the persisted 1–1000 range.
@@ -102,7 +102,7 @@ export interface TraderLeg {
 	side: Side;
 	leverage: Leverage;
 	symbol: string;
-	krakenSymbol: string;
+	exchangeSymbol: string;
 	notionalUsd: number;
 	entryMark: number;
 	mark: number;

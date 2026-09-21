@@ -8,7 +8,7 @@
 	}: { signal: SignalResponse | null; displaySymbol?: string } = $props();
 
 	const instrument = $derived(resolveSymbol(signal?.symbol ?? displaySymbol));
-	const marketLabel = $derived(signal?.provider === 'kraken-futures' ? instrument.kraken : instrument.display);
+	const marketLabel = $derived(instrument.bybit || instrument.display);
 	const decimals = $derived(resolveSymbol(signal?.symbol ?? displaySymbol).decimals);
 </script>
 

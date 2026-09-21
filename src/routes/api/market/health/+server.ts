@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { healthCheck } from '$lib/data/kraken';
+import { healthCheck } from '$lib/data/market';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async () => {

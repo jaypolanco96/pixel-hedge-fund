@@ -43,10 +43,10 @@
 			? `${active.label}·${active.venue ?? 'WIRE'}`
 			: market === 'spot'
 				? spotWireSymbol(activeDisplay)
-				: activeDef.kraken || activeDef.bybit;
+				: activeDef.bybit;
 		const markLine = active
 			? `${activeLabel} MARK ${active.mark.toFixed(active.decimals ?? activeDef.decimals)}${active.sample ? ' SAMPLE' : ''}`
-			: `${market === 'spot' ? spotWireSymbol(activeDisplay) : activeDef.kraken} MARK —`;
+			: `${market === 'spot' ? spotWireSymbol(activeDisplay) : activeDef.bybit} MARK —`;
 		const anySample = quotes.some((q) => q.sample);
 		const allSample = quotes.length > 0 && quotes.every((q) => q.sample);
 		return [

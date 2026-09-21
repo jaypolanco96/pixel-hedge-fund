@@ -72,7 +72,6 @@
 	let lastDecisionCandle = 0;
 	let marketRequest = 0;
 	let tapeRequest = 0;
-	let bookSource = '';
 	let err = $state<string | null>(null);
 	let animTick = $state(0);
 	let totalSimMinutes = $state(0);
@@ -108,6 +107,7 @@
 	let clipboardOffsetY = 0;
 
 	const PRICE_PAD_KEY = 'phf-price-pad-pos';
+	const CLIPBOARD_KEY = 'phf-clipboard-pos';
 	const WIRE_MARKET_KEY = 'phf-wire-market';
 	type WireDecorId = 'bull' | 'cabinet' | 'plant';
 	const WIRE_DECOR_KEYS: Record<WireDecorId, string> = {
@@ -533,9 +533,10 @@
 	}
 
 	function placeClipboard() {
-		if (!sceneFrame || !clipboardRoot) return;
+		if (!sceneFrame || !clipboardRoot || clipboardReady) return;
 		const w = clipboardRoot.offsetWidth || 246;
-		setClipboardPosition(sceneFrame.clientWidth - w - 16, 155);
+		const saved = loadScenePosition(CLIPBOARD_KEY);
+		setClipboardPosition(saved?.left ?? sceneFrame.clientWidth - w - 16, saved?.top ?? 155);
 		clipboardReady = true;
 	}
 
@@ -575,6 +576,9 @@
 
 	function stopClipboardDragging(event: PointerEvent) {
 		if (!clipboardRoot || clipboardPointerId !== event.pointerId) return;
+		if (clipboardDragging) {
+			saveScenePosition(CLIPBOARD_KEY, { left: clipboardLeft, top: clipboardTop });
+		}
 		clipboardDragging = false;
 		clipboardPointerId = null;
 		if (clipboardRoot.hasPointerCapture(event.pointerId)) clipboardRoot.releasePointerCapture(event.pointerId);
@@ -1059,7 +1063,6 @@
 		if (def.display === activeDisplay) return;
 		activeDisplay = def.display;
 		book = {};
-		bookSource = '';
 		legs = [];
 		lastDecisionCandle = 0;
 		quote = null;
@@ -1095,8 +1098,6 @@
 			quote = q;
 			signal = s;
 			bars = candles.bars;
-			const source = `${q.sample || s.sample || candles.sample}:${q.provider}:${s.provider}`;
-			if (source !== bookSource) { book = {}; lastDecisionCandle = 0; bookSource = source; }
 			const mark = q.mark || q.price;
 			const def = resolveSymbol(sym);
 			const decisionCandle = completedBars(bars, 15 * 60_000).at(-1)?.t ?? 0;
@@ -1108,7 +1109,7 @@
 				mark,
 				q.sample || s.sample || candles.sample,
 				def.display,
-				def.kraken || def.bybit,
+				def.bybit,
 				decisionPoint
 			);
 			if (decisionPoint) lastDecisionCandle = decisionCandle;
@@ -1120,8 +1121,9 @@
 			quote = null;
 			signal = null;
 			bars = [];
-			book = {};
-			legs = [];
+			// Keep the last known cast legs through a transient tape failure. A
+			// missing poll is not a closed-candle invalidation and should not
+			// turn open traders into thinking or watching traders.
 			err = e instanceof Error ? e.message : 'Market poll failed';
 		}
 	}
@@ -1603,7 +1605,7 @@
 							<MiniChart
 								{bars}
 								bias={pinnedPosture.bias}
-								label={`${activeDef.kraken} · PINNED DESK`}
+										label={`${activeDef.bybit} · PINNED DESK`}
 								showLevels={true}
 								stop={pinnedPosture.stop}
 								tp1={pinnedPosture.tp1}
@@ -3236,8 +3238,8 @@
 	}
 	.coffee {
 		flex: 0 0 auto;
-		width: 36px;
-		height: 44px;
+		width: 72px;
+		height: 88px;
 		padding: 0;
 		background: #2b2623;
 		border: 3px solid #15110f;
@@ -3269,9 +3271,9 @@
 	.coffee b {
 		position: absolute;
 		left: 8px;
-		top: -12px;
-		width: 2px;
-		height: 10px;
+		top: -28px;
+		width: 4px;
+		height: 20px;
 		background: rgba(235, 225, 205, 0.45);
 		box-shadow: 6px -2px rgba(235, 225, 205, 0.35);
 		animation: steam 2s ease-in-out infinite;

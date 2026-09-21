@@ -6,7 +6,7 @@
 	<title>Pixel Hedge Fund</title>
 	<meta
 		name="description"
-		content="Pixel hedge-fund office sim with multi-crypto Kraken Futures tape and Chart Desk TA."
+	content="Pixel hedge-fund office sim with Bybit and BloFin market data and Chart Desk TA."
 	/>
 </svelte:head>
 

@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { fetchQuote } from '$lib/data/kraken';
+import { fetchQuote } from '$lib/data/market';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url }) => {

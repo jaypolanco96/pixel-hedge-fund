@@ -490,7 +490,6 @@
 				<b class="w br"></b>
 			</div>
 		</div>
-		<span class="cart-tag">AV</span>
 	</div>
 </div>
 

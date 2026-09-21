@@ -4,7 +4,7 @@
 	let {
 		bars = [],
 		bias = 'FLAT',
-		label = 'PF_SOLUSD · 15M',
+		label = 'SOLUSDT · 15M',
 		showLevels = false,
 		stop,
 		tp1,

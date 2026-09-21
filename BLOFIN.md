@@ -21,7 +21,7 @@ Pixel Hedge Fund desk console + Quick Trade talk to BloFin for **balances, posit
 | Client fetch | `$lib/client/exchangeHeaders` attaches `x-phf-blofin-*` / `x-phf-bybit-*` on `/api/blofin/*` and `/api/bybit/*` |
 | Server | `$lib/server/requestExchangeAuth` reads those headers (AsyncLocalStorage). **Request headers win** over env / `.secrets` |
 | `/api/keys/*` on Vercel | Validate-only (masked status). **No** writable shared disk vault |
-| Market data | Kraken / Bybit public tape + news stay public — **no keys** |
+| Market data | Bybit / BloFin public tape — **no keys** |
 
 Keys stay in **this browser session** (not a shared Vercel vault). Clearing site data logs the visitor out.
 

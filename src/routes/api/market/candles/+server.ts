@@ -1,5 +1,5 @@
 import { json, error } from '@sveltejs/kit';
-import { fetchCandles } from '$lib/data/kraken';
+import { fetchCandles } from '$lib/data/market';
 import type { Tf } from '$lib/data/types';
 import type { RequestHandler } from './$types';
 

@@ -184,6 +184,17 @@
 		{#if anim === 'phone'}<div class="receiver"></div>{/if}
 		{#if staff?.role === 'pm'}<div class="pm-pad"></div>{/if}
 	</div>
+	{#if trader && postureKind === 'open' && status === 'celebrating'}
+		<div class="champagne-pop" aria-label="Popping champagne">
+			<span class="champagne-bottle"><i class="cork"></i><b class="label"></b></span>
+			<i class="bubble bubble-one"></i>
+			<i class="bubble bubble-two"></i>
+			<i class="bubble bubble-three"></i>
+			<span class="spray spray-one"></span>
+			<span class="spray spray-two"></span>
+			<span class="spray spray-three"></span>
+		</div>
+	{/if}
 	<div class="chair"></div>
 
 	<div class="nameplate">
@@ -298,11 +309,23 @@
 	.character[data-anim='celebrate'] .person { animation:cheer .5s steps(2) infinite; }
 	.character[data-anim='celebrate'] .arm { transform:rotate(155deg); }
 	.character[data-anim='stress'] .person { animation:shake .22s steps(2) infinite; }
+	.champagne-pop { position:absolute; right:2px; top:5px; width:28px; height:42px; z-index:22; pointer-events:none; }
+	.champagne-bottle { position:absolute; left:9px; top:14px; width:8px; height:23px; background:#d5a946; border:2px solid #3d2819; border-radius:2px 2px 3px 3px; transform:rotate(25deg); transform-origin:50% 100%; animation:bottle-pop .5s steps(2) infinite; }
+	.champagne-bottle::before { content:''; position:absolute; left:1px; top:-6px; width:4px; height:7px; background:#d5a946; border:2px solid #3d2819; border-bottom:0; }
+	.champagne-bottle .cork { position:absolute; left:1px; top:-11px; width:4px; height:4px; background:#bd8751; border:1px solid #3d2819; }
+	.champagne-bottle .label { position:absolute; left:1px; top:8px; width:4px; height:6px; background:#f5e6a5; }
+	.bubble { position:absolute; width:3px; height:3px; background:#fff1a8; border:1px solid #8e6330; border-radius:50%; animation:fizz 1.1s steps(3) infinite; }
+	.bubble-one { left:14px; top:4px; }.bubble-two { left:20px; top:10px; animation-delay:-.35s; }.bubble-three { left:7px; top:1px; animation-delay:-.7s; }
+	.spray { position:absolute; left:13px; top:7px; width:3px; height:7px; background:#fff1a8; transform-origin:50% 100%; animation:spray .6s steps(2) infinite; }
+	.spray-one { transform:rotate(-30deg); }.spray-two { transform:rotate(2deg); animation-delay:-.2s; }.spray-three { transform:rotate(30deg); animation-delay:-.4s; }
 	@keyframes type { 50% { transform:rotate(-34deg); } }
 	@keyframes bob { 50% { transform:translateY(-3px); } }
 	@keyframes pace { from { transform:translateX(-4px); } to { transform:translateX(9px); } }
 	@keyframes cheer { 50% { transform:translateY(-7px); } }
 	@keyframes shake { 50% { transform:translateX(2px); } }
+	@keyframes bottle-pop { 50% { transform:rotate(32deg) translateY(-2px); } }
+	@keyframes fizz { 0% { opacity:0; transform:translate(0,5px); } 35% { opacity:1; } 100% { opacity:0; transform:translate(4px,-8px); } }
+	@keyframes spray { 50% { opacity:.45; height:10px; } }
 
 	.nameplate { position:absolute; bottom:0; left:5px; right:5px; z-index:10; min-height:30px; padding:3px 24px 3px 5px; background:#d0ad65; color:#2f1c12; border:2px solid #50321f; box-shadow:2px 2px 0 #25150d; font-family:var(--pixel, monospace); }
 	.who { font-size:7px; font-weight:900; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -349,5 +372,5 @@
 		.who { font-size: 7px; }
 		.nameplate { padding: 3px 22px 3px 4px; min-height: 28px; }
 	}
-	@media (prefers-reduced-motion: reduce) { .character, .person, .arm, .thought { animation:none !important; } }
+	@media (prefers-reduced-motion: reduce) { .character, .person, .arm, .thought, .champagne-bottle, .bubble, .spray { animation:none !important; } }
 </style>

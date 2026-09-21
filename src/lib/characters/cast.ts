@@ -29,7 +29,7 @@ export function markLeg(
 	mark: number,
 	sample: boolean,
 	displaySymbol = 'SOLUSDT',
-	krakenSymbol = 'PF_SOLUSD'
+	exchangeSymbol = 'SOLUSDT'
 ): TraderLeg {
 	const signedMove =
 		t.side === 'long'
@@ -42,7 +42,7 @@ export function markLeg(
 		side: t.side,
 		leverage: t.leverage,
 		symbol: displaySymbol,
-		krakenSymbol: krakenSymbol,
+		exchangeSymbol,
 		notionalUsd: NOTIONAL,
 		entryMark,
 		mark,
