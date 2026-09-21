@@ -42,8 +42,7 @@
 		void tick;
 		if (bias === 'LONG' && tradeable) return 'bull' as const;
 		if (bias === 'SHORT' && tradeable) return 'bear' as const;
-		if (bias === 'FLAT') return 'sleep' as const;
-		return 'hide' as const;
+		return 'sleep' as const;
 	});
 
 	onMount(() => {
@@ -100,14 +99,7 @@
 	}
 
 	function reflow() {
-		if (!ready || !root) return;
-		const floor = sceneFrame?.querySelector('.office-floor');
-		if (sceneFrame && sceneFrame.clientWidth <= 768 && floor instanceof HTMLElement && top < floor.offsetTop && !dragging) {
-			const fallback = defaultPosition();
-			setPosition(fallback.left, fallback.top);
-			return;
-		}
-		setPosition(left, top);
+		// Keep the user's scene coordinates unchanged across responsive breakpoints.
 	}
 
 	$effect(() => {
@@ -174,7 +166,6 @@
 
 <svelte:window onresize={reflow} onpointerup={finishPointer} onpointercancel={finishPointer} />
 
-{#if mode !== 'hide'}
 	<div
 		bind:this={root}
 		class="floor-pet"
@@ -241,12 +232,11 @@
 			<span class="tag dim">ZZZ</span>
 		{/if}
 	</div>
-{/if}
 
 <style>
 	.floor-pet {
 		position: absolute;
-		z-index: 12;
+		z-index: 56;
 		touch-action: none;
 		user-select: none;
 		cursor: grab;

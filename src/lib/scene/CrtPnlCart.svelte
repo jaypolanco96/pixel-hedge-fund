@@ -374,14 +374,7 @@
 	}
 
 	function reflow() {
-		if (!ready || !root) return;
-		const floor = sceneFrame?.querySelector('.office-floor');
-		if (sceneFrame && sceneFrame.clientWidth <= 768 && floor instanceof HTMLElement && top < floor.offsetTop && !dragging) {
-			const fallback = defaultPosition();
-			setPosition(fallback.left, fallback.top);
-			return;
-		}
-		setPosition(left, top);
+		// Keep the user's scene coordinates unchanged across responsive breakpoints.
 	}
 
 	$effect(() => {

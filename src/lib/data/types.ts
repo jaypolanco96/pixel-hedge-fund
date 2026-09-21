@@ -112,6 +112,8 @@ export interface TraderLeg {
 	stop?: number;
 	tp1?: number;
 	tp2?: number;
+	/** Simulated floor-book mandate. Never represents an exchange order. */
+	strategy?: 'trend' | 'hedge';
 }
 
 export type DayPhase = 'dawn' | 'day' | 'golden' | 'dusk' | 'night';

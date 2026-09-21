@@ -19,6 +19,7 @@
 		pinned = false,
 		blofinBadge = null as string | null,
 		tradeDurationMinutes = null as number | null,
+		takeProfit = null as { pnlUsd: number; target: 'TP1' | 'TP2' } | null,
 		onInspect = () => {},
 		onPin = () => {},
 		onLeverageCommit = (_leverage: number) => {},
@@ -37,6 +38,7 @@
 		/** Short BloFin overlay label when a live position is assigned to this desk. */
 		blofinBadge?: string | null;
 		tradeDurationMinutes?: number | null;
+		takeProfit?: { pnlUsd: number; target: 'TP1' | 'TP2' } | null;
 		onInspect?: () => void;
 		onPin?: () => void;
 		onLeverageCommit?: (leverage: number) => void;
@@ -215,6 +217,13 @@
 			<span class="spray spray-three"></span>
 		</div>
 	{/if}
+	{#if trader && takeProfit}
+		<div class="take-profit-pop" aria-label={`${takeProfit.target} taken: profit $${takeProfit.pnlUsd.toFixed(2)}`}>
+			<div class="cash-stack"><i></i><i></i><b>$</b></div>
+		<strong>{takeProfit.target} +${takeProfit.pnlUsd.toFixed(0)}</strong>
+			<small>PROFIT TAKEN</small>
+		</div>
+	{/if}
 	<div class="chair"></div>
 
 	<div class="nameplate">
@@ -329,6 +338,10 @@
 	.character[data-anim='celebrate'] .arm { transform:rotate(155deg); }
 	.character[data-anim='stress'] .person { animation:shake .22s steps(2) infinite; }
 	.champagne-pop { position:absolute; right:2px; top:5px; width:28px; height:42px; z-index:22; pointer-events:none; }
+	.take-profit-pop { position:absolute; left:50%; bottom:116px; z-index:35; width:92px; transform:translateX(-50%); pointer-events:none; text-align:center; color:#eaffc0; font:700 7px/1.15 var(--mono,monospace); text-shadow:1px 1px #1d2417; animation:profit-rise 2.8s steps(12) forwards; }
+	.take-profit-pop strong,.take-profit-pop small { display:block; white-space:nowrap; }.take-profit-pop strong { color:#8cffaa; font-size:8px; }.take-profit-pop small { color:#f2d272; font-size:5px; }
+	.cash-stack { position:relative; width:27px; height:19px; margin:0 auto 2px; }.cash-stack i,.cash-stack b { position:absolute; left:3px; width:21px; height:11px; background:#4caf6a; border:2px solid #163d26; box-shadow:2px 2px #0f281a; }.cash-stack i:first-child { top:6px; }.cash-stack i:nth-child(2) { top:2px; left:1px; }.cash-stack b { top:0; display:grid; place-items:center; color:#eaffc0; font:700 9px/1 var(--mono,monospace); }
+	@keyframes profit-rise { 0% { opacity:0; transform:translate(-50%, 10px) scale(.8); } 15%,75% { opacity:1; } 100% { opacity:0; transform:translate(-50%, -38px) scale(1.08); } }
 	.champagne-bottle { position:absolute; left:9px; top:14px; width:8px; height:23px; background:#d5a946; border:2px solid #3d2819; border-radius:2px 2px 3px 3px; transform:rotate(25deg); transform-origin:50% 100%; animation:bottle-pop .5s steps(2) infinite; }
 	.champagne-bottle::before { content:''; position:absolute; left:1px; top:-6px; width:4px; height:7px; background:#d5a946; border:2px solid #3d2819; border-bottom:0; }
 	.champagne-bottle .cork { position:absolute; left:1px; top:-11px; width:4px; height:4px; background:#bd8751; border:1px solid #3d2819; }

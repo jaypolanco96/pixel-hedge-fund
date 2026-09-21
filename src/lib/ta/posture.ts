@@ -38,7 +38,19 @@ export interface TraderPostureCard {
 	sample: boolean;
 }
 
-export type OpenBook = Record<string, number>;
+export interface BookEntry {
+	entryMark: number;
+	stop: number;
+	tp1: number;
+	tp2: number;
+	strategy: 'trend' | 'hedge';
+}
+export type OpenBook = Record<string, BookEntry>;
+export interface TakeProfitEvent {
+	traderId: string;
+	pnlUsd: number;
+	target: 'TP1' | 'TP2';
+}
 
 function mandateMatch(side: Side, bias: Bias): boolean {
 	return (side === 'long' && bias === 'LONG') || (side === 'short' && bias === 'SHORT');
@@ -64,6 +76,16 @@ export function wantsOpen(trader: TraderDef, signal: SignalResponse): boolean {
 	if (c >= 3 && trader.leverage <= 25 && structured) return true;
 	if (c >= 3 && trader.leverage <= 10) return true;
 	return false;
+}
+
+/** A small counter-book allocation is allowed only on a clear rejection with
+ * mixed higher-timeframe confirmation. This keeps the floor hedged without
+ * inventing a trade against a fully aligned trend. */
+export function wantsHedgeOpen(trader: TraderDef, signal: SignalResponse): boolean {
+	if (mandateMatch(trader.side, signal.bias) || trader.leverage > 25) return false;
+	if (signal.mtf?.aligned || signal.confluence < 4 || signal.structure !== 'rejection') return false;
+	return (signal.bias === 'LONG' && trader.side === 'short' && signal.rsi >= 58)
+		|| (signal.bias === 'SHORT' && trader.side === 'long' && signal.rsi <= 42);
 }
 
 export function isConsidering(trader: TraderDef, signal: SignalResponse): boolean {
@@ -126,9 +148,9 @@ export function postureForTrader(
 			mark: leg.mark,
 			unrealizedPnlUsd: leg.unrealizedPnlUsd,
 			unrealizedPnlPctMargin: pct,
-			stop: signal?.risk.stop ?? leg.stop,
-			tp1: signal?.risk.tp1 ?? leg.tp1,
-			tp2: signal?.risk.tp2 ?? leg.tp2,
+			stop: leg.stop ?? signal?.risk.stop,
+			tp1: leg.tp1 ?? signal?.risk.tp1,
+			tp2: leg.tp2 ?? signal?.risk.tp2,
 			rrTp1: signal?.risk.rr_tp1,
 			invalidation: 'ST flip against side',
 			sample: sample || leg.sample
@@ -173,26 +195,50 @@ export function reconcileBook(
 	displaySymbol = 'SOLUSDT',
 	exchangeSymbol = 'SOLUSDT',
 	decisionPoint = true
-): { book: OpenBook; legs: TraderLeg[] } {
+): { book: OpenBook; legs: TraderLeg[]; takeProfits: TakeProfitEvent[] } {
 	const next: OpenBook = {};
 	const legs: TraderLeg[] = [];
-	if (!signal || mark <= 0) return { book: {}, legs: [] };
+	const takeProfits: TakeProfitEvent[] = [];
+	if (!signal || mark <= 0) return { book: {}, legs: [], takeProfits };
 
 	for (const t of traders) {
-		const alreadyOpen = book[t.id] !== undefined;
-		if (!alreadyOpen && !wantsOpen(t, signal)) continue;
-		if (alreadyOpen && decisionPoint && (oppositeBias(t.side, signal.bias) || stAgainst(t.side, signal.supertrend.direction))) {
+		const existing = book[t.id];
+		const alreadyOpen = existing !== undefined;
+		const trendEntry = wantsOpen(t, signal);
+		const hedgeEntry = wantsHedgeOpen(t, signal);
+		if (!alreadyOpen && !trendEntry && !hedgeEntry) continue;
+		if (alreadyOpen && decisionPoint && !hedgeEntry && (oppositeBias(t.side, signal.bias) || stAgainst(t.side, signal.supertrend.direction))) {
 			continue;
 		}
-		const entry = book[t.id] ?? mark;
-		next[t.id] = entry;
+		const entry = existing?.entryMark ?? mark;
 		const leg = markLeg(t, entry, mark, sample, displaySymbol, exchangeSymbol);
-		leg.stop = signal.risk.stop;
-		leg.tp1 = signal.risk.tp1;
-		leg.tp2 = signal.risk.tp2;
+		leg.strategy = existing?.strategy ?? (hedgeEntry && !trendEntry ? 'hedge' : 'trend');
+		if (existing) {
+			leg.stop = existing.stop;
+			leg.tp1 = existing.tp1;
+			leg.tp2 = existing.tp2;
+		} else if (leg.strategy === 'hedge') {
+			const risk = Math.max(Math.abs(mark - signal.risk.stop), mark * 0.0025);
+			leg.stop = t.side === 'long' ? entry - risk : entry + risk;
+			leg.tp1 = t.side === 'long' ? entry + risk * 1.5 : entry - risk * 1.5;
+			leg.tp2 = t.side === 'long' ? entry + risk * 2.5 : entry - risk * 2.5;
+		} else {
+			leg.stop = signal.risk.stop;
+			leg.tp1 = signal.risk.tp1;
+			leg.tp2 = signal.risk.tp2;
+		}
+		const targetReached = leg.tp1 != null && (
+			(t.side === 'long' && leg.tp1 > entry && mark >= leg.tp1)
+			|| (t.side === 'short' && leg.tp1 < entry && mark <= leg.tp1)
+		);
+		if (alreadyOpen && targetReached && leg.unrealizedPnlUsd > 0) {
+			takeProfits.push({ traderId: t.id, pnlUsd: leg.unrealizedPnlUsd, target: 'TP1' });
+			continue;
+		}
+		next[t.id] = { entryMark: entry, stop: leg.stop!, tp1: leg.tp1!, tp2: leg.tp2!, strategy: leg.strategy };
 		legs.push(leg);
 	}
-	return { book: next, legs };
+	return { book: next, legs, takeProfits };
 }
 
 export function staffNote(staff: StaffDef, signal: SignalResponse | null): string {

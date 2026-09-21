@@ -19,7 +19,8 @@
 		bars = [],
 		displaySymbol = 'SOLUSDT',
 		decimals = 4,
-		sceneFrame
+		sceneFrame,
+		mobileDeskTop
 	}: {
 		signal?: SignalResponse | null;
 		quote?: QuoteResponse | null;
@@ -27,10 +28,12 @@
 		displaySymbol?: string;
 		decimals?: number;
 		sceneFrame?: HTMLElement;
+		mobileDeskTop?: number;
 	} = $props();
 
 	const STORAGE_KEY = 'phf-fax-pos';
 	const DRAG_THRESHOLD = 5;
+	const HOLD_MS = 200;
 	const DESKTOP_DEFAULT_POSITION: ScenePosition = { left: 805, top: 519 };
 
 	let root = $state<HTMLDivElement>();
@@ -40,12 +43,15 @@
 	let placed = $state(false);
 	let storageReady = $state(false);
 	let savedPosition = $state<ScenePosition | null>(null);
+	let autoPlacedDeskTop: number | null = null;
 	let dragging = $state(false);
 	let activePointer: number | null = null;
 	let offsetX = 0;
 	let offsetY = 0;
 	let startX = 0;
 	let startY = 0;
+	let holdTimer: ReturnType<typeof setTimeout> | null = null;
+	let movedSinceDrag = false;
 	let suppressClick = false;
 
 	let open = $state(false);
@@ -99,19 +105,45 @@
 
 	function place() {
 		if (!sceneFrame || !root || placed === true) return;
-		setPosition(savedPosition?.left ?? defaultPosition().left, savedPosition?.top ?? defaultPosition().top);
+		const mobileFallback = mobileDeskPosition();
+		const deskTop = mobileDeskOffsetTop();
+		const useMobileFallback = Boolean(mobileFallback && (!savedPosition || (deskTop != null && savedPosition.top < deskTop)));
+		const source: ScenePosition = useMobileFallback && mobileFallback
+			? mobileFallback
+			: (savedPosition ?? defaultPosition());
+		setPosition(source.left, source.top);
+		if (useMobileFallback && deskTop != null) autoPlacedDeskTop = deskTop;
 		placed = true;
 		ready = true;
 	}
 
 	function reflow() {
-		if (!ready || !root) return;
-		setPosition(left, top);
+		// Keep the user's scene coordinates unchanged across responsive breakpoints.
+	}
+
+	function mobileDeskPosition(): ScenePosition | null {
+		const deskTop = mobileDeskOffsetTop();
+		if (!sceneFrame || sceneFrame.clientWidth > 480 || deskTop == null) return null;
+		return { left: Math.max(8, sceneFrame.clientWidth - 86), top: deskTop + 556 };
+	}
+
+	function mobileDeskOffsetTop() {
+		const desk = sceneFrame?.querySelector('.foreground-desk');
+		return desk instanceof HTMLElement ? desk.offsetTop : mobileDeskTop;
 	}
 
 	$effect(() => {
 		if (!storageReady || !sceneFrame || !root || placed) return;
 		requestAnimationFrame(place);
+	});
+	$effect(() => {
+		void mobileDeskTop;
+	});
+	$effect(() => {
+		if (!sceneFrame || !ready) return;
+		const observer = new ResizeObserver(reflow);
+		observer.observe(sceneFrame);
+		return () => observer.disconnect();
 	});
 
 	function toggle() {
@@ -173,18 +205,24 @@
 		offsetY = (event.clientY - rect.top) * scale.y;
 		activePointer = event.pointerId;
 		dragging = false;
+		movedSinceDrag = false;
 		suppressClick = false;
-		// Capture on press so touch drags that begin over the nested button keep
-		// reaching the wrapper, just like the foreground desk tools.
+		holdTimer = setTimeout(() => {
+			if (activePointer === event.pointerId && !dragging) beginDrag(event);
+		}, HOLD_MS);
+	}
+
+	function beginDrag(event: PointerEvent) {
+		if (!root || activePointer !== event.pointerId || dragging) return;
+		dragging = true;
 		root.setPointerCapture(event.pointerId);
 	}
 
 	function onPointerMove(event: PointerEvent) {
 		if (activePointer !== event.pointerId || !sceneFrame) return;
 		if (!dragging && Math.hypot(event.clientX - startX, event.clientY - startY) < DRAG_THRESHOLD) return;
-		if (!dragging) {
-			dragging = true;
-		}
+		if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+		beginDrag(event);
 		event.preventDefault();
 		const frameRect = sceneFrame.getBoundingClientRect();
 		const scale = frameScale();
@@ -192,11 +230,13 @@
 			(event.clientX - frameRect.left) * scale.x - offsetX,
 			(event.clientY - frameRect.top) * scale.y - offsetY
 		);
+		movedSinceDrag = true;
 	}
 
 	function finishPointer(event: PointerEvent) {
 		if (!root || activePointer !== event.pointerId) return;
-		if (dragging) {
+		if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+		if (dragging && movedSinceDrag) {
 			suppressClick = true;
 			saveScenePosition(STORAGE_KEY, { left, top });
 			event.preventDefault();
@@ -207,13 +247,13 @@
 	}
 </script>
 
-<svelte:window onresize={reflow} onpointerup={finishPointer} onpointercancel={finishPointer} />
+<svelte:window onresize={reflow} onpointermove={onPointerMove} onpointerup={finishPointer} onpointercancel={finishPointer} />
 
 <div
 	bind:this={root}
 	class="fax-wrap"
 	class:is-dragging={dragging}
-	style:z-index={open ? 300010 : 12}
+	style:z-index={open ? 300010 : 56}
 	style:left={`${left}px`}
 	style:top={`${top}px`}
 	style:visibility={ready ? 'visible' : 'hidden'}
@@ -295,7 +335,7 @@
 <style>
 	.fax-wrap {
 		position: absolute;
-		z-index: 12;
+		z-index: 56;
 		width: 78px;
 		touch-action: none;
 		user-select: none;

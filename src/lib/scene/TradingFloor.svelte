@@ -72,6 +72,8 @@
 	let bars = $state<Bar[]>([]);
 	let legs = $state<TraderLeg[]>([]);
 	let book = $state<OpenBook>({});
+	type TakeProfitFlash = { pnlUsd: number; target: 'TP1' | 'TP2'; expiresAt: number };
+	let takeProfitFlashes = $state<Record<string, TakeProfitFlash>>({});
 	let lastDecisionCandle = 0;
 	let marketRequest = 0;
 	let tapeRequest = 0;
@@ -386,6 +388,7 @@
 	};
 
 	let foregroundDesk = $state<HTMLElement>();
+	let foregroundDeskTop = $state(0);
 	let deskPropEls: Partial<Record<DeskPropId, HTMLElement>> = {};
 	let deskProps = $state<Record<DeskPropId, DeskPropState>>(
 		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).reduce(
@@ -576,6 +579,15 @@
 	function postureFor(t: TraderDef) {
 		return postureForTrader(t, signal, legFor(t.id));
 	}
+	function showTakeProfit(traderId: string, pnlUsd: number, target: 'TP1' | 'TP2') {
+		const expiresAt = Date.now() + 2800;
+		takeProfitFlashes = { ...takeProfitFlashes, [traderId]: { pnlUsd, target, expiresAt } };
+		window.setTimeout(() => {
+			if (takeProfitFlashes[traderId]?.expiresAt !== expiresAt) return;
+			const { [traderId]: _, ...rest } = takeProfitFlashes;
+			takeProfitFlashes = rest;
+		}, 2800);
+	}
 	function pin(id: string) {
 		inspectedId = id;
 		pinnedId = pinnedId === id ? null : id;
@@ -645,13 +657,7 @@
 	}
 
 	function reflowClipboard() {
-		if (!clipboardReady || !clipboardRoot || !sceneFrame || !foregroundDesk) return;
-		const mobileMinTop = deskSurfaceOffsetTop();
-		if (sceneFrame.clientWidth <= 480 && clipboardTop < mobileMinTop && !clipboardDragging) {
-			setClipboardPosition(8, deskSurfaceOffsetTop() + 556);
-			return;
-		}
-		setClipboardPosition(clipboardLeft, clipboardTop);
+		// Positions are intentional user layout, so a viewport change must not move them.
 	}
 
 	function onClipboardPointerDown(event: PointerEvent) {
@@ -740,13 +746,7 @@
 	}
 
 	function reflowPricePad() {
-		if (!pricePadReady || !pricePadRoot || !sceneFrame) return;
-		if (sceneFrame.clientWidth <= 768 && foregroundDesk && pricePadTop < deskSurfaceOffsetTop() && !pricePadDragging) {
-			const mobile = mobilePricePadPosition();
-			setPricePadPosition(mobile.left, mobile.top);
-			return;
-		}
-		setPricePadPosition(pricePadLeft, pricePadTop);
+		// Positions are intentional user layout, so a viewport change must not move them.
 	}
 
 	function onPricePadPointerDown(event: PointerEvent) {
@@ -886,20 +886,7 @@
 	}
 
 	function reflowDeskProps() {
-		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).forEach((id) => {
-			if (!deskProps[id].ready) return;
-			if (sceneFrame && foregroundDesk && sceneFrame.clientWidth <= 768) {
-				const mobileLayout = mobileDeskPropLayout();
-				const el = deskPropEls[id];
-				const offscreen = deskProps[id].left >= sceneFrame.clientWidth || deskProps[id].top < deskSurfaceOffsetTop() || deskProps[id].top > deskSurfaceOffsetTop() + foregroundDesk.clientHeight;
-				if (offscreen && !deskProps[id].dragging) {
-					setDeskPropPos(id, mobileLayout[id].left, mobileLayout[id].top);
-					return;
-				}
-				void el;
-			}
-			setDeskPropPos(id, deskProps[id].left, deskProps[id].top);
-		});
+		// Positions are intentional user layout, so a viewport change must not move them.
 	}
 
 	/** Click-vs-drag: arm on pointerdown; drag after >4px or 200ms hold. */
@@ -1263,6 +1250,7 @@
 			if (decisionPoint) lastDecisionCandle = decisionCandle;
 			book = result.book;
 			legs = result.legs;
+			for (const profit of result.takeProfits) showTakeProfit(profit.traderId, profit.pnlUsd, profit.target);
 			reconcileTraderTimes(result.book);
 			err = null;
 		} catch (e) {
@@ -1314,9 +1302,7 @@
 			if (saved) wireDecorPositions = { ...wireDecorPositions, [id]: { ...wireDecorPositions[id], ...saved } };
 		}
 		const onSceneResize = () => {
-			clampWireDecorToScene();
-			placeLoungeDecor();
-			placeOfficeFlag();
+			foregroundDeskTop = deskSurfaceOffsetTop();
 		};
 		window.addEventListener('resize', onSceneResize);
 		requestAnimationFrame(clampWireDecorToScene);
@@ -1393,7 +1379,14 @@
 	});
 	$effect(() => {
 		if (!sceneFrame || !foregroundDesk) return;
-		requestAnimationFrame(() => placeAllDeskProps());
+		const updateDeskTop = () => {
+			foregroundDeskTop = deskSurfaceOffsetTop();
+			placeAllDeskProps();
+		};
+		const observer = new ResizeObserver(updateDeskTop);
+		observer.observe(foregroundDesk);
+		requestAnimationFrame(updateDeskTop);
+		return () => observer.disconnect();
 	});
 	$effect(() => {
 		if (!sceneFrame || !officeFlagEl) return;
@@ -1402,12 +1395,6 @@
 </script>
 
 <svelte:window
-	onresize={() => {
-		reflowClipboard();
-		reflowPricePad();
-		reflowDeskProps();
-		placeOfficeFlag();
-	}}
 	onkeydown={(e) => {
 		if (e.key === 'Escape') pinnedId = null;
 	}}
@@ -1626,6 +1613,7 @@
 								leg={legFor(t.id)}
 								posture={postureFor(t)}
 								tradeDurationMinutes={tradeDurationFor(t.id)}
+								takeProfit={takeProfitFlashes[t.id] ? { pnlUsd: takeProfitFlashes[t.id].pnlUsd, target: takeProfitFlashes[t.id].target } : null}
 								{bars}
 								lampBoost={signal?.bias === 'LONG' ? 0.22 : 0}
 								tick={animTick}
@@ -1651,6 +1639,7 @@
 								leg={legFor(t.id)}
 								posture={postureFor(t)}
 								tradeDurationMinutes={tradeDurationFor(t.id)}
+								takeProfit={takeProfitFlashes[t.id] ? { pnlUsd: takeProfitFlashes[t.id].pnlUsd, target: takeProfitFlashes[t.id].target } : null}
 								{bars}
 								lampBoost={signal?.bias === 'SHORT' ? 0.22 : 0}
 								tick={animTick}
@@ -1705,6 +1694,7 @@
 				displaySymbol={activeDisplay}
 				decimals={priceDecimals}
 				sceneFrame={sceneFrame}
+				mobileDeskTop={foregroundDeskTop}
 			/>
 		{/if}
 		{#if deskSettings.showPet && !deskSettings.hideAllDraggables}
@@ -1722,6 +1712,7 @@
 				displaySymbol={activeDisplay}
 				decimals={priceDecimals}
 				sceneFrame={sceneFrame}
+				mobileDeskTop={foregroundDeskTop}
 			/>
 		{/if}
 		{#if deskSettings.showCrtCart && !deskSettings.hideAllDraggables}
