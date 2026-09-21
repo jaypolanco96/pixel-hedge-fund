@@ -1859,6 +1859,8 @@
 	.market-board {
 		margin: 14px 12px 8px;
 		padding: 8px;
+		max-height: 268px;
+		overflow: hidden;
 		background: #11130f;
 		border: 5px solid #79603f;
 		box-shadow:
@@ -1941,7 +1943,7 @@
 	}
 	.market-board .wire-quote-list {
 		display: block;
-		max-height: 190px;
+		max-height: 104px;
 		overflow-y: auto;
 		margin-top: 5px;
 		padding-right: 3px;
@@ -3121,6 +3123,7 @@
 		}
 		.market-board {
 			margin: 10px 12px 8px;
+			max-height: none;
 		}
 		.market-board header {
 			font-size: 9px;
@@ -3137,6 +3140,13 @@
 			min-height: 36px; /* touch-friendly */
 		}
 		.market-board > div {
+			font-size: 9px;
+			grid-template-columns: 1fr auto minmax(44px, auto);
+		}
+		.market-board .wire-quote-list {
+			max-height: 180px;
+		}
+		.market-board .wire-quote-row {
 			font-size: 9px;
 			grid-template-columns: 1fr auto minmax(44px, auto);
 		}
