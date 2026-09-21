@@ -28,7 +28,7 @@
 		const values = view.flatMap((b) => [b.h, showLevels ? tp2 ?? b.h : b.h, showLevels ? stop ?? b.h : b.h]);
 		return values.length ? Math.max(...values) : 1;
 	});
-	const range = $derived(Math.max(hi - lo, 0.0001));
+	const range = $derived(Math.max(hi - lo, Math.abs(hi) * 0.000001, Number.MIN_VALUE));
 
 	function y(value: number) {
 		return 63 - ((value - lo) / range) * 48;
@@ -37,7 +37,7 @@
 
 <div class="mini-chart" data-bias={bias}>
 	<div class="screen-label">{label}</div>
-	<svg viewBox="0 0 180 70" preserveAspectRatio="none" aria-label="Live 15 minute candle snippet">
+	<svg viewBox="0 0 180 70" preserveAspectRatio="none" aria-label="15 minute candle snippet">
 		<g class="grid">
 			<path d="M0 18H180M0 34H180M0 50H180M45 8V68M90 8V68M135 8V68" />
 		</g>

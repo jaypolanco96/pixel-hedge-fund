@@ -380,6 +380,11 @@
 	async function confirmDeskIntent() {
 		const pending = confirmIntent;
 		if (!pending || sending) return;
+		if (pending.source !== 'desk' || pending.exchange === 'bybit' || pending.marketType === 'spot' || pending.signalSample) {
+			tradeErr = true;
+			tradeMsg = 'Review this intent in Quick Trade on its original exchange; it cannot be sent from BloFin Desk.';
+			return;
+		}
 		if (!health?.configured) {
 			tradeErr = true;
 			tradeMsg = 'BloFin keys not configured — use LOGIN tab';
@@ -419,7 +424,8 @@
 				marginMode: pending.marginMode,
 				side: pending.side,
 				orderType: pending.orderType,
-				size: String(Number(pending.estSize.toFixed(4))),
+				size: String(pending.estSize),
+				sizeUnit: 'baseCoin',
 				positionSide: pending.positionSide
 			};
 			if (pending.orderType === 'limit' && pending.price != null) orderBody.price = String(pending.price);
@@ -732,7 +738,7 @@
 						{#if intents.length}
 							<div class="intent-box">
 								<h4>PENDING LIVE INTENTS</h4>
-								{#each intents as it (it.id)}
+								{#each intents.filter((it) => it.source === 'desk' && it.exchange !== 'bybit' && it.marketType !== 'spot') as it (it.id)}
 									<div class="intent-row">
 										<span>{it.instId} {it.side} {it.leverage}× · {it.estSize.toFixed(4)} cts → {it.traderId}</span>
 										<button
@@ -852,7 +858,7 @@
 
 	{#if confirmIntent}
 		<div class="confirm-backdrop" role="presentation"></div>
-		<div class="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm live order">
+		<div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-label="Confirm live order">
 			<strong>LIVE ORDER — confirm</strong>
 			<p>
 				{confirmIntent.instId} · {confirmIntent.side.toUpperCase()} · {confirmIntent.positionSide} ·
@@ -1228,7 +1234,7 @@
 	.confirm-backdrop {
 		position: fixed; inset: 0; z-index: 200010; background: rgba(0,0,0,0.7);
 	}
-	.confirm {
+	.confirm-dialog {
 		position: fixed; z-index: 200011; left: 50%; top: 50%; transform: translate(-50%,-50%);
 		width: min(360px, calc(100vw - 32px)); padding: 14px;
 		background: #2a100e; border: 3px solid #c66b59; color: #ffe0d9;
@@ -1236,8 +1242,8 @@
 		box-shadow: 8px 8px 0 rgba(0,0,0,0.55);
 		display: block;
 	}
-	.confirm strong { display: block; margin-bottom: 8px; color: #ff766a; letter-spacing: 0.1em; }
-	.confirm p { font-size: 9px; line-height: 1.5; margin: 0 0 12px; }
+	.confirm-dialog strong { display: block; margin-bottom: 8px; color: #ff766a; letter-spacing: 0.1em; }
+	.confirm-dialog p { font-size: 9px; line-height: 1.5; margin: 0 0 12px; }
 	.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 	.login-panel {

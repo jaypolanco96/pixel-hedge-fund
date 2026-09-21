@@ -4,6 +4,7 @@
  */
 import type { Bar, CandlesResponse, QuoteResponse, Tf } from './types';
 import { sampleCandles, sampleQuote } from './sample';
+import { validBar } from './validation';
 import {
 	DEFAULT_DISPLAY,
 	hasKraken,
@@ -12,8 +13,8 @@ import {
 	TAPE_DISPLAYS,
 	type SymbolDef
 } from './symbols';
-import { fetchBybitQuote, fetchBybitQuotesFor, fetchBybitSpotLeveragedQuotes, fetchBybitSpotQuotesFor, fetchBybitTopVolumeQuotes } from './bybit';
-import { fetchBloFinTopVolumeQuotes } from './blofin';
+import { fetchBybitCandles, fetchBybitQuote, fetchBybitQuotesFor, fetchBybitSpotLeveragedQuotes, fetchBybitSpotQuotesFor, fetchBybitTopVolumeQuotes } from './bybit';
+import { fetchBloFinPublicCandles, fetchBloFinPublicQuote, fetchBloFinTopVolumeQuotes } from './blofin';
 
 export { resolveSymbol, SYMBOLS, DEFAULT_DISPLAY, TAPE_DISPLAYS } from './symbols';
 
@@ -83,7 +84,9 @@ export async function fetchQuote(symbolInput?: string | null): Promise<QuoteResp
 
 	// Bybit-primary (no Kraken map) → public linear ticker
 	if (!hasKraken(def) || def.quoteVenue === 'bybit') {
-		return fetchBybitQuote(def.display);
+		const bybit = await fetchBybitQuote(def.display);
+		if (!bybit.sample) return bybit;
+		return fetchBloFinPublicQuote(def.display);
 	}
 
 	const cacheKey = def.kraken;
@@ -93,12 +96,11 @@ export async function fetchQuote(symbolInput?: string | null): Promise<QuoteResp
 	try {
 		const rows = await loadTickers();
 		const tick = rows.find((t) => t.symbol === def.kraken);
-		if (!tick || tick.last == null) throw new Error(`${def.kraken} missing from tickers`);
+		if (!tick || !Number.isFinite(Number(tick.last)) || Number(tick.last) <= 0) throw new Error(`${def.kraken} missing from tickers`);
 		const data = quoteFromTick(def, tick);
 		quoteCache.set(cacheKey, { at: Date.now(), data });
 		return data;
 	} catch (err) {
-		if (hit) return { ...hit.data };
 		// Secondary: try Bybit public ticker before SAMPLE
 		try {
 			const bybitQ = await fetchBybitQuote(def.display);
@@ -106,6 +108,7 @@ export async function fetchQuote(symbolInput?: string | null): Promise<QuoteResp
 		} catch {
 			/* ignore */
 		}
+		if (hit) return { ...hit.data, sample: true };
 		console.warn(`[Tape Wire] quote ${def.display} fallback → SAMPLE`, err);
 		return sampleQuote(def.display);
 	}
@@ -122,8 +125,6 @@ export async function fetchTapeQuotes(market: TapeMarket = 'futures'): Promise<Q
 		]);
 		return [...SYMBOLS.map((def) => spotMap.get(def.display) ?? sampleQuote(def.display)), ...leveraged];
 	}
-	const krakenDefs = SYMBOLS.filter((d) => hasKraken(d) && d.quoteVenue === 'kraken');
-	const bybitDefs = SYMBOLS.filter((d) => !hasKraken(d) || d.quoteVenue === 'bybit');
 
 	let krakenRows: TickRow[] = [];
 	try {
@@ -132,12 +133,12 @@ export async function fetchTapeQuotes(market: TapeMarket = 'futures'): Promise<Q
 		console.warn('[Tape Wire] Kraken tickers failed', err);
 	}
 
-	const bybitMap = await fetchBybitQuotesFor(bybitDefs.length ? bybitDefs : SYMBOLS.filter((d) => !hasKraken(d)));
+	const bybitMap = await fetchBybitQuotesFor(SYMBOLS);
 
 	const baseQuotes = SYMBOLS.map((def) => {
 		if (hasKraken(def) && def.quoteVenue === 'kraken') {
 			const tick = krakenRows.find((t) => t.symbol === def.kraken);
-			if (tick && tick.last != null) {
+			if (tick && Number.isFinite(Number(tick.last)) && Number(tick.last) > 0) {
 				const data = quoteFromTick(def, tick);
 				quoteCache.set(def.kraken, { at: Date.now(), data });
 				return data;
@@ -164,7 +165,7 @@ export async function fetchTapeQuotes(market: TapeMarket = 'futures'): Promise<Q
 		if (!previous || (q.volume24h ?? 0) > (previous.volume24h ?? 0)) topByDisplay.set(q.display, q);
 	}
 	return [
-		...topByDisplay.values(),
+		...([...topByDisplay.values()].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))),
 		...baseQuotes.filter((q) => !topByDisplay.has(q.display))
 	];
 }
@@ -176,9 +177,12 @@ export async function fetchCandles(
 ): Promise<CandlesResponse> {
 	const def = resolveSymbol(symbolInput);
 
-	// No Kraken instrument → SAMPLE candles (Bybit klines not wired yet)
+	// Dynamic channels use public exchange candles through the same signal path.
 	if (!hasKraken(def)) {
-		return sampleCandles(tf, limit, def.display);
+		const bybit = await fetchBybitCandles(def.display, tf, limit);
+		if (!bybit.sample) return bybit;
+		const blofin = await fetchBloFinPublicCandles(def.display, tf, limit);
+		return blofin.sample ? bybit : blofin;
 	}
 
 	const resolution = TF_MAP[tf] ?? '15m';
@@ -213,7 +217,8 @@ export async function fetchCandles(
 			l: Number(c.low),
 			c: Number(c.close),
 			v: Number(c.volume)
-		}));
+		})).filter(validBar).sort((a, b) => a.t - b.t);
+		if (!bars.length) throw new Error('No valid candles');
 
 		const data: CandlesResponse = {
 			symbol: def.canonical,
@@ -226,7 +231,9 @@ export async function fetchCandles(
 		candleCache.set(key, { at: Date.now(), data });
 		return data;
 	} catch (err) {
-		if (hit) return hit.data;
+		const bybit = await fetchBybitCandles(def.display, tf, limit);
+		if (!bybit.sample) return bybit;
+		if (hit) return { ...hit.data, sample: true };
 		console.warn(`[Tape Wire] candles ${def.display} fallback → SAMPLE`, err);
 		return sampleCandles(tf, limit, def.display);
 	}

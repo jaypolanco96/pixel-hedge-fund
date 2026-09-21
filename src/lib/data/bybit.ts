@@ -8,6 +8,7 @@ import { createHmac } from 'node:crypto';
 import { env } from '$env/dynamic/private';
 import {
 	LIVE_BYBIT_BASE,
+	normalizeExchangeBase,
 	readExchangeSecrets,
 	type BybitSecrets
 } from '$lib/server/exchangeSecrets';
@@ -21,9 +22,10 @@ import type {
 	BybitTickerRow
 } from './bybitTypes';
 import type { BybitPlaceOrderBody, BybitTradeWriteResponse } from './bybitTypes';
-import type { QuoteResponse } from './types';
+import type { Bar, CandlesResponse, QuoteResponse, Tf } from './types';
 import { bybitSpotSymbol, resolveSymbol, spotWireSymbol, type SymbolDef } from './symbols';
-import { sampleQuote } from './sample';
+import { sampleCandles, sampleQuote } from './sample';
+import { validBar } from './validation';
 
 export type {
 	BybitBalanceResponse,
@@ -52,7 +54,7 @@ function num(v: unknown, fallback = 0): number {
 export async function getBybitConfig(): Promise<BybitConfig> {
 	const fromReq = getRequestBybit();
 	if (fromReq?.apiKey && fromReq?.apiSecret) {
-		const baseUrl = (fromReq.baseUrl || LIVE_BYBIT_BASE).replace(/\/$/, '');
+		const baseUrl = normalizeExchangeBase(fromReq.baseUrl, 'bybit');
 		return {
 			apiKey: fromReq.apiKey.trim(),
 			apiSecret: fromReq.apiSecret.trim(),
@@ -79,7 +81,7 @@ export async function getBybitConfig(): Promise<BybitConfig> {
 		if (!rawBase) rawBase = (s.baseUrl ?? '').trim();
 	}
 
-	const baseUrl = (rawBase || LIVE_BYBIT_BASE).replace(/\/$/, '');
+	const baseUrl = normalizeExchangeBase(rawBase, 'bybit');
 	return {
 		apiKey,
 		apiSecret,
@@ -119,6 +121,7 @@ async function bybitGet<T = unknown>(pathWithQuery: string): Promise<Ok<T> | Fai
 	try {
 		const res = await fetch(`${cfg.baseUrl}${pathWithQuery}`, {
 			method: 'GET',
+			redirect: 'error',
 			headers: {
 				'X-BAPI-API-KEY': cfg.apiKey,
 				'X-BAPI-SIGN': signature,
@@ -174,6 +177,7 @@ async function bybitPost<T = unknown>(path: string, body: Record<string, unknown
 	try {
 		const res = await fetch(`${cfg.baseUrl}${path}`, {
 			method: 'POST',
+			redirect: 'error',
 			headers: {
 				'X-BAPI-API-KEY': cfg.apiKey,
 				'X-BAPI-SIGN': signature,
@@ -191,7 +195,7 @@ async function bybitPost<T = unknown>(path: string, body: Record<string, unknown
 			result?: T;
 		} | null;
 		const code = String(json?.retCode ?? '');
-		if (!res.ok || (code !== '0' && code !== '')) {
+		if (!res.ok || code !== '0') {
 			return {
 				ok: false,
 				status: res.status,
@@ -210,11 +214,28 @@ export async function placeBybitOrder(body: BybitPlaceOrderBody): Promise<BybitT
 	if (!['linear', 'spot'].includes(body.category) || !body.symbol || !body.qty) {
 		return { ok: false, error: 'linear or spot category, symbol, and qty are required' };
 	}
-	if (body.orderType === 'Limit' && !(body.price && Number(body.price) > 0)) {
+	if (!['Buy', 'Sell'].includes(body.side) || !['Market', 'Limit'].includes(body.orderType)) {
+		return { ok: false, error: 'Invalid side or orderType' };
+	}
+	if (!Number.isFinite(Number(body.qty)) || Number(body.qty) <= 0) {
+		return { ok: false, error: 'qty must be a finite positive number' };
+	}
+	if (body.marketUnit != null && !['baseCoin', 'quoteCoin'].includes(body.marketUnit)) {
+		return { ok: false, error: 'Invalid marketUnit' };
+	}
+	if (body.orderType === 'Limit' && !(body.price && Number.isFinite(Number(body.price)) && Number(body.price) > 0)) {
 		return { ok: false, error: 'Limit orders require a positive price' };
 	}
 	if ((body.takeProfit && !body.stopLoss) || (!body.takeProfit && body.stopLoss)) {
 		return { ok: false, error: 'takeProfit and stopLoss must be provided together' };
+	}
+	for (const level of [body.takeProfit, body.stopLoss]) {
+		if (level != null && (!Number.isFinite(Number(level)) || Number(level) <= 0)) {
+			return { ok: false, error: 'Protection prices must be finite and positive' };
+		}
+	}
+	if (body.reduceOnly && (body.takeProfit || body.stopLoss)) {
+		return { ok: false, error: 'Reduce-only orders cannot attach TP/SL' };
 	}
 	const payload: Record<string, unknown> = {
 		category: body.category,
@@ -225,6 +246,7 @@ export async function placeBybitOrder(body: BybitPlaceOrderBody): Promise<BybitT
 		timeInForce: body.orderType === 'Limit' ? body.timeInForce ?? 'GTC' : 'IOC',
 	};
 	if (body.category === 'linear') payload.positionIdx = body.positionIdx ?? 0;
+	if (body.category === 'spot' && body.orderType === 'Market' && body.marketUnit) payload.marketUnit = body.marketUnit;
 	if (body.price != null) payload.price = body.price;
 	if (body.orderLinkId) payload.orderLinkId = body.orderLinkId;
 	if (body.category === 'linear' && body.reduceOnly === true) payload.reduceOnly = true;
@@ -338,6 +360,15 @@ export async function fetchBybitBalance(): Promise<BybitBalanceResponse> {
 const PUBLIC_BASE = 'https://api.bybit.com';
 let tickerCache: { at: number; bySymbol: Map<string, BybitTickerRow> } | null = null;
 const TICKER_TTL_MS = 10_000;
+const candleCache = new Map<string, { at: number; data: CandlesResponse }>();
+const BYBIT_TF: Record<Tf, string> = {
+	'1m': '1',
+	'5m': '5',
+	'15m': '15',
+	'1h': '60',
+	'4h': '240',
+	'1d': 'D'
+};
 let spotTickerCache: { at: number; bySymbol: Map<string, BybitTickerRow> } | null = null;
 let spotInstrumentCache: { at: number; symbols: string[] } | null = null;
 const COMMON_LEVERAGED_SPOT_SYMBOLS = [
@@ -379,7 +410,7 @@ async function loadLinearTickers(): Promise<Map<string, BybitTickerRow>> {
 		return map;
 	} catch (err) {
 		console.warn('[Bybit] public tickers failed', err);
-		if (tickerCache) return tickerCache.bySymbol;
+		if (tickerCache) return new Map([...tickerCache.bySymbol].map(([key, row]) => [key, { ...row, sample: true }]));
 		return new Map();
 	}
 }
@@ -416,7 +447,7 @@ async function loadSpotTickers(): Promise<Map<string, BybitTickerRow>> {
 		return map;
 	} catch (err) {
 		console.warn('[Bybit] public spot tickers failed', err);
-		if (spotTickerCache) return spotTickerCache.bySymbol;
+		if (spotTickerCache) return new Map([...spotTickerCache.bySymbol].map(([key, row]) => [key, { ...row, sample: true }]));
 		return new Map();
 	}
 }
@@ -458,7 +489,7 @@ export function quoteFromBybitTicker(def: SymbolDef, tick: BybitTickerRow): Quot
 		ask: tick.ask1Price || tick.lastPrice,
 		t: Date.now(),
 		provider: 'bybit',
-		sample: false,
+		sample: tick.sample ?? false,
 		change24h: tick.change24hPct,
 		volume24h: tick.turnover24h
 	};
@@ -491,6 +522,63 @@ export async function fetchBybitQuotesFor(
 	return out;
 }
 
+/** Public Bybit linear candles for static and dynamic USDT channels. */
+export async function fetchBybitCandles(
+	symbolInput: string | null | undefined,
+	tf: Tf,
+	limit = 300
+): Promise<CandlesResponse> {
+	const def = resolveSymbol(symbolInput);
+	const interval = BYBIT_TF[tf] ?? '15';
+	const boundedLimit = Math.max(1, Math.min(limit, 1000));
+	const key = `${def.bybit}:${interval}:${boundedLimit}`;
+	const hit = candleCache.get(key);
+	if (hit && Date.now() - hit.at < TICKER_TTL_MS) return hit.data;
+	try {
+		const params = new URLSearchParams({
+			category: 'linear',
+			symbol: def.bybit,
+			interval,
+			limit: String(boundedLimit)
+		});
+		const res = await fetch(`${PUBLIC_BASE}/v5/market/kline?${params}`, {
+			headers: { Accept: 'application/json' },
+			signal: AbortSignal.timeout(12_000)
+		});
+		if (!res.ok) throw new Error(`bybit kline HTTP ${res.status}`);
+		const body = (await res.json()) as {
+			retCode?: number;
+			result?: { list?: unknown[][] };
+		};
+		if (body.retCode != null && Number(body.retCode) !== 0) throw new Error(`bybit kline retCode ${body.retCode}`);
+		const bars: Bar[] = (body.result?.list ?? [])
+			.map((row) => ({
+				t: num(row[0]),
+				o: num(row[1]),
+				h: num(row[2]),
+				l: num(row[3]),
+				c: num(row[4]),
+				v: num(row[5])
+			}))
+			.filter(validBar)
+			.sort((a, b) => a.t - b.t);
+		if (!bars.length) throw new Error(`${def.bybit} returned no candles`);
+		const data: CandlesResponse = {
+			symbol: def.canonical,
+			display: def.display,
+			tf,
+			provider: 'bybit',
+			sample: false,
+			bars
+		};
+		candleCache.set(key, { at: Date.now(), data });
+		return data;
+	} catch (err) {
+		console.warn(`[Bybit] candles ${def.display} failed`, err);
+		return hit ? { ...hit.data, sample: true } : sampleCandles(tf, boundedLimit, def.display);
+	}
+}
+
 function baseCoin(symbol: string): string {
 	return symbol.replace(/USDT$|USDC$|USD$/i, '').toUpperCase();
 }
@@ -518,7 +606,7 @@ function dynamicBybitQuote(tick: BybitTickerRow): QuoteResponse {
 		ask: tick.ask1Price || price,
 		t: Date.now(),
 		provider: 'bybit',
-		sample: false,
+		sample: tick.sample ?? false,
 		change24h: tick.change24hPct,
 		volume24h: tick.turnover24h,
 		category: classifyCoin(base),
@@ -569,7 +657,7 @@ export async function fetchBybitSpotLeveragedQuotes(): Promise<QuoteResponse[]> 
 			ask: tick.ask1Price,
 			t: Date.now(),
 			provider: 'bybit' as const,
-			sample: false,
+			sample: tick.sample ?? false,
 			change24h: tick.change24hPct
 		}];
 	});

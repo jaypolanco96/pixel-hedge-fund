@@ -38,10 +38,19 @@ export function exchangeAuthHeaders(): Record<string, string> {
 
 /** fetch() that merges sessionStorage exchange credentials into headers. */
 export function exchangeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-	const headers = new Headers(init?.headers);
-	const extra = exchangeAuthHeaders();
+	const headers = new Headers(input instanceof Request ? input.headers : undefined);
+	new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+	const url = new URL(input instanceof Request ? input.url : String(input), typeof location === 'undefined' ? 'http://localhost' : location.href);
+	const sameOrigin = typeof location !== 'undefined' && url.origin === location.origin;
+	const venue = sameOrigin ? /^\/api\/(blofin|bybit)\//.exec(url.pathname)?.[1] : undefined;
+	// Never forward visitor credentials to another origin, public market routes,
+	// or the other exchange. Preserve unrelated caller/Request headers.
+	for (const key of [...headers.keys()]) {
+		if (/^x-phf-(blofin|bybit)-/.test(key) && (!venue || !key.startsWith(`x-phf-${venue}-`))) headers.delete(key);
+	}
+	const extra = venue ? exchangeAuthHeaders() : {};
 	for (const [k, v] of Object.entries(extra)) {
-		if (!headers.has(k)) headers.set(k, v);
+		if (k.startsWith(`x-phf-${venue}-`) && !headers.has(k)) headers.set(k, v);
 	}
 	return fetch(input, { ...init, headers });
 }

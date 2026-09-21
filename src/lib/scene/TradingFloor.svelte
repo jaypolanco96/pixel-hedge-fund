@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { exchangeFetch } from '$lib/client/exchangeHeaders';
+	import { completedBars } from '$lib/data/validation';
 	import { onMount } from 'svelte';
 	import Skyline from './Skyline.svelte';
 	import RainLayer from './RainLayer.svelte';
@@ -69,6 +70,9 @@
 	let legs = $state<TraderLeg[]>([]);
 	let book = $state<OpenBook>({});
 	let lastDecisionCandle = 0;
+	let marketRequest = 0;
+	let tapeRequest = 0;
+	let bookSource = '';
 	let err = $state<string | null>(null);
 	let animTick = $state(0);
 	let totalSimMinutes = $state(0);
@@ -135,13 +139,13 @@
 
 	function onWireDecorPointerDown(id: WireDecorId, event: PointerEvent) {
 		const el = wireDecorEls[id];
-		if (!el || wireDecorDrag[id]) return;
+		if (!el || !sceneFrame || wireDecorDrag[id]) return;
 		if (event.pointerType === 'mouse' && event.button !== 0) return;
-		const rect = el.getBoundingClientRect();
+		const rect = sceneFrame.getBoundingClientRect();
 		wireDecorDrag[id] = {
 			pointerId: event.pointerId,
-			offsetX: event.clientX - rect.left,
-			offsetY: event.clientY - rect.top
+			offsetX: (event.clientX - rect.left) * sceneFrame.clientWidth / rect.width - wireDecorPositions[id].left,
+			offsetY: (event.clientY - rect.top) * sceneFrame.clientHeight / rect.height - wireDecorPositions[id].top
 		};
 		wireDecorPositions = { ...wireDecorPositions, [id]: { ...wireDecorPositions[id], dragging: true } };
 		el.setPointerCapture(event.pointerId);
@@ -170,8 +174,20 @@
 		const position = wireDecorPositions[id];
 		saveScenePosition(WIRE_DECOR_KEYS[id], position);
 		wireDecorPositions = { ...wireDecorPositions, [id]: { ...position, dragging: false } };
-		if (el?.hasPointerCapture(event.pointerId)) el.releasePointerCapture(event.pointerId);
 		delete wireDecorDrag[id];
+		if (el?.hasPointerCapture(event.pointerId)) el.releasePointerCapture(event.pointerId);
+	}
+
+	function onWireDecorKeyDown(id: WireDecorId, event: KeyboardEvent) {
+		const delta: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+		const move = delta[event.key];
+		if (!move) return;
+		event.preventDefault();
+		const step = event.shiftKey ? 20 : 5;
+		const position = wireDecorPositions[id];
+		wireDecorPositions = { ...wireDecorPositions, [id]: { ...position, left: position.left + move[0] * step, top: position.top + move[1] * step } };
+		clampWireDecorToScene();
+		saveScenePosition(WIRE_DECOR_KEYS[id], wireDecorPositions[id]);
 	}
 
 	function bindWireDecor(node: HTMLElement, id: WireDecorId) {
@@ -181,6 +197,20 @@
 				delete wireDecorEls[id];
 			}
 		};
+	}
+
+	function clampWireDecorToScene() {
+		if (!sceneFrame) return;
+		for (const id of Object.keys(WIRE_DECOR_KEYS) as WireDecorId[]) {
+			const el = wireDecorEls[id];
+			if (!el) continue;
+			const position = wireDecorPositions[id];
+			const left = Math.max(0, Math.min(position.left, sceneFrame.clientWidth - el.offsetWidth));
+			const top = Math.max(0, Math.min(position.top, sceneFrame.clientHeight - el.offsetHeight));
+			if (left !== position.left || top !== position.top) {
+				wireDecorPositions = { ...wireDecorPositions, [id]: { ...position, left, top } };
+			}
+		}
 	}
 
 
@@ -236,13 +266,24 @@
 	/** MARKET WIRE category filter */
 	let wireCategory = $state<SymbolCategory | 'all'>('all');
 	let wireMarket = $state<'futures' | 'spot'>('futures');
-	const wireSymbols = $derived(symbolsInCategory(wireCategory));
 	const filteredTapeQuotes = $derived(
 		tapeQuotes.filter((q) => {
 			if (wireCategory === 'all') return true;
 			return (q.category ?? resolveSymbol(q.display).category) === wireCategory;
 		})
 	);
+	const wireChannels = $derived.by(() => {
+		const seen = new Set<string>();
+		const rows = filteredTapeQuotes
+			.slice(0, 20)
+			.map((q) => ({ display: q.display, label: q.label ?? resolveSymbol(q.display).label }))
+			.filter((row) => {
+				if (seen.has(row.display)) return false;
+				seen.add(row.display);
+				return true;
+			});
+		return rows.length ? rows : symbolsInCategory(wireCategory).map((s) => ({ display: s.display, label: s.label }));
+	});
 	const wireTokenQuotes = $derived(
 		filteredTapeQuotes.filter((q) => /(?:\d+(?:L|S)|\d+X(?:LONG|SHORT))$/i.test(q.display.replace(/USDT$/, '')))
 	);
@@ -760,10 +801,11 @@
 
 	function setWireCategory(cat: SymbolCategory | 'all') {
 		wireCategory = cat;
-		const list = symbolsInCategory(cat);
-		if (list.length && !list.some((s) => s.display === activeDisplay)) {
-			setSymbol(list[0].display);
-		}
+		queueMicrotask(() => {
+			if (!wireChannels.some((s) => s.display === activeDisplay) && wireChannels[0]) {
+				selectWireTicker(wireChannels[0].display);
+			}
+		});
 	}
 
 	function setWireMarket(market: 'futures' | 'spot') {
@@ -787,14 +829,21 @@
 		return price < 1 ? 8 : 4;
 	}
 
+	function selectWireTicker(display: string) {
+		setSymbol(display);
+	}
+
 	async function pollTape(market = wireMarket) {
+		const request = ++tapeRequest;
 		try {
 			const res = await fetch(`/api/market/tape?market=${market}`);
 			if (!res.ok) throw new Error('Market Wire unavailable');
 			const tape = (await res.json()) as { market?: 'futures' | 'spot'; quotes?: QuoteResponse[] };
-			if (market !== wireMarket) return;
+			if (request !== tapeRequest || market !== wireMarket) return;
 			tapeQuotes = tape.quotes ?? [];
 		} catch (e) {
+			if (request !== tapeRequest || market !== wireMarket) return;
+			tapeQuotes = tapeQuotes.map((q) => ({ ...q, sample: true }));
 			err = e instanceof Error ? e.message : 'Market Wire unavailable';
 		}
 	}
@@ -912,6 +961,7 @@
 		if (def.display === activeDisplay) return;
 		activeDisplay = def.display;
 		book = {};
+		bookSource = '';
 		legs = [];
 		lastDecisionCandle = 0;
 		quote = null;
@@ -925,43 +975,42 @@
 
 	function onChannelChange(e: Event) {
 		const v = (e.currentTarget as HTMLSelectElement).value;
-		setSymbol(v);
+		selectWireTicker(v);
 	}
 
 	async function pollMarket() {
+		const request = ++marketRequest;
 		const sym = activeDisplay;
-		const tapeMode = wireMarket;
+		void pollTape();
 		try {
-			const [qRes, sRes, cRes, tRes] = await Promise.all([
+			const [qRes, sRes, cRes] = await Promise.all([
 				fetch(`/api/market/quote?symbol=${encodeURIComponent(sym)}`),
 				fetch(`/api/market/signal?symbol=${encodeURIComponent(sym)}`),
-				fetch(`/api/market/candles?symbol=${encodeURIComponent(sym)}&tf=15m&limit=80`),
-				fetch(`/api/market/tape?market=${tapeMode}`)
+				fetch(`/api/market/candles?symbol=${encodeURIComponent(sym)}&tf=15m&limit=80`)
 			]);
-			if (!qRes.ok || !sRes.ok) throw new Error('Tape Wire unavailable');
-			const q = (await qRes.json()) as QuoteResponse;
-			const s = (await sRes.json()) as SignalResponse;
+			if (!qRes.ok || !sRes.ok || !cRes.ok) throw new Error('Tape Wire unavailable or waiting for candle history');
+			const [q, s, candles] = await Promise.all([
+				qRes.json() as Promise<QuoteResponse>, sRes.json() as Promise<SignalResponse>, cRes.json() as Promise<CandlesResponse>
+			]);
 			// Ignore stale responses if user switched mid-flight
-			if (sym !== activeDisplay) return;
+			if (request !== marketRequest || sym !== activeDisplay) return;
 			quote = q;
 			signal = s;
-			if (cRes.ok) bars = ((await cRes.json()) as CandlesResponse).bars;
-			if (tRes.ok && tapeMode === wireMarket) {
-				const tape = (await tRes.json()) as { quotes: QuoteResponse[] };
-				tapeQuotes = tape.quotes ?? [];
-			}
+			bars = candles.bars;
+			const source = `${q.sample || s.sample || candles.sample}:${q.provider}:${s.provider}`;
+			if (source !== bookSource) { book = {}; lastDecisionCandle = 0; bookSource = source; }
 			const mark = q.mark || q.price;
 			const def = resolveSymbol(sym);
-			const decisionCandle = bars.at(-2)?.t ?? bars.at(-1)?.t ?? 0;
+			const decisionCandle = completedBars(bars, 15 * 60_000).at(-1)?.t ?? 0;
 			const decisionPoint = decisionCandle !== 0 && decisionCandle !== lastDecisionCandle;
 			const result = reconcileBook(
 				book,
 				s,
 				traders,
 				mark,
-				q.sample || s.sample,
+				q.sample || s.sample || candles.sample,
 				def.display,
-				def.kraken,
+				def.kraken || def.bybit,
 				decisionPoint
 			);
 			if (decisionPoint) lastDecisionCandle = decisionCandle;
@@ -969,6 +1018,12 @@
 			legs = result.legs;
 			err = null;
 		} catch (e) {
+			if (request !== marketRequest || sym !== activeDisplay) return;
+			quote = null;
+			signal = null;
+			bars = [];
+			book = {};
+			legs = [];
 			err = e instanceof Error ? e.message : 'Market poll failed';
 		}
 	}
@@ -980,7 +1035,12 @@
 			const params = new URLSearchParams(window.location.search);
 			const fromUrl = params.get('symbol');
 			const fromStore = localStorage.getItem(STORAGE_KEY);
-			initial = resolveSymbol(fromUrl || fromStore || DEFAULT_DISPLAY).display;
+			const candidate = (fromUrl || fromStore || DEFAULT_DISPLAY).toUpperCase();
+			initial = SYMBOLS.some((s) => s.display === candidate)
+				? resolveSymbol(candidate).display
+				: /^[A-Z0-9]+USDT$/.test(candidate)
+					? candidate
+					: DEFAULT_DISPLAY;
 		} catch {
 			initial = DEFAULT_DISPLAY;
 		}
@@ -1003,6 +1063,9 @@
 			const saved = loadScenePosition(WIRE_DECOR_KEYS[id]);
 			if (saved) wireDecorPositions = { ...wireDecorPositions, [id]: { ...wireDecorPositions[id], ...saved } };
 		}
+		const onSceneResize = () => clampWireDecorToScene();
+		window.addEventListener('resize', onSceneResize);
+		requestAnimationFrame(clampWireDecorToScene);
 		void (async () => {
 			const asg = blofinAssignments;
 			if (!Object.keys(asg).length) return;
@@ -1046,11 +1109,16 @@
 		raf = requestAnimationFrame(loop);
 
 		const newsPollTimer = setInterval(() => { void pollNews(); }, 60_000);
+		void pollNews();
+		void pollDeskPositions();
 		const posPollTimer = setInterval(() => { void pollDeskPositions(); }, 18_000);
 		return () => {
 			cancelAnimationFrame(raf);
+			marketRequest++;
+			tapeRequest++;
 			clearInterval(newsPollTimer);
 			clearInterval(posPollTimer);
+			window.removeEventListener('resize', onSceneResize);
 		};
 	});
 	$effect(() => {
@@ -1134,7 +1202,7 @@
 			<div class="wall-panel right-wall">
 				<div class="market-board">
 					<header>
-						<span>MARKET WIRE · {wireMarket.toUpperCase()}</span><i>{quote?.sample ? 'SAMPLE' : `LIVE ${wireMarket === 'spot' ? 'SPOT' : activeDef.label}`}</i>
+						<span>MARKET WIRE · {wireMarket.toUpperCase()}</span><i>{!tapeQuotes.length ? 'CONNECTING' : tapeQuotes.some((q) => q.sample) ? 'SAMPLE / MIXED' : 'LIVE'}</i>
 					</header>
 
 					<div class="wire-cats" role="tablist" aria-label="Wire categories">
@@ -1157,12 +1225,15 @@
 					<label class="channel-switch">
 						<span>CHANNEL</span>
 						<select value={activeDisplay} onchange={onChannelChange} aria-label="Active trading symbol">
-							{#each wireSymbols as s (s.display)}
+							{#if !wireChannels.some((s) => s.display === activeDisplay)}
+								<option value={activeDisplay}>{activeDisplay} (selected)</option>
+							{/if}
+							{#each wireChannels as s (s.display)}
 								<option value={s.display}>{s.label} · {s.display}</option>
 							{/each}
 						</select>
 					</label>
-					{#if wireCategory === 'etf' || wireCategory === 'stock'}
+					{#if (wireCategory === 'etf' || wireCategory === 'stock') && !filteredTapeQuotes.length}
 						<p class="wire-note">No live ETF/stock perps on desk venues — tabs reserved.</p>
 					{/if}
 					{#if wireMarket === 'futures'}
@@ -1181,8 +1252,14 @@
 						{/each}
 					{/if}
 					<div class="wire-quote-list">
-					{#each filteredTapeQuotes.filter((q) => q.display !== activeDisplay).slice(0, 20) as tq (tq.display)}
-						<div class="wire-quote-row">
+					{#each filteredTapeQuotes.slice(0, 20) as tq (tq.display)}
+						<button
+							type="button"
+							class="wire-quote-row"
+							class:active={tq.display === activeDisplay}
+							aria-pressed={tq.display === activeDisplay}
+							onclick={() => selectWireTicker(tq.display)}
+						>
 							<b>{wireLabel(tq.display, tq)}</b>
 							<strong
 								>{tq.price.toFixed(wireDecimals(tq.display, tq.price, tq))}{tq.sample
@@ -1194,7 +1271,7 @@
 									? '—'
 									: `${tq.change24h >= 0 ? '+' : ''}${tq.change24h.toFixed(1)}%`}</em
 							>
-						</div>
+						</button>
 					{/each}
 					</div>
 				</div>
@@ -1203,6 +1280,7 @@
 		<div
 			class="bull wire-decor-piece"
 			class:is-dragging={wireDecorPositions.bull.dragging}
+			hidden={deskSettings.hideAllDraggables}
 			use:bindWireDecor={'bull'}
 			style={`left: ${wireDecorPositions.bull.left}px; top: ${wireDecorPositions.bull.top}px;`}
 			role="button" tabindex="0" aria-label="Drag market bull decoration" title="Drag market bull"
@@ -1210,10 +1288,13 @@
 			onpointermove={(e) => onWireDecorPointerMove('bull', e)}
 			onpointerup={(e) => onWireDecorPointerUp('bull', e)}
 			onpointercancel={(e) => onWireDecorPointerUp('bull', e)}
+			onlostpointercapture={(e) => onWireDecorPointerUp('bull', e)}
+			onkeydown={(e) => onWireDecorKeyDown('bull', e)}
 		>♞</div>
 		<div
 			class="cabinet wire-decor-piece"
 			class:is-dragging={wireDecorPositions.cabinet.dragging}
+			hidden={deskSettings.hideAllDraggables}
 			use:bindWireDecor={'cabinet'}
 			style={`left: ${wireDecorPositions.cabinet.left}px; top: ${wireDecorPositions.cabinet.top}px;`}
 			role="button" tabindex="0" aria-label="Drag market cabinet decoration" title="Drag market cabinet"
@@ -1221,10 +1302,13 @@
 			onpointermove={(e) => onWireDecorPointerMove('cabinet', e)}
 			onpointerup={(e) => onWireDecorPointerUp('cabinet', e)}
 			onpointercancel={(e) => onWireDecorPointerUp('cabinet', e)}
+			onlostpointercapture={(e) => onWireDecorPointerUp('cabinet', e)}
+			onkeydown={(e) => onWireDecorKeyDown('cabinet', e)}
 		><i></i><i></i><i></i></div>
 		<div
 			class="plant tall wire-decor-piece"
 			class:is-dragging={wireDecorPositions.plant.dragging}
+			hidden={deskSettings.hideAllDraggables}
 			use:bindWireDecor={'plant'}
 			style={`left: ${wireDecorPositions.plant.left}px; top: ${wireDecorPositions.plant.top}px;`}
 			role="button" tabindex="0" aria-label="Drag market plant decoration" title="Drag market plant"
@@ -1232,6 +1316,8 @@
 			onpointermove={(e) => onWireDecorPointerMove('plant', e)}
 			onpointerup={(e) => onWireDecorPointerUp('plant', e)}
 			onpointercancel={(e) => onWireDecorPointerUp('plant', e)}
+			onlostpointercapture={(e) => onWireDecorPointerUp('plant', e)}
+			onkeydown={(e) => onWireDecorKeyDown('plant', e)}
 		><i></i><i></i><i></i></div>
 
 		<div class="ticker-anchor">
@@ -1488,7 +1574,7 @@
 			{/if}
 			<p class="pos-ta">
 				TA {signal?.bias === 'LONG' ? 'LONG' : signal?.bias === 'SHORT' ? 'SHORT' : 'FLAT'}
-				{activeDef.label} · {signal?.confluence ?? '—'}/5
+				{activeDef.label} · {signal?.confluence ?? '—'}/6
 			</p>
 			<span></span>
 		</div>
@@ -1621,7 +1707,7 @@
 					<div>
 						<dt>CONFLUENCE</dt>
 						<dd
-							>{inspectedPosture.confluence}/5 {inspectedPosture.aligned
+							>{inspectedPosture.confluence}/6 {inspectedPosture.aligned
 								? '· ALIGNED'
 								: '· COUNTER'}</dd
 						>
@@ -1703,9 +1789,9 @@
 		>
 			<div class="clip"></div>
 			<div>
-				<span class:dot-live={!quote?.sample}></span>{quote?.sample
+				<span class:dot-live={!!quote && !quote.sample}></span>{!quote ? 'CONNECTING' : quote.sample
 					? 'SAMPLE TAPE'
-					: `KRAKEN · ${activeDef.kraken}`}
+					: `${quote.provider.toUpperCase()} · ${activeDisplay}`}
 			</div>
 			<strong>{quote?.price?.toFixed(priceDecimals) ?? 'CONNECTING'}</strong>
 			<small
@@ -2054,6 +2140,18 @@
 		gap: 6px;
 		margin-top: 5px;
 		font-size: 6px;
+		width: 100%;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: inherit;
+		font-family: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.market-board .wire-quote-row:hover,
+	.market-board .wire-quote-row.active {
+		background: #25291d;
 	}
 	.market-board strong {
 		color: #e8d9b7;

@@ -99,6 +99,7 @@
 	let tokenSelection = $state('');
 	let tokenMark = $state(0);
 	let tokenLoading = $state(false);
+	let tokenRequest = 0;
 
 	let health = $state<BloFinHealth | null>(null);
 	let balance = $state<BloFinBalanceResponse | null>(null);
@@ -156,10 +157,11 @@
 			: displayToBloFinInstId(activeDisplay)
 	);
 	const protection = $derived.by(() => {
-		if (isLeveragedToken || !signal || !Number.isFinite(mark) || mark <= 0) return null;
+		if (isLeveragedToken || !signal || signal.symbol !== activeDisplay || !Number.isFinite(mark) || mark <= 0) return null;
 		const aligned = signal.bias === side.toUpperCase();
 		const stop = signal.risk.stop;
 		const takeProfit = signal.risk.tp1;
+		if (![stop, takeProfit].every((value) => Number.isFinite(value) && value > 0)) return null;
 		const valid = side === 'long' ? stop < mark && takeProfit > mark : stop > mark && takeProfit < mark;
 		return aligned && valid
 			? { stopLoss: stop, takeProfit, sample: signal.sample }
@@ -206,13 +208,16 @@
 	}
 
 	async function loadLeveragedTokens() {
+		const request = ++tokenRequest;
 		tokenLoading = true;
 		try {
 			const res = await exchangeFetch('/api/market/leveraged-tokens');
 			if (!res.ok) throw new Error(`Token list HTTP ${res.status}`);
 			const body = (await res.json()) as { tokens?: LeveragedToken[] };
+			if (request !== tokenRequest) return;
 			leveragedTokens = Array.isArray(body.tokens) ? body.tokens : [];
 		} catch (e) {
+			if (request !== tokenRequest) return;
 			leveragedTokens = [];
 			statusMsg = `Leveraged token list unavailable · ${e instanceof Error ? e.message : String(e)}`;
 			statusErr = true;
@@ -222,13 +227,16 @@
 	}
 
 	async function loadTokenMark(token: LeveragedToken) {
+		const request = ++tokenRequest;
 		try {
 			const res = await exchangeFetch(`/api/market/leveraged-token-quote?exchange=${token.exchange}&symbol=${encodeURIComponent(token.instId)}`);
 			const body = (await res.json()) as { price?: number; mark?: number };
 			const price = Number(body.mark ?? body.price ?? 0);
-			tokenMark = Number.isFinite(price) ? price : 0;
+			if (request === tokenRequest && activeToken?.instId === token.instId && activeToken?.exchange === token.exchange) {
+				tokenMark = Number.isFinite(price) ? price : 0;
+			}
 		} catch {
-			tokenMark = 0;
+			if (request === tokenRequest && activeToken?.instId === token.instId) tokenMark = 0;
 		}
 	}
 
@@ -367,6 +375,8 @@
 
 	
 	function clientPrecheck(): string | null {
+		if (!isLeveragedToken && (!quote || quote.sample || !signal || signal.sample)) return 'Live quotes and signals are required; SAMPLE data cannot place a live order';
+		if (![fundsPct, leverage, sizing.size, availableEquity, mark].every(Number.isFinite)) return 'Order values must be finite numbers';
 		if (!(fundsPct > 0)) return 'Percent of funds must be > 0';
 		if (fundsPct > 100) return '% funds cannot exceed 100';
 		if (!(leverage >= 1)) return 'Leverage must be ≥ 1';
@@ -422,12 +432,18 @@
 	}
 
 	async function confirmLiveOrder() {
-		if (!pending || sending) return;
+		if (!confirmOpen || !pending || sending) return;
+		if (pending.exchange !== exchange || pending.signalSample || (!isLeveragedToken && (!quote || quote.sample || !signal || signal.sample)) || pending.instId !== instId) {
+			confirmOpen = false;
+			statusErr = true;
+			statusMsg = 'Market or exchange changed, or live data is unavailable. Review the order again.';
+			return;
+		}
 		sending = true;
 		statusErr = false;
 		statusMsg = 'Sending live order…';
 		try {
-			if (exchange === 'bybit') {
+			if (pending.exchange === 'bybit') {
 				const bybitRes = await exchangeFetch('/api/bybit/order', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -443,8 +459,8 @@
 								marketUnit: 'baseCoin',
 								...(pending.takeProfitPrice != null && pending.stopLossPrice != null
 									? {
-										takeProfit: String(pending.takeProfitPrice),
-										stopLoss: String(pending.stopLossPrice),
+									takeProfit: pending.reduceOnly ? undefined : String(pending.takeProfitPrice),
+									stopLoss: pending.reduceOnly ? undefined : String(pending.stopLossPrice),
 										tpOrderType: 'Market',
 										slOrderType: 'Market'
 									}
@@ -453,8 +469,8 @@
 							: {
 								positionIdx: pending.positionSide === 'long' ? 1 : 2,
 								reduceOnly: pending.reduceOnly,
-								takeProfit: String(pending.takeProfitPrice),
-								stopLoss: String(pending.stopLossPrice),
+								takeProfit: pending.reduceOnly ? undefined : String(pending.takeProfitPrice),
+								stopLoss: pending.reduceOnly ? undefined : String(pending.stopLossPrice),
 								tpTriggerBy: 'MarkPrice',
 								slTriggerBy: 'MarkPrice'
 							}
@@ -526,7 +542,8 @@
 				marginMode: pending.marginMode,
 				side: pending.side,
 				orderType: pending.orderType,
-				size: String(Number(pending.estSize.toFixed(4))),
+				size: String(pending.estSize),
+				sizeUnit: 'baseCoin',
 				positionSide: pending.positionSide
 			};
 			if (pending.takeProfitPrice != null && pending.stopLossPrice != null) {
@@ -680,6 +697,9 @@
 					value={activeDisplay}
 					onchange={onRegularSymbolChange}
 				>
+					{#if !SYMBOLS.some((s) => s.display === activeDisplay)}
+						<option value={activeDisplay}>{activeDisplay}</option>
+					{/if}
 					{#each SYMBOLS as s (s.display)}
 						<option value={s.display}>{s.display}</option>
 					{/each}

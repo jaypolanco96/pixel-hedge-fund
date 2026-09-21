@@ -1,4 +1,5 @@
 import adapter from '@sveltejs/adapter-vercel';
+import autoAdapter from '@sveltejs/adapter-auto';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
@@ -14,7 +15,9 @@ export default defineConfig({
 			// Vercel adapter for production deploys, see https://svelte.dev/docs/kit/adapter-auto for a list.
 			// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
 			// See https://svelte.dev/docs/kit/adapters for more information about adapters.
-			adapter: adapter()
+			// Local builds must not require Windows symlink privileges. Vercel still
+			// gets its explicit deployment adapter in the hosted build environment.
+			adapter: process.env.VERCEL ? adapter() : autoAdapter()
 		})
 	]
 });

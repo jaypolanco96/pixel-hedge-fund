@@ -18,21 +18,23 @@ export const STICKY_COLORS = ['#ffe08a', '#ffb4c8', '#b8e0ff', '#c8f0b0', '#e0c8
 export function loadStickyNotes(): StickyNote[] {
 	const raw = readJson<StickyNote[]>(STICKY_STORAGE_KEY, []);
 	if (!Array.isArray(raw)) return [];
+	const seen = new Set<string>();
 	return raw
 		.filter(
 			(n) =>
 				n &&
 				typeof n.id === 'string' &&
 				typeof n.text === 'string' &&
-				typeof n.x === 'number' &&
-				typeof n.y === 'number'
+				Number.isFinite(n.x) &&
+				Number.isFinite(n.y)
 		)
+		.filter((n) => { if (seen.has(n.id)) return false; seen.add(n.id); return true; })
 		.map((n) => ({
 			id: n.id,
 			text: String(n.text).slice(0, 140),
 			x: Math.min(92, Math.max(2, n.x)),
 			y: Math.min(88, Math.max(4, n.y)),
-			color: typeof n.color === 'string' ? n.color : STICKY_COLORS[0],
+			color: STICKY_COLORS.some((color) => color === n.color) ? n.color : STICKY_COLORS[0],
 			createdAt: typeof n.createdAt === 'number' ? n.createdAt : Date.now()
 		}));
 }

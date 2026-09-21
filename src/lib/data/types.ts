@@ -23,7 +23,7 @@ export interface CandlesResponse {
 	symbol: string;
 	display: string;
 	tf: Tf;
-	provider: 'kraken-futures' | 'bybit' | 'sample';
+	provider: 'kraken-futures' | 'bybit' | 'blofin' | 'sample';
 	sample: boolean;
 	bars: Bar[];
 }
@@ -69,7 +69,7 @@ export interface SignalResponse {
 		rr_tp1: number;
 	};
 	sample: boolean;
-	provider: 'kraken-futures' | 'bybit' | 'sample';
+	provider: 'kraken-futures' | 'bybit' | 'blofin' | 'sample';
 }
 
 // Trader leverage is user-editable within the persisted 1–1000 range.

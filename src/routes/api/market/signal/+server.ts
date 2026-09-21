@@ -1,4 +1,5 @@
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
+import { completedBars } from '$lib/data/validation';
 import { fetchCandles, resolveSymbol } from '$lib/data/kraken';
 import { computeSignal } from '$lib/ta/signal';
 import type { RequestHandler } from './$types';
@@ -13,10 +14,13 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	// The final exchange candle is still forming. Build the desk signal from
 	// completed candles so posture decisions do not churn intrabar.
-	const setupBars = setup.bars.length > 1 ? setup.bars.slice(0, -1) : setup.bars;
-	const regimeBars = regime.bars.length > 1 ? regime.bars.slice(0, -1) : regime.bars;
+	const setupBars = completedBars(setup.bars, 15 * 60_000);
+	const regimeBars = completedBars(regime.bars, 4 * 60 * 60_000);
+	if (setupBars.length < 55 || regimeBars.length < 55) {
+		error(503, 'Waiting for sufficient completed candle history');
+	}
 	const sample = setup.sample || regime.sample;
-	const provider = sample ? 'sample' : 'kraken-futures';
+	const provider = sample ? 'sample' : setup.provider;
 	const signal = computeSignal(setupBars, regimeBars, {
 		sample,
 		provider,

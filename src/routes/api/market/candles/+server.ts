@@ -8,7 +8,11 @@ const ALLOWED: Tf[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 export const GET: RequestHandler = async ({ url }) => {
 	const symbol = url.searchParams.get('symbol');
 	const tf = (url.searchParams.get('tf') ?? '15m') as Tf;
-	const limit = Math.min(Number(url.searchParams.get('limit') ?? 300), 500);
+	const requestedLimit = Number(url.searchParams.get('limit') ?? 300);
+	if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+		error(400, { message: 'INVALID_LIMIT' });
+	}
+	const limit = Math.min(requestedLimit, 500);
 	const format = url.searchParams.get('format');
 
 	if (!ALLOWED.includes(tf)) {

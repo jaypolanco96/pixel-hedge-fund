@@ -7,6 +7,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import {
 	LIVE_BLOFIN_BASE,
 	LIVE_BYBIT_BASE,
+	normalizeExchangeBase,
 	type BloFinSecrets,
 	type BybitSecrets
 } from '$lib/server/exchangeSecrets';
@@ -46,7 +47,7 @@ export function parseExchangeAuthFromRequest(request: Request): RequestExchangeA
 			apiSecret: bfSecret,
 			passphrase: bfPass,
 			brokerId: bfBroker || undefined,
-			baseUrl: (bfBase || LIVE_BLOFIN_BASE).replace(/\/$/, '')
+			baseUrl: normalizeExchangeBase(bfBase || LIVE_BLOFIN_BASE, 'blofin')
 		};
 	}
 
@@ -59,7 +60,7 @@ export function parseExchangeAuthFromRequest(request: Request): RequestExchangeA
 			apiKey: byKey,
 			apiSecret: bySecret,
 			brokerId: byBroker || undefined,
-			baseUrl: (byBase || LIVE_BYBIT_BASE).replace(/\/$/, '')
+			baseUrl: normalizeExchangeBase(byBase || LIVE_BYBIT_BASE, 'bybit')
 		};
 	}
 

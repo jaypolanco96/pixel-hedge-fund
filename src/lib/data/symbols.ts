@@ -248,6 +248,17 @@ export const SYMBOLS: readonly SymbolDef[] = [
 
 export const DEFAULT_DISPLAY = 'SOLUSDT';
 
+export function categoryForBase(baseInput: string): SymbolCategory {
+	const base = baseInput.toUpperCase();
+	if (/^(DOGE|SHIB|PEPE|WIF|BONK|FLOKI|BRETT|BOME|MEME|MOG|TURBO|1000SHIB|1000PEPE)$/.test(base)) return 'meme';
+	if (/^(LINK|AAVE|UNI|MKR|LDO|CRV|COMP|SNX|SUSHI|DYDX|JUP|RAY|CAKE)$/.test(base)) return 'defi';
+	if (/^(FET|TAO|RENDER|RNDR|NEAR|GRT|ARKM|WLD|AGIX|VIRTUAL|IO)$/.test(base)) return 'ai';
+	if (/^(SOL|ADA|AVAX|DOT|ATOM|NEAR|SUI|APT|SEI|TON|TRX|ALGO|XLM|HBAR|ICP|EGLD|KAS)$/.test(base)) return 'layer1';
+	if (/^(SPY|QQQ|IWM|DIA|TLT|GLD|SLV)$/.test(base)) return 'etf';
+	if (/^(TSLA|MSTR|COIN|NVDA|AAPL|AMZN|META|MSFT|GOOGL|HOOD)$/.test(base)) return 'stock';
+	return 'majors';
+}
+
 const BY_DISPLAY = new Map(SYMBOLS.map((s) => [s.display, s]));
 const BY_KRAKEN = new Map(SYMBOLS.filter((s) => s.kraken).map((s) => [s.kraken, s]));
 const BY_BYBIT = new Map(SYMBOLS.map((s) => [s.bybit, s]));
@@ -315,7 +326,24 @@ export function resolveSymbol(input: string | null | undefined): SymbolDef {
 	const display =
 		ALIASES[raw] ??
 		(BY_DISPLAY.has(raw) ? raw : BY_KRAKEN.get(raw)?.display ?? BY_BYBIT.get(raw)?.display);
-	return BY_DISPLAY.get(display ?? DEFAULT_DISPLAY) ?? BY_DISPLAY.get(DEFAULT_DISPLAY)!;
+	const known = BY_DISPLAY.get(display ?? '');
+	if (known) return known;
+	if (/^[A-Z0-9]+USDT$/.test(raw)) {
+		const base = raw.slice(0, -4);
+		return {
+			display: raw,
+			kraken: '',
+			bybit: raw,
+			canonical: `CRYPTO:BYBIT:${raw}`,
+			sampleMid: 1,
+			decimals: 6,
+			label: base,
+			category: categoryForBase(base),
+			quoteVenue: 'bybit',
+			newsQuery: `${base} crypto`
+		};
+	}
+	return BY_DISPLAY.get(DEFAULT_DISPLAY)!;
 }
 
 export function isKnownDisplay(display: string): boolean {

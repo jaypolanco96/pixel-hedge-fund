@@ -201,7 +201,7 @@ export function staffNote(staff: StaffDef, signal: SignalResponse | null): strin
 	const bias = signal.bias;
 	switch (staff.role) {
 		case 'cio':
-			return bias === 'FLAT' ? 'VAR glance — book quiet' : `risk glance · ${bias} ${c}/5`;
+			return bias === 'FLAT' ? 'VAR glance — book quiet' : `risk glance · ${bias} ${c}/6`;
 		case 'pm':
 			return bias === 'FLAT'
 				? 'alloc: stay balanced'
@@ -213,7 +213,7 @@ export function staffNote(staff: StaffDef, signal: SignalResponse | null): strin
 		case 'research_analyst':
 			return `clip: ST ${signal.supertrend.direction === 1 ? '↑' : '↓'} ${signal.supertrend.value.toFixed(1)}`;
 		case 'quant':
-			return `model conf ${c}/5 · ${signal.atr.state}`;
+			return `model conf ${c}/6 · ${signal.atr.state}`;
 		default:
 			return '';
 	}

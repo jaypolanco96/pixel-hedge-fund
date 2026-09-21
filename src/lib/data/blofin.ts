@@ -11,7 +11,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { LIVE_BLOFIN_BASE as SECRETS_LIVE_BLOFIN } from '$lib/server/exchangeSecrets';
+import { LIVE_BLOFIN_BASE as SECRETS_LIVE_BLOFIN, normalizeExchangeBase } from '$lib/server/exchangeSecrets';
 import { getRequestBloFin } from '$lib/server/requestExchangeAuth';
 import { env } from '$env/dynamic/private';
 import type {
@@ -30,7 +30,11 @@ import type {
 	BloFinSetMarginModeBody,
 	BloFinTradeWriteResponse
 } from './blofinTypes';
-import type { QuoteResponse } from './types';
+import type { Bar, CandlesResponse, QuoteResponse, Tf } from './types';
+import { resolveSymbol } from './symbols';
+import { sampleCandles, sampleQuote } from './sample';
+import { validBar } from './validation';
+import { contractsFromBase } from './orderSizing';
 
 export type {
 	BloFinBalanceResponse,
@@ -48,7 +52,16 @@ const LIVE_BASE = 'https://openapi.blofin.com';
 const DEMO_BASE = 'https://demo-trading-openapi.blofin.com';
 
 let publicTickerCache: { at: number; rows: QuoteResponse[] } | null = null;
+const publicCandleCache = new Map<string, { at: number; data: CandlesResponse }>();
 const PUBLIC_TICKER_TTL_MS = 10_000;
+const BLOFIN_TF: Record<Tf, string> = {
+	'1m': '1m',
+	'5m': '5m',
+	'15m': '15m',
+	'1h': '1H',
+	'4h': '4H',
+	'1d': '1D'
+};
 
 function classifyBloFinCoin(base: string): QuoteResponse['category'] {
 	if (/^(DOGE|SHIB|PEPE|WIF|BONK|FLOKI|BRETT|BOME|MEME|MOG|TURBO)$/.test(base)) return 'meme';
@@ -61,10 +74,9 @@ function classifyBloFinCoin(base: string): QuoteResponse['category'] {
 	return 'majors';
 }
 
-/** Top 20 public BloFin USDT swaps by 24h quote volume. */
-export async function fetchBloFinTopVolumeQuotes(limit = 20): Promise<QuoteResponse[]> {
+async function loadBloFinPublicQuotes(): Promise<QuoteResponse[]> {
 	if (publicTickerCache && Date.now() - publicTickerCache.at < PUBLIC_TICKER_TTL_MS) {
-		return publicTickerCache.rows.slice(0, limit);
+		return publicTickerCache.rows;
 	}
 	try {
 		const res = await fetch(`${LIVE_BASE}/api/v1/market/tickers`, {
@@ -87,7 +99,6 @@ export async function fetchBloFinTopVolumeQuotes(limit = 20): Promise<QuoteRespo
 			})
 			.filter((row) => /-USDT$/.test(row.instId) && row.price > 0 && row.volume > 0)
 			.sort((a, b) => b.volume - a.volume)
-			.slice(0, limit)
 			.map(({ instId, base, price, volume, row }) => ({
 				symbol: `CRYPTO:BLOFIN:${instId}`,
 				display: `${base}USDT`,
@@ -109,7 +120,68 @@ export async function fetchBloFinTopVolumeQuotes(limit = 20): Promise<QuoteRespo
 		return rows;
 	} catch (err) {
 		console.warn('[BloFin] public tickers failed', err);
-		return publicTickerCache?.rows.slice(0, limit) ?? [];
+		return publicTickerCache?.rows.map((row) => ({ ...row, sample: true })) ?? [];
+	}
+}
+
+/** Top public BloFin USDT swaps by 24h quote volume. */
+export async function fetchBloFinTopVolumeQuotes(limit = 20): Promise<QuoteResponse[]> {
+	return (await loadBloFinPublicQuotes()).slice(0, limit);
+}
+
+export async function fetchBloFinPublicQuote(symbolInput?: string | null): Promise<QuoteResponse> {
+	const def = resolveSymbol(symbolInput);
+	const quote = (await loadBloFinPublicQuotes()).find((row) => row.display === def.display);
+	return quote ?? sampleQuote(def.display);
+}
+
+/** Public BloFin swap candles used when a dynamic channel is unavailable on Bybit. */
+export async function fetchBloFinPublicCandles(
+	symbolInput: string | null | undefined,
+	tf: Tf,
+	limit = 300
+): Promise<CandlesResponse> {
+	const def = resolveSymbol(symbolInput);
+	const instId = `${def.label}-USDT`;
+	const bar = BLOFIN_TF[tf] ?? '15m';
+	const boundedLimit = Math.max(1, Math.min(limit, 500));
+	const key = `${instId}:${bar}:${boundedLimit}`;
+	const hit = publicCandleCache.get(key);
+	if (hit && Date.now() - hit.at < PUBLIC_TICKER_TTL_MS) return hit.data;
+	try {
+		const params = new URLSearchParams({ instId, bar, limit: String(boundedLimit) });
+		const res = await fetch(`${LIVE_BASE}/api/v1/market/candles?${params}`, {
+			headers: { Accept: 'application/json' },
+			signal: AbortSignal.timeout(12_000)
+		});
+		if (!res.ok) throw new Error(`BloFin public candles HTTP ${res.status}`);
+		const body = (await res.json()) as { code?: string | number; data?: unknown[][] };
+		if (body.code != null && String(body.code) !== '0') throw new Error(`BloFin public candles code ${body.code}`);
+		const bars: Bar[] = (body.data ?? [])
+			.map((row) => ({
+				t: num(row[0]),
+				o: num(row[1]),
+				h: num(row[2]),
+				l: num(row[3]),
+				c: num(row[4]),
+				v: num(row[5])
+			}))
+			.filter(validBar)
+			.sort((a, b) => a.t - b.t);
+		if (!bars.length) throw new Error(`${instId} returned no candles`);
+		const data: CandlesResponse = {
+			symbol: `CRYPTO:BLOFIN:${instId}`,
+			display: def.display,
+			tf,
+			provider: 'blofin',
+			sample: false,
+			bars
+		};
+		publicCandleCache.set(key, { at: Date.now(), data });
+		return data;
+	} catch (err) {
+		console.warn(`[BloFin] candles ${def.display} failed`, err);
+		return hit ? { ...hit.data, sample: true } : sampleCandles(tf, boundedLimit, def.display);
 	}
 }
 
@@ -194,7 +266,7 @@ function readBloFinSecretsFile(): {
 export function getBloFinConfig(): BloFinConfig {
 	const fromReq = getRequestBloFin();
 	if (fromReq?.apiKey && fromReq?.apiSecret && fromReq?.passphrase) {
-		const baseUrl = (fromReq.baseUrl || LIVE_BASE || SECRETS_LIVE_BLOFIN).replace(/\/$/, '');
+		const baseUrl = normalizeExchangeBase(fromReq.baseUrl || LIVE_BASE || SECRETS_LIVE_BLOFIN, 'blofin');
 		const mode: BloFinMode = /demo/i.test(baseUrl) ? 'demo' : 'live';
 		return {
 			apiKey: fromReq.apiKey.trim(),
@@ -213,7 +285,7 @@ export function getBloFinConfig(): BloFinConfig {
 	const passphrase = (env.BLOFIN_PASSPHRASE ?? env.BLOFIN_PASS ?? file.passphrase ?? '').trim();
 	const brokerId = (env.BLOFIN_BROKER_ID ?? file.brokerId ?? '').trim();
 	const rawBase = (env.BLOFIN_BASE_URL ?? env.BLOFIN_BASE ?? file.baseUrl ?? '').trim();
-	const baseUrl = (rawBase || LIVE_BASE || SECRETS_LIVE_BLOFIN).replace(/\/$/, '');
+	const baseUrl = normalizeExchangeBase(rawBase || LIVE_BASE || SECRETS_LIVE_BLOFIN, 'blofin');
 	const mode: BloFinMode = /demo/i.test(baseUrl) ? 'demo' : 'live';
 	return {
 		apiKey,
@@ -263,6 +335,7 @@ async function blofinGet<T = unknown>(pathWithQuery: string): Promise<Ok<T> | Fa
 	try {
 		const res = await fetch(`${cfg.baseUrl}${pathWithQuery}`, {
 			method: 'GET',
+			redirect: 'error',
 			headers: {
 				'ACCESS-KEY': cfg.apiKey,
 				'ACCESS-SIGN': signature,
@@ -332,6 +405,7 @@ async function blofinPost<T = unknown>(
 	try {
 		const res = await fetch(`${cfg.baseUrl}${path}`, {
 			method: 'POST',
+			redirect: 'error',
 			headers: {
 				'ACCESS-KEY': cfg.apiKey,
 				'ACCESS-SIGN': signature,
@@ -864,6 +938,9 @@ export async function setMarginMode(
 export async function placeOrder(body: BloFinPlaceOrderBody): Promise<BloFinTradeWriteResponse> {
 	const cfg = getBloFinConfig();
 	const path = '/api/v1/trade/order';
+	if (body.sizeUnit != null && !['contracts', 'baseCoin'].includes(body.sizeUnit)) {
+		return { ok: false, mode: cfg.mode, path, error: 'Invalid sizeUnit' };
+	}
 	const instId = strField(body.instId);
 	const size = strField(body.size);
 	if (!instId || !size) {
@@ -924,6 +1001,24 @@ export async function placeOrder(body: BloFinPlaceOrderBody): Promise<BloFinTrad
 		payload.slTriggerPrice = slTrigger;
 		payload.slOrderPrice = slOrder;
 		payload.slTriggerPriceType = body.slTriggerPriceType ?? 'mark';
+	}
+	if (body.sizeUnit === 'baseCoin') {
+		try {
+			const res = await fetch(`${cfg.baseUrl}/api/v1/market/instruments?instId=${encodeURIComponent(instId)}`, {
+				signal: AbortSignal.timeout(8000), redirect: 'error'
+			});
+			const metadata = await res.json() as { code?: string; data?: Array<Record<string, string>> };
+			const instrument = metadata.data?.find((row) => row.instId === instId);
+			if (!res.ok || String(metadata.code) !== '0' || !instrument || instrument.state !== 'live' || instrument.contractType !== 'linear' || instrument.settleCurrency !== 'USDT') {
+				throw new Error('Live linear USDT instrument metadata is unavailable');
+			}
+			const contracts = contractsFromBase(sizeNum, Number(instrument.contractValue), Number(instrument.lotSize), Number(instrument.minSize));
+			const maximum = Number(body.orderType === 'market' ? instrument.maxMarketSize : instrument.maxLimitSize);
+			if (!Number.isFinite(maximum) || maximum <= 0 || contracts > maximum) throw new Error('Quantity exceeds the instrument order limit');
+			payload.size = String(contracts);
+		} catch (err) {
+			return { ok: false, mode: cfg.mode, path, error: err instanceof Error ? err.message : 'Unable to validate contract size' };
+		}
 	}
 
 	const res = await blofinPost(path, payload);

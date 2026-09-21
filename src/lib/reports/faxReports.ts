@@ -62,12 +62,12 @@ function stamp(): string {
 	});
 }
 
-function header(title: string, symbol: string, sample: boolean): string[] {
+function header(title: string, symbol: string, sample: boolean, provider: string): string[] {
 	return [
 		'════════════════════════════════════════',
 		'  PIXEL HEDGE FUND · CHART DESK FAX',
 		`  ${title.toUpperCase()}`,
-		`  PAIR: ${symbol}   ${sample ? '*** SAMPLE DATA ***' : 'LIVE / KRAKEN FUTURES'}`,
+		`  PAIR: ${symbol}   ${sample ? '*** SAMPLE DATA ***' : `LIVE / ${provider.toUpperCase()}`}`,
 		`  PRINTED: ${stamp()} ET`,
 		'════════════════════════════════════════',
 		''
@@ -107,7 +107,7 @@ export function buildFaxReport(
 	const sample = !!(signal?.sample || quote?.sample || !signal);
 	const sym = signal?.symbol ?? quote?.display ?? displaySymbol;
 	const option = FAX_REPORTS.find((r) => r.id === id)!;
-	const lines: string[] = [...header(option.title, sym, sample)];
+	const lines: string[] = [...header(option.title, sym, sample, signal?.provider ?? quote?.provider ?? 'sample')];
 
 	switch (id) {
 		case 'bias_brief': {
@@ -117,7 +117,7 @@ export function buildFaxReport(
 			}
 			lines.push(
 				line(`BIAS:          ${signal.bias}`),
-				line(`CONFLUENCE:    ${signal.confluence}/5  (${signal.confluenceBand})`),
+				line(`CONFLUENCE:    ${signal.confluence}/6  (${signal.confluenceBand})`),
 				line(`STRUCTURE:     ${signal.structure}`),
 				line(`RSI(14):       ${money(signal.rsi, 2)}`),
 				line(
@@ -188,7 +188,7 @@ export function buildFaxReport(
 				line(`REGIME (4h):   ${signal.mtf.regime}`),
 				line(`ALIGNED:       ${signal.mtf.aligned ? 'YES' : 'NO'}`),
 				line(`BIAS:          ${signal.bias}`),
-				line(`CONFLUENCE:    ${signal.confluence}/5 (${signal.confluenceBand})`),
+				line(`CONFLUENCE:    ${signal.confluence}/6 (${signal.confluenceBand})`),
 				'',
 				signal.mtf.aligned
 					? 'MEMO: Setup and regime agree — higher-quality desk bias.'
@@ -218,7 +218,7 @@ export function buildFaxReport(
 				'',
 				signal
 					? line(
-							`CHART DESK: bias ${signal.bias} · conf ${signal.confluence}/5 · ATR ${signal.atr.state}`
+							`CHART DESK: bias ${signal.bias} · conf ${signal.confluence}/6 · ATR ${signal.atr.state}`
 						)
 					: line('CHART DESK: signal not loaded for this print.')
 			);

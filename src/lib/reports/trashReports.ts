@@ -34,7 +34,7 @@ export function buildTrashReport(opts: {
 	const sample = !!(signal?.sample || quote?.sample || !signal);
 	const sym = signal?.symbol ?? quote?.display ?? displaySymbol;
 	const mark = quote?.mark ?? quote?.price ?? signal?.last;
-	const dataTag = sample ? '*** SAMPLE CONTEXT ***' : 'LIVE CONTEXT / KRAKEN FUTURES';
+	const dataTag = sample ? '*** SAMPLE CONTEXT ***' : `LIVE CONTEXT / ${signal?.provider.toUpperCase()}`;
 
 	if (!signal) {
 		return {
@@ -84,7 +84,7 @@ export function buildTrashReport(opts: {
 			: `Lone SHORT call while setup=${setup} / regime=${regime}`;
 		whyWrong = [
 			`Desk bias flipped / held LONG — Supertrend ${stDir}, close vs EMA55 supports bulls.`,
-			`Confluence now ${conf}/5 (${band}); structure tag: ${structure}.`,
+			`Confluence now ${conf}/6 (${band}); structure tag: ${structure}.`,
 			aligned
 				? 'MTF aligned LONG — the fade was fighting both 15m setup and 4h regime.'
 				: `MTF not fully aligned (regime ${regime} / setup ${setup}) but tape still refused the short.`,
@@ -103,7 +103,7 @@ export function buildTrashReport(opts: {
 			: `Stubborn LONG while setup=${setup} / regime=${regime}`;
 		whyWrong = [
 			`Desk bias held SHORT — Supertrend ${stDir}, price under the bullish EMA stack.`,
-			`Confluence ${conf}/5 (${band}); structure: ${structure}.`,
+			`Confluence ${conf}/6 (${band}); structure: ${structure}.`,
 			aligned
 				? 'MTF aligned SHORT — buying strength was catching a falling knife on both frames.'
 				: `Mixed MTF (regime ${regime} / setup ${setup}) still never confirmed a long.`,
@@ -123,7 +123,7 @@ export function buildTrashReport(opts: {
 				? `Failed breakout / rejection chase on ${sym}`
 				: `Forced directional bet while desk FLAT on ${sym}`;
 		whyWrong = [
-			`Chart Desk is FLAT — no mandate bias. Supertrend ${stDir}, confluence only ${conf}/5 (${band}).`,
+			`Chart Desk is FLAT — no mandate bias. Supertrend ${stDir}, confluence only ${conf}/6 (${band}).`,
 			`Structure tag: ${structure}. Regime ${regime} vs setup ${setup} (aligned=${aligned ? 'yes' : 'no'}).`,
 			'Someone tried to force a story the tape would not underwrite.',
 			`RSI ${rsi.toFixed(1)}, MACD hist ${macdHist.toFixed(4)} — mixed, not a clean impulse.`
@@ -156,7 +156,7 @@ export function buildTrashReport(opts: {
 		'',
 		'── LIVE DESK SNAPSHOT (evidence) ──────',
 		`Bias:        ${bias}`,
-		`Confluence:  ${conf}/5 (${band})`,
+		`Confluence:  ${conf}/6 (${band})`,
 		`MTF:         regime ${regime} / setup ${setup} / aligned=${aligned ? 'YES' : 'NO'}`,
 		`Structure:   ${structure}`,
 		`Supertrend:  ${money(signal.supertrend.value, digits)} (${stDir})`,

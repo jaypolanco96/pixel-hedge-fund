@@ -7,6 +7,7 @@ import type {
 	VolState
 } from '$lib/data/types';
 import { atr, ema, lastFinite, macd, rsi, supertrend } from './indicators';
+import { validBar } from '$lib/data/validation';
 
 function biasFrom(stDir: 1 | -1, close: number, ema55: number): Bias {
 	if (stDir === 1 && close > ema55) return 'LONG';
@@ -64,8 +65,12 @@ function structureTag(
 export function computeSignal(
 	setupBars: Bar[],
 	regimeBars: Bar[],
-	opts: { sample: boolean; provider: 'kraken-futures' | 'sample'; symbol?: string }
+	opts: { sample: boolean; provider: 'kraken-futures' | 'bybit' | 'blofin' | 'sample'; symbol?: string }
 ): SignalResponse {
+	if (setupBars.length < 55 || regimeBars.length < 55 ||
+		!setupBars.every(validBar) || !regimeBars.every(validBar)) {
+		throw new Error('At least 55 valid completed candles per timeframe are required');
+	}
 	const closes = setupBars.map((b) => b.c);
 	const highs = setupBars.map((b) => b.h);
 	const lows = setupBars.map((b) => b.l);
@@ -132,16 +137,16 @@ export function computeSignal(
 			setup: setupBias,
 			aligned: setupBias !== 'FLAT' && setupBias === regimeBias
 		},
-		supertrend: { value: +stVal.toFixed(4), direction: stDir },
-		ema: { '21': +e21.toFixed(4), '55': +e55.toFixed(4) },
+		supertrend: { value: stVal, direction: stDir },
+		ema: { '21': e21, '55': e55 },
 		rsi: +rsiVal.toFixed(2),
 		macd: {
-			line: +macdLine.toFixed(4),
-			signal: +macdSig.toFixed(4),
-			hist: +macdHist.toFixed(4)
+			line: macdLine,
+			signal: macdSig,
+			hist: macdHist
 		},
 		atr: {
-			'14': +atr14.toFixed(4),
+			'14': atr14,
 			pct: +atrPct.toFixed(3),
 			state: volState(atrPct)
 		},
@@ -149,10 +154,10 @@ export function computeSignal(
 		confluence: score,
 		confluenceBand: confluenceBand(score),
 		risk: {
-			stop: +stop.toFixed(4),
+			stop,
 			risk_pct: +riskPct.toFixed(3),
-			tp1: +tp1.toFixed(4),
-			tp2: +tp2.toFixed(4),
+			tp1,
+			tp2,
 			rr_tp1: 1.5
 		},
 		sample: opts.sample,

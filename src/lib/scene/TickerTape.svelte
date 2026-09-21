@@ -39,8 +39,13 @@
 				: [`${activeDisplay} —`];
 		const active = quotes.find((q) => q.display === activeDisplay);
 		const activeDef = resolveSymbol(activeDisplay);
+		const activeLabel = active?.label
+			? `${active.label}·${active.venue ?? 'WIRE'}`
+			: market === 'spot'
+				? spotWireSymbol(activeDisplay)
+				: activeDef.kraken || activeDef.bybit;
 		const markLine = active
-			? `${market === 'spot' ? spotWireSymbol(active.display) : activeDef.kraken} MARK ${active.mark.toFixed(activeDef.decimals)}${active.sample ? ' SAMPLE' : ''}`
+			? `${activeLabel} MARK ${active.mark.toFixed(active.decimals ?? activeDef.decimals)}${active.sample ? ' SAMPLE' : ''}`
 			: `${market === 'spot' ? spotWireSymbol(activeDisplay) : activeDef.kraken} MARK —`;
 		const anySample = quotes.some((q) => q.sample);
 		const allSample = quotes.length > 0 && quotes.every((q) => q.sample);
@@ -50,7 +55,7 @@
 			`DESK ${activeDisplay} · BIAS ${bias}`,
 			'RESEARCH / DISCIPLINE / RETURNS',
 			'RISK FIRST · SIZE SECOND',
-			allSample ? 'SAMPLE DATA' : anySample ? 'MIXED LIVE / SAMPLE' : market === 'spot' ? 'BYBIT SPOT LIVE' : 'KRAKEN FUTURES LIVE'
+			!quotes.length ? 'CONNECTING' : allSample ? 'SAMPLE DATA' : anySample ? 'MIXED LIVE / SAMPLE' : market === 'spot' ? 'BYBIT SPOT LIVE' : `${[...new Set(quotes.map((q) => q.provider.toUpperCase()))].join(' / ')} LIVE`
 		];
 	});
 </script>

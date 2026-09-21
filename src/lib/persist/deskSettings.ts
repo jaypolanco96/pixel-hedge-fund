@@ -44,7 +44,13 @@ export const DEFAULT_DESK_SETTINGS: DeskSettings = {
 
 export function loadDeskSettings(): DeskSettings {
 	const raw = readJson<Partial<DeskSettings>>(DESK_SETTINGS_KEY, {});
-	return { ...DEFAULT_DESK_SETTINGS, ...raw };
+	const settings = { ...DEFAULT_DESK_SETTINGS };
+	if (raw && typeof raw === 'object') {
+		for (const key of Object.keys(settings) as (keyof DeskSettings)[]) {
+			if (typeof raw[key] === 'boolean') settings[key] = raw[key];
+		}
+	}
+	return settings;
 }
 
 export function saveDeskSettings(settings: DeskSettings): void {

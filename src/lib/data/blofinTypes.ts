@@ -113,6 +113,8 @@ export interface BloFinSetMarginModeBody {
 }
 
 export interface BloFinPlaceOrderBody {
+	/** PHF input only; converted to contracts using public instrument metadata. */
+	sizeUnit?: 'contracts' | 'baseCoin';
 	instId: string;
 	marginMode: BloFinMarginMode;
 	side: BloFinOrderSide;

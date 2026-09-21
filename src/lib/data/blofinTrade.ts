@@ -23,7 +23,7 @@ export interface BloFinTradeIntent {
 	orderType: BloFinOrderType;
 	price: number | null;
 	reduceOnly: boolean;
-	/** Estimated contracts from % funds */
+	/** Estimated base-coin quantity from % funds, not exchange contracts. */
 	estSize: number;
 	estNotional: number;
 	estMargin: number;
@@ -79,7 +79,7 @@ export function orderSideFromTradeSide(side: 'long' | 'short'): BloFinOrderSide 
  * Size from % of available futures equity.
  * margin = available * pct/100
  * notional = margin * leverage
- * contracts ≈ notional / mark  (linear USDT estimate)
+ * base-coin quantity = notional / mark (converted to contracts by the venue adapter)
  */
 export function sizeFromFundsPct(opts: {
 	availableEquity: number;
@@ -87,6 +87,7 @@ export function sizeFromFundsPct(opts: {
 	leverage: number;
 	markPrice: number;
 }): { margin: number; notional: number; size: number } {
+	if (!Object.values(opts).every(Number.isFinite) || opts.markPrice <= 0) return { margin: 0, notional: 0, size: 0 };
 	const pct = Math.min(100, Math.max(0, opts.fundsPct));
 	const lev = Math.max(1, opts.leverage);
 	const avail = Math.max(0, opts.availableEquity);

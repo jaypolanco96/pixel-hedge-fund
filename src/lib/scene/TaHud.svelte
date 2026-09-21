@@ -7,20 +7,21 @@
 		displaySymbol = 'SOLUSDT'
 	}: { signal: SignalResponse | null; displaySymbol?: string } = $props();
 
-	const kraken = $derived(resolveSymbol(signal?.symbol ?? displaySymbol).kraken);
+	const instrument = $derived(resolveSymbol(signal?.symbol ?? displaySymbol));
+	const marketLabel = $derived(signal?.provider === 'kraken-futures' ? instrument.kraken : instrument.display);
 	const decimals = $derived(resolveSymbol(signal?.symbol ?? displaySymbol).decimals);
 </script>
 
 <div class="chart-desk" class:sample={signal?.sample}>
 	<div class="crt-topline">
-		<span>CHART DESK / {kraken}</span>
-		<span>{signal?.sample ? 'SAMPLE' : 'KRAKEN LIVE'}</span>
+		<span>CHART DESK / {marketLabel}</span>
+		<span>{!signal ? 'CONNECTING' : signal.sample ? 'SAMPLE' : `${signal.provider.toUpperCase()} LIVE`}</span>
 	</div>
 	{#if signal}
 		<div class="readout">
 			<div class="bias" data-bias={signal.bias}>{signal.bias}</div>
-			<div class="pips" aria-label={`Confluence ${signal.confluence} of 5`}>
-				{#each Array(5) as _, i}<i class:on={i < signal.confluence}></i>{/each}
+			<div class="pips" aria-label={`Confluence ${signal.confluence} of 6`}>
+				{#each Array(6) as _, i}<i class:on={i < signal.confluence}></i>{/each}
 			</div>
 			<div class="structure">
 				{signal.structure === 'none' ? 'NO STRUCTURE' : signal.structure.toUpperCase()}

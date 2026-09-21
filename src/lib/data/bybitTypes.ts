@@ -63,6 +63,7 @@ export interface BybitPlaceOrderBody {
 	side: 'Buy' | 'Sell';
 	orderType: BybitOrderType;
 	qty: string;
+	marketUnit?: 'baseCoin' | 'quoteCoin';
 	price?: string;
 	timeInForce?: 'GTC' | 'IOC' | 'FOK' | 'PostOnly';
 	positionIdx?: 0 | 1 | 2;
@@ -88,6 +89,9 @@ export interface BybitTradeWriteResponse {
 }
 
 export interface BybitTickerRow {
+	/** Cached fallback rows must never be advertised as live. */
+	sample?: boolean;
+	t?: number;
 	symbol: string;
 	lastPrice: number;
 	markPrice: number;

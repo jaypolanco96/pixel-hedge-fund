@@ -22,12 +22,12 @@ export const GET: RequestHandler = async ({ url }) => {
 		if (exchange === 'bybit') {
 			const row = ((body.result as { list?: Array<Record<string, unknown>> } | undefined)?.list ?? [])[0];
 			const price = num(row?.lastPrice);
-			return json({ ok: price > 0, exchange, symbol, price, mark: price, sample: false });
+			return json({ ok: price > 0, exchange, symbol, price, mark: price, sample: false }, { headers: { 'Cache-Control': 'no-store' } });
 		}
 		const raw = body.data as Array<Record<string, unknown>> | Record<string, unknown> | undefined;
 		const row = Array.isArray(raw) ? raw[0] : raw;
 		const price = num(row?.last ?? row?.lastPrice ?? row?.close);
-		return json({ ok: price > 0, exchange, symbol, price, mark: price, sample: false });
+		return json({ ok: price > 0, exchange, symbol, price, mark: price, sample: false }, { headers: { 'Cache-Control': 'no-store' } });
 	} catch (error) {
 		return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 502 });
 	}

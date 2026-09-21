@@ -136,7 +136,7 @@
 						<MiniChart
 							{bars}
 							{bias}
-							label={`${activeDisplay} · LIVE DESK`}
+							label={`${activeDisplay} · ${!signal ? 'CONNECTING' : signal.sample ? 'SAMPLE' : 'LIVE DESK'}`}
 							showLevels={!!signal}
 							stop={signal?.risk.stop}
 							tp1={signal?.risk.tp1}
@@ -146,7 +146,7 @@
 					{#if signal}
 						<p class="meta">
 							SL {fmt(signal.risk.stop)} · TP1 {fmt(signal.risk.tp1)} · TP2 {fmt(signal.risk.tp2)}
-							· {signal.sample ? 'SAMPLE' : 'KRAKEN'}
+							· {signal.sample ? 'SAMPLE' : signal.provider.toUpperCase()}
 						</p>
 					{:else}
 						<p class="empty">Waiting on tape wire…</p>
@@ -160,7 +160,7 @@
 							<small>{quote.display} · {quote.symbol}</small>
 							<strong>{fmt(quote.price)}</strong>
 							<em
-								>{quote.sample ? 'SAMPLE' : 'KRAKEN LIVE'} · mark {fmt(quote.mark)} · {fmtTime(
+								>{quote.sample ? 'SAMPLE' : `${quote.provider.toUpperCase()} LIVE`} · mark {fmt(quote.mark)} · {fmtTime(
 									quote.t
 								)}</em
 							>
@@ -189,7 +189,7 @@
 					{#if signal}
 						<div class="bias-row" data-bias={signal.bias}>
 							<strong>{signal.bias}</strong>
-							<span>conf {signal.confluence}/5 · {signal.confluenceBand}</span>
+							<span>conf {signal.confluence}/6 · {signal.confluenceBand}</span>
 							<em>{signal.sample ? 'SAMPLE' : 'LIVE'} · {signal.tf}</em>
 						</div>
 						<dl>
