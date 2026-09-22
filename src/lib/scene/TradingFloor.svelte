@@ -4091,7 +4091,6 @@
 		.desk-edge {
 			display: none;
 		}
-		.book-stack,
 		.wsj,
 		.keyboard-main,
 		.phone-main,
@@ -4271,9 +4270,17 @@
 			transform: scale(0.82);
 			transform-origin: top left;
 		}
-		.book-stack,
 		.phone-main {
 			display: none !important;
+		}
+		.book-stack {
+			display: block !important;
+			position: absolute;
+			left: 12px;
+			top: 220px;
+			bottom: auto;
+			width: min(155px, calc(100% - 24px));
+			z-index: 80;
 		}
 		.wsj.desk-prop,
 		.legal-pad.desk-prop,
