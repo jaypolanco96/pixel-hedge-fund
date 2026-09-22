@@ -7,15 +7,18 @@ Art reference: [`static/ref/apex-capital-office.png`](./static/ref/apex-capital-
 ## Run
 
 ```bash
-cd /workspace/pixel-hedge-fund/app
+cd pixel-hedge-fund   # repo root
 npm install
-npm run dev -- --host 0.0.0.0 --port 5173
+npm run dev -- --port 5173
 ```
 
 ```bash
+npm test
 npm run check
 npm run build
 ```
+
+Do not expose the dev server to your network (`--host 0.0.0.0`) on a machine that holds `.env.local` or `.secrets/`: the `/api/blofin/*` and `/api/bybit/*` write routes fall back to those keys. Cross-site requests to them are rejected, but they have no login.
 
 ## Scene (office-first)
 
@@ -26,7 +29,7 @@ Camera sits **behind a cluttered foreground desk** looking across the floor:
 - **TODAY** whiteboard, **MARKET WIRE** board with **CHANNEL** pair switch + multi-crypto rows
 - Lounge sofa + Fortune, plants, brass bull on a filing cabinet
 - 10 traders at wooden CRT desks (5 LONG / 5 SHORT, 5×–100×) + CIO, PM, Senior Analyst, Research Analyst, Quant
-- Foreground props: books, WSJ, legal pad, beige CRT, keyboard, corded phone, calculator, coffee, **PAIR** desk pad
+- Foreground props: books, WSJ, legal pad, beige CRT, keyboard, corded phone, calculator, **PHF-monogram coffee mug** (deep green with a brass PHF plaque, click for the coffee trip), **PAIR** desk pad
 
 HUD lives **in the room** (wall board, LED tape, foreground CRT) — no floating metric cards.
 
@@ -38,7 +41,7 @@ Diegetic controls (MARKET WIRE **CHANNEL** select + foreground **PAIR** pad) cha
 
 ## Cast behavior (Chart Desk)
 
-Positions come from live `/api/market/signal` (Supertrend + EMA21/55 + RSI + MACD + ATR; 15m setup / 4h regime). See `../ta-signal-stack-v1.md` and `../TRADER_TA_POSTURE.md`.
+Positions come from live `/api/market/signal` (Supertrend + EMA21/55 + RSI + MACD + ATR; 15m setup / 4h regime). See `src/lib/ta/signal.ts` and `src/lib/ta/posture.ts`.
 
 | Tape | Desk mandate | Floor read |
 |------|--------------|------------|
@@ -56,7 +59,7 @@ Hover / focus a trader → desk **clipboard** to view that trader's entry, mark,
 
 | Display | Bybit linear | Notes |
 |---------|----------------|-------|
-| **BTCUSDT** | **`BTCUSDT`** | BTC listed as XBT |
+| **BTCUSDT** | **`BTCUSDT`** | `XBTUSDT` is accepted as an alias |
 | **ETHUSDT** | **`ETHUSDT`** | |
 | **XRPUSDT** | **`XRPUSDT`** | |
 | **SOLUSDT** | **`SOLUSDT`** | Default |
@@ -70,6 +73,9 @@ Hover / focus a trader → desk **clipboard** to view that trader's entry, mark,
 - `GET /api/market/signal?symbol=BTCUSDT`
 - `GET /api/market/tape` - all live tape symbols from Bybit and BloFin
 - `GET /api/market/health`
+- `GET /api/market/leveraged-tokens`, `GET /api/market/leveraged-token-quote`, `GET /api/news`
+
+The full symbol list lives in `SYMBOLS` in `src/lib/data/symbols.ts`; unlisted `*USDT` names resolve as dynamic channels.
 
 Production is always live-only: Bybit is tried first, BloFin is the permitted public-data fallback, and unavailable exchange data returns an empty or `503` response. Local `npm run dev` keeps the labeled SAMPLE fallback for offline work; set `PHF_LIVE_ONLY=true` locally when you want to test the live-only behavior.
 
@@ -114,14 +120,3 @@ On the Empire State Building (center window pane):
 - ~**8%** roll on first eligible tick of that day
 - Brief sequence: climb → roar → swipe helicopters → fade (~28 frames)
 - Wire status shows `KONG!` while active — intentionally rare, not every cycle
-
-## Specs (repo root)
-
-- `../PRODUCT_BRIEF.md`
-- `../ta-signal-stack-v1.md`
-- `../FLOOR_ART_DIRECTION.md`
-- `../FLOOR_SIGNAL_DRIVERS.md`
-- `../TRADER_TA_POSTURE.md`
-- `../OFFICE_PROPS.md`
-- `../risk-pit/v1-trader-mtm.md`
-- `../market-data/API_CONTRACT.md`

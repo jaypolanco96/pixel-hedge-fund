@@ -4,7 +4,7 @@ const URL = process.env.TEST_URL || 'http://127.0.0.1:5173/';
 
 async function main() {
 	const browser = await chromium.launch({
-		executablePath: '/usr/bin/google-chrome',
+		...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' }),
 		headless: true,
 		args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
 	});

@@ -1,6 +1,6 @@
 ---
 name: pixel-hedge-fund
-description: Build, debug, review, and extend the Pixel Hedge Fund SvelteKit office sim using its established Kraken Futures, TA posture, pixel-scene, persistence, and BloFin safety conventions.
+description: Build, debug, review, and extend the Pixel Hedge Fund SvelteKit office sim using its established Bybit-first market data (BloFin fallback), TA posture, pixel-scene, persistence, and BloFin safety conventions.
 ---
 
 # Pixel Hedge Fund
@@ -13,7 +13,7 @@ Keep the experience as a lived-in 1990s pixel hedge-fund office. Prefer diegetic
 
 ## Market and signal behavior
 
-- Use Kraken Futures as the canonical tape. Use the existing symbol mapping, especially `SOLUSDT` → `PF_SOLUSD` and `BTCUSDT` → `PF_XBTUSD`.
+- Use Bybit as the canonical tape with BloFin as the only public-data fallback. Use the existing symbol table in `src/lib/data/symbols.ts`.
 - Use the existing 15m setup plus 4h regime signal path and its Supertrend, EMA, RSI, MACD, and ATR inputs.
 - Propagate `sample: true` through fallbacks. Label sample data visibly and never imply it is live.
 - Keep trader posture derived from bias, confluence, and structure. Open positions may show risk detail; considering traders get thought clouds; weak, conflicting, or unavailable signals must not create fake fills.
@@ -32,6 +32,6 @@ Only when the user asks. See "Git: committing and pushing" in `AGENTS.md`: stage
 1. Identify the smallest relevant Svelte component, data module, route, or persistence helper.
 2. Check existing types and current signal/sample semantics before adding state.
 3. Make the smallest coherent change and preserve responsive scene behavior, drag bounds, and local persistence where applicable.
-4. Run `npm run check` and `npm run build`; report failures with the affected path and reason.
+4. Run `npm test`, `npm run check` and `npm run build`; report failures with the affected path and reason.
 
 For visual changes, inspect the running page or a screenshot when available and verify that props do not cover trader nameplates, thought clouds, or the active HUD. For market changes, test both live-shaped and `sample: true` payloads. For BloFin changes, inspect both configured and snapshot/network-blocked paths without using live writes as a test shortcut.

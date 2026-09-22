@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { dev } from '$app/environment';
 	import type { Bias, QuoteResponse } from '$lib/data/types';
 	import { SYMBOLS, resolveSymbol, spotWireSymbol } from '$lib/data/symbols';
 
@@ -7,12 +6,14 @@
 		quotes = [],
 		activeDisplay = 'SOLUSDT',
 		market = 'futures',
-		bias = 'FLAT'
+		bias = 'FLAT',
+		sample = quotes.length === 0 || quotes.every((q) => q.sample)
 	}: {
 		quotes?: QuoteResponse[];
 		activeDisplay?: string;
 		market?: 'futures' | 'spot';
 		bias?: Bias;
+		sample?: boolean;
 	} = $props();
 
 	function fmtPrice(q: QuoteResponse): string {
@@ -53,7 +54,7 @@
 			`DESK ${activeDisplay} . BIAS ${bias}`,
 			'RESEARCH / DISCIPLINE / RETURNS',
 			'RISK FIRST . SIZE SECOND',
-			dev ? 'SAMPLE' : 'LIVE'
+			sample ? 'SAMPLE' : 'LIVE'
 		];
 	});
 </script>

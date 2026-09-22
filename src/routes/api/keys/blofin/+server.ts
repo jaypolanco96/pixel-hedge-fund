@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import {
 	isVercelEnv,
 	upsertBloFinSecrets,
@@ -25,9 +26,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		baseUrl: body.baseUrl != null ? String(body.baseUrl) : undefined
 	};
 
-	const vercel = isVercelEnv();
-	// On Vercel: validate only - no writable shared disk. Client persists to sessionStorage.
-	const status = vercel ? validateBloFinSecretsInput(input) : await upsertBloFinSecrets(input);
+	// Only a local dev server keeps keys on disk; any built server validates and lets the browser session hold them.
+	const persist = dev && !isVercelEnv();
+	const status = persist ? await upsertBloFinSecrets(input) : validateBloFinSecretsInput(input);
 
 	if (!status.configured) {
 		return json(
@@ -35,7 +36,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				ok: false,
 				error: 'BloFin requires apiKey, apiSecret, and passphrase',
 				blofin: status,
-				persistence: vercel ? 'browser-session' : 'server-file'
+				persistence: persist ? 'server-file' : 'browser-session'
 			},
 			{ status: 400, headers: { 'Cache-Control': 'no-store' } }
 		);
@@ -45,10 +46,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		{
 			ok: true,
 			blofin: status,
-			message: vercel
-				? 'BloFin keys validated (browser session - not stored on Vercel)'
-				: 'BloFin keys saved (masked)',
-			persistence: vercel ? 'browser-session' : 'server-file'
+			message: persist
+				? 'BloFin keys saved (masked)'
+				: 'BloFin keys validated (browser session - not stored on the server)',
+			persistence: persist ? 'server-file' : 'browser-session'
 		},
 		{ headers: { 'Cache-Control': 'no-store' } }
 	);

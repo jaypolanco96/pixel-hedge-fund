@@ -250,7 +250,7 @@ export function postureForTrader(
 	trader: TraderDef,
 	signal: SignalResponse | null,
 	leg: TraderLeg | null,
-	riskHeld = false
+	held: string | null = null
 ): TraderPostureCard {
 	const sample = signal?.sample ?? leg?.sample ?? true;
 	const structure = signal?.structure ?? 'none';
@@ -291,12 +291,12 @@ export function postureForTrader(
 		};
 	}
 
-	if (!signal) {
-		return { ...base, posture: 'watching' as const, status: 'watching' as const };
+	if (held) {
+		return { ...base, posture: 'considering', status: 'thinking', cloud: held };
 	}
 
-	if (riskHeld) {
-		return { ...base, posture: 'considering', status: 'thinking', cloud: 'risk desk: net cap' };
+	if (!signal) {
+		return { ...base, posture: 'watching' as const, status: 'watching' as const };
 	}
 
 	if (!mandateMatch(trader.side, bias)) {

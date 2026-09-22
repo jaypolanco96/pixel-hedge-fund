@@ -62,7 +62,6 @@ export interface KeysStatusResponse {
 	ok: true;
 	blofin: MaskedExchangeStatus;
 	bybit: MaskedExchangeStatus;
-	secretsPath: string;
 }
 
 const SECRETS_DIR = join(process.cwd(), '.secrets');
@@ -111,8 +110,8 @@ export function blofinStatusFrom(secrets: ExchangeSecretsFile): MaskedExchangeSt
 	return {
 		configured: !!(apiKey && apiSecret && passphrase),
 		apiKeyMasked: mask(apiKey),
-		secretMasked: mask(apiSecret),
-		passphraseMasked: mask(passphrase),
+		secretMasked: apiSecret ? '********' : null,
+		passphraseMasked: passphrase ? '********' : null,
 		brokerIdMasked: mask(brokerId),
 		baseUrl
 	};
@@ -128,8 +127,8 @@ export function bybitStatusFrom(secrets: ExchangeSecretsFile): MaskedExchangeSta
 	return {
 		configured: !!(apiKey && apiSecret),
 		apiKeyMasked: mask(apiKey),
-		secretMasked: mask(apiSecret),
-		passphraseMasked: passphrase ? mask(passphrase) : null,
+		secretMasked: apiSecret ? '********' : null,
+		passphraseMasked: passphrase ? '********' : null,
 		brokerIdMasked: mask(brokerId),
 		baseUrl
 	};
@@ -196,7 +195,6 @@ export async function getKeysStatus(): Promise<KeysStatusResponse & { persistenc
 		ok: true,
 		blofin: blofinStatusFrom(secrets),
 		bybit: bybitStatusFrom(secrets),
-		secretsPath: vercel ? '(ephemeral - use browser session LOGIN)' : '.secrets/exchanges.json',
 		persistence: vercel ? 'browser-session' : 'server-file-or-env',
 		vercel
 	};

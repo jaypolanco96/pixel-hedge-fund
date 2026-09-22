@@ -219,11 +219,20 @@ try {
 		const exposure = posture.bookExposure(res.legs);
 		assert.equal(exposure.netUsd, 9_000_000);
 		assert.ok(exposure.netUsd <= 48_000_000 * posture.MAX_NET_FRACTION);
-		const held = posture.postureForTrader(cast.TRADERS.find((t) => t.id === 'L100'), signal, null, true);
+		const held = posture.postureForTrader(cast.TRADERS.find((t) => t.id === 'L100'), signal, null, 'risk desk: net cap');
 		assert.equal(held.posture, 'considering');
 		assert.match(held.cloud, /net cap/);
 		const again = posture.reconcileBook(res.book, signal, hot, 100.2, false, 'SOLUSDT', 'SOLUSDT', true);
 		assert.equal(again.riskDenied.length, 1, 'a held desk stays held while net stays one-way');
+	});
+	await test('a released trader shows the rethinking cloud even with no signal, and an open leg ignores it', () => {
+		const trader = cast.TRADERS.find((t) => t.id === 'S10');
+		const card = posture.postureForTrader(trader, null, null, 'rethinking the trade');
+		assert.equal(card.posture, 'considering');
+		assert.equal(card.status, 'thinking');
+		assert.equal(card.cloud, 'rethinking the trade');
+		const leg = cast.markLeg(trader, 100, 99, false);
+		assert.equal(posture.postureForTrader(trader, tape(), leg, 'rethinking the trade').posture, 'open');
 	});
 	await test('fade legs time out by leverage and the timed-out desk is not re-fired while on cooldown', () => {
 		const T = 1_000_000_000_000;
@@ -296,6 +305,26 @@ try {
 		assert.ok(posture.reconcileBook({ L10: trendLong }, flipped, [longTrader], 100, false, 'SOLUSDT', 'SOLUSDT', true, { now }).book.L10, 'a manual trend leg is not closed by a Supertrend flip');
 		const overwritten = posture.forceBookEntry(longTrader, up, trendLong, 99, 100, now - 60_000);
 		assert.equal(overwritten.strategy, 'trend', 're-timing an open trader keeps its strategy and size');
+	});
+	const guard = await load('lib/server/originGuard.ts');
+	await test('cross-site writes to /api are rejected while same-origin and read requests pass', () => {
+		const site = 'http://localhost:5173';
+		assert.equal(guard.isCrossOriginApiWrite('POST', '/api/blofin/order', 'https://evil.example', site), true);
+		assert.equal(guard.isCrossOriginApiWrite('POST', '/api/blofin/order', null, site), true, 'a no-cors blob POST carries no usable Origin');
+		assert.equal(guard.isCrossOriginApiWrite('POST', '/api/blofin/order', 'null', site), true);
+		assert.equal(guard.isCrossOriginApiWrite('post', '/api/keys/bybit', null, site), true);
+		assert.equal(guard.isCrossOriginApiWrite('POST', '/api/blofin/order', site, site), false);
+		assert.equal(guard.isCrossOriginApiWrite('GET', '/api/market/quote', 'https://evil.example', site), false);
+		assert.equal(guard.isCrossOriginApiWrite('POST', '/somepage', 'https://evil.example', site), false);
+	});
+	const vault = await load('lib/server/exchangeSecrets.ts');
+	await test('key status never reveals any part of the secret or passphrase', () => {
+		const status = vault.blofinStatusFrom({ blofin: { apiKey: 'abcd1234efgh', apiSecret: 'topsecret9876', passphrase: 'pass5432' } });
+		assert.equal(status.configured, true);
+		assert.equal(status.secretMasked, '********');
+		assert.equal(status.passphraseMasked, '********');
+		assert.ok(!JSON.stringify(status).includes('9876') && !JSON.stringify(status).includes('5432'));
+		assert.equal(status.apiKeyMasked, '****efgh');
 	});
 	console.log(`${passed} regression groups passed; all exchange requests mocked.`);
 } finally {

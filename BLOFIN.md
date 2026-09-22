@@ -49,12 +49,12 @@ API key needs **TRADE** permission for writes (READ alone is not enough).
 ### Windows local setup
 
 ```bat
-copy C:\Users\jorda\.grokbot\blofin.env C:\Users\jorda\pixel-hedge-fund\app\.env.local
+copy .env.example .env.local
 ```
 
 Ensure `BLOFIN_BASE_URL=https://openapi.blofin.com`, then restart `npm run dev`.
 
-Linux box: same keys in `/workspace/pixel-hedge-fund/app/.env.local`, **or** use Desk LOGIN (session + local `.secrets`).
+Any other box: same keys in `.env.local` at the repo root, **or** use Desk LOGIN (browser session; a local dev server also keeps them in `.secrets`).
 
 ## Routes
 
@@ -95,7 +95,7 @@ Quick Trade can target Bybit linear USDT contracts and spot symbols when Bybit k
 
 ## Snapshot fallback (403 / network)
 
-When BloFin upstream returns **403** or a **network error**, `/api/blofin/*` GET serves `static/blofin-snapshot.json`.
+When BloFin upstream returns **403** or a **network error**, `/api/blofin/*` GET serves `static/blofin-snapshot.json` (git-ignored; it exists only where you produce it locally, so a fresh clone or Vercel deploy has no snapshot to serve).
 
 Responses set `fromSnapshot: true` and `syncedAt` from the file. Desk shows a **SNAPSHOT / CACHE** banner (not demo). Refresh the JSON via Desk Lead — do not hand-edit fake balances.
 

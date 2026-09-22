@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { dev } from '$app/environment';
 	import { exchangeFetch } from '$lib/client/exchangeHeaders';
 	import { completedBars } from '$lib/data/validation';
 	import { onMount } from 'svelte';
@@ -101,6 +100,9 @@
 	let settingsOpen = $state(false);
 	const selectedOfficeFlag = $derived(OFFICE_FLAGS.find((flag) => flag.id === deskSettings.officeFlag) ?? DEFAULT_OFFICE_FLAG);
 	let wallNow = $state(Date.now());
+	// Traders released with the desk's release button show a 'rethinking' cloud until this time.
+	let reassessUntil = $state<Record<string, number>>({});
+	const RELEASE_MS = 60_000;
 	// Last successful market read. The TIME field prices entries from it so a dropped poll does not block editing.
 	let lastMarket = $state<{ signal: SignalResponse; quote: QuoteResponse; bars: Bar[]; sample: boolean } | null>(null);
 	let blofinAssignments = $state<BloFinAssignments>({});
@@ -455,13 +457,13 @@
 		inspectedTrader ? (legs.find((l) => l.traderId === inspectedTrader.id) ?? null) : null
 	);
 	const inspectedPosture = $derived(
-		inspectedTrader ? postureForTrader(inspectedTrader, signal, inspectedLeg, riskDenied.includes(inspectedTrader.id)) : null
+		inspectedTrader ? postureForTrader(inspectedTrader, signal, inspectedLeg, heldReason(inspectedTrader.id, inspectedLeg != null)) : null
 	);
 	const pinnedLeg = $derived(
 		pinnedTrader ? (legs.find((l) => l.traderId === pinnedTrader.id) ?? null) : null
 	);
 	const pinnedPosture = $derived(
-		pinnedTrader ? postureForTrader(pinnedTrader, signal, pinnedLeg, riskDenied.includes(pinnedTrader.id)) : null
+		pinnedTrader ? postureForTrader(pinnedTrader, signal, pinnedLeg, heldReason(pinnedTrader.id, pinnedLeg != null)) : null
 	);
 	const longOpen = $derived(
 		longTraders.filter(
@@ -478,6 +480,8 @@
 		).length
 	);
 	const priceDecimals = $derived(activeDef.decimals);
+	// The badge follows the data the floor actually trades on (the active pair), not the build mode.
+	const wireSample = $derived(quote ? quote.sample : tapeQuotes.length === 0 || tapeQuotes.every((q) => q.sample));
 	const bookRisk = $derived({ ...bookExposure(legs), denied: riskDenied.length });
 
 	function legFor(id: string) {
@@ -502,10 +506,23 @@
 		const forced = forceBookEntry(trader, market.signal, book[traderId], priceAt(market.bars, openedAt, mark, now), mark, openedAt);
 		const def = resolveSymbol(activeDisplay);
 		wallNow = now;
+		if (reassessUntil[traderId]) reassessUntil = { ...reassessUntil, [traderId]: 0 };
 		applyBookResult(
 			reconcileBook({ ...book, [traderId]: forced }, market.signal, traders, mark, market.sample, def.display, def.bybit, false, { cooldown: activeCooldowns(now), now }),
 			now
 		);
+	}
+	// Closes the trader's position (organic or forced) with no P&L event and hands them back to their own
+	// decision loop: they show a thinking cloud for a minute, then scan and enter on their own rules again.
+	function releaseTrader(traderId: string) {
+		if (!book[traderId]) return;
+		const now = Date.now();
+		const { [traderId]: _closed, ...rest } = book;
+		book = rest;
+		legs = legs.filter((leg) => leg.traderId !== traderId);
+		reentryCooldowns = { ...reentryCooldowns, [traderId]: now + RELEASE_MS };
+		reassessUntil = { ...reassessUntil, [traderId]: now + RELEASE_MS };
+		wallNow = now;
 	}
 	function activeCooldowns(now: number): Set<string> {
 		return new Set(traders.filter((trader) => (reentryCooldowns[trader.id] ?? 0) > now).map((trader) => trader.id));
@@ -598,7 +615,12 @@
 		}, ms);
 	}
 	function postureFor(t: TraderDef) {
-		return postureForTrader(t, signal, legFor(t.id), riskDenied.includes(t.id));
+		return postureForTrader(t, signal, legFor(t.id), heldReason(t.id, legFor(t.id) != null));
+	}
+	function heldReason(id: string, hasLeg: boolean): string | null {
+		if (hasLeg) return null;
+		if ((reassessUntil[id] ?? 0) > wallNow) return 'rethinking the trade';
+		return riskDenied.includes(id) ? 'risk desk: net cap' : null;
 	}
 	function showTakeProfit(traderId: string, pnlUsd: number, target: 'TP1' | 'TP2') {
 		const expiresAt = Date.now() + 2800;
@@ -1219,6 +1241,9 @@
 		book = {};
 		riskDenied = [];
 		legs = [];
+		reentryCooldowns = {};
+		takeProfitFlashes = {};
+		reassessUntil = {};
 		lastDecisionCandle = 0;
 		lastMarket = null;
 		quote = null;
@@ -1255,6 +1280,7 @@
 			signal = s;
 			bars = candles.bars;
 			const mark = q.mark || q.price;
+			if (!Number.isFinite(mark) || mark <= 0) throw new Error('Invalid mark price from the tape');
 			const def = resolveSymbol(sym);
 			const decisionCandle = completedBars(bars, 15 * 60_000).at(-1)?.t ?? 0;
 			const decisionPoint = decisionCandle !== 0 && decisionCandle !== lastDecisionCandle;
@@ -1473,8 +1499,8 @@
 				<div class="market-board">
 					<header>
 						<span>MARKET WIRE . {wireMarket.toUpperCase()}</span>
-						<i class:wire-sample={dev} class:wire-live={!dev} aria-label={dev ? 'Sample market data' : 'Live market data'}>
-							{dev ? 'SAMPLE' : 'LIVE'}
+						<i class:wire-sample={wireSample} class:wire-live={!wireSample} aria-label={wireSample ? 'Sample market data' : 'Live market data'}>
+							{wireSample ? 'SAMPLE' : 'LIVE'}
 						</i>
 					</header>
 
@@ -1590,7 +1616,7 @@
 		><i></i><i></i><i></i></div>
 
 		<div class="ticker-anchor">
-			<TickerTape quotes={tapeQuotes} {activeDisplay} market={wireMarket} bias={signal?.bias ?? 'FLAT'} />
+			<TickerTape quotes={tapeQuotes} {activeDisplay} market={wireMarket} bias={signal?.bias ?? 'FLAT'} sample={wireSample} />
 		</div>
 
 		<div class="office-flag" class:is-dragging={officeFlagPosition.dragging} use:bindOfficeFlag style={`left: ${officeFlagPosition.left}px; top: ${officeFlagPosition.top}px;`} title={`${selectedOfficeFlag.name} - drag to move`} aria-label={`Draggable office flag: ${selectedOfficeFlag.name}`} role="button" tabindex="0" onpointerdown={onOfficeFlagPointerDown} onpointermove={onOfficeFlagPointerMove} onpointerup={onOfficeFlagPointerUp} onpointercancel={onOfficeFlagPointerUp} onlostpointercapture={onOfficeFlagPointerUp}>
@@ -1636,6 +1662,8 @@
 								posture={postureFor(t)}
 								tradeDurationMinutes={tradeDurationFor(t.id)}
 								tradeDurationEnabled={lastMarket != null}
+								canRelease={!!book[t.id]}
+								onRelease={() => releaseTrader(t.id)}
 								takeProfit={takeProfitFlashes[t.id] ? { pnlUsd: takeProfitFlashes[t.id].pnlUsd, target: takeProfitFlashes[t.id].target } : null}
 								{bars}
 								lampBoost={signal?.bias === 'LONG' ? 0.22 : 0}
@@ -1663,6 +1691,8 @@
 								posture={postureFor(t)}
 								tradeDurationMinutes={tradeDurationFor(t.id)}
 								tradeDurationEnabled={lastMarket != null}
+								canRelease={!!book[t.id]}
+								onRelease={() => releaseTrader(t.id)}
 								takeProfit={takeProfitFlashes[t.id] ? { pnlUsd: takeProfitFlashes[t.id].pnlUsd, target: takeProfitFlashes[t.id].target } : null}
 								{bars}
 								lampBoost={signal?.bias === 'SHORT' ? 0.22 : 0}
@@ -1961,10 +1991,10 @@
 			onpointermove={(e) => onDeskPropPointerMove('coffee', e)}
 			onpointerup={(e) => onDeskPropPointerUp('coffee', e)}
 			onpointercancel={(e) => onDeskPropPointerUp('coffee', e)}
-			aria-label="Sip coffee - brief trip"
-			title="Coffee - drag to move"
+			aria-label="Sip PHF coffee - brief trip"
+			title="PHF coffee - drag to move"
 			onclick={() => deskPropClick('coffee', triggerCoffeeTrip)}
-		><i></i><b></b></button>
+		><b></b><i></i><span class="brew"></span><span class="plaque"><em>PHF</em></span><u></u></button>
 		<button
 			type="button"
 			class="desk-settings-btn desk-prop"
@@ -3530,15 +3560,29 @@
 	}
 	.coffee {
 		flex: 0 0 auto;
+		position: relative;
+		container-type: inline-size;
 		width: 72px;
 		height: 88px;
 		padding: 0;
-		background: #2b2623;
-		border: 3px solid #15110f;
-		border-radius: 3px 3px 10px 10px;
+		background: linear-gradient(90deg, #2f7050 0 14%, #245a41 14% 76%, #1a4230 76% 100%);
+		border: 3px solid #0f1f18;
+		border-radius: 3px 3px 12px 12px;
 		box-sizing: border-box;
+		box-shadow: inset 0 -6px rgba(0, 0, 0, 0.2), 3px 3px 0 rgba(20, 10, 5, 0.45);
 		overflow: visible;
 		cursor: pointer;
+	}
+	/* brass pinstripe near the foot, echoing the wall sign */
+	.coffee::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 14%;
+		height: 3px;
+		background: #d9a94a;
+		box-shadow: 0 -4px #0f1f18, 0 4px #0f1f18;
 	}
 	.coffee:hover,
 	.coffee:focus-visible {
@@ -3549,26 +3593,96 @@
 		cursor: wait;
 		opacity: 0.9;
 	}
+	/* brass lip with the coffee visible inside */
+	.coffee .brew {
+		position: absolute;
+		left: -5px;
+		right: -5px;
+		top: -6px;
+		height: 14px;
+		background: #d9a94a;
+		border: 3px solid #0f1f18;
+		border-radius: 3px;
+		box-sizing: border-box;
+		box-shadow: inset 0 3px #f2d283;
+	}
+	.coffee .brew::after {
+		content: '';
+		position: absolute;
+		left: 4px;
+		right: 4px;
+		top: 2px;
+		height: 3px;
+		background: #3a2214;
+		box-shadow: 0 1px #5a3a20;
+	}
+	/* PHF monogram plaque, same brass tile as the wall sign */
+	.coffee .plaque {
+		position: absolute;
+		left: 50%;
+		top: 28%;
+		width: 72%;
+		height: 36%;
+		display: grid;
+		place-items: center;
+		transform: translateX(-50%);
+		background: #d9a94a;
+		border: 2px solid #0f1f18;
+		box-sizing: border-box;
+		box-shadow: inset 0 0 0 2px #f2d283, 2px 2px 0 rgba(0, 0, 0, 0.35);
+	}
+	.coffee .plaque em {
+		font: normal 900 17cqw/1 var(--pixel, var(--mono, monospace));
+		letter-spacing: 0.04em;
+		color: #2a1a0c;
+		padding-left: 0.04em;
+	}
+	/* ear */
 	.coffee i {
 		position: absolute;
-		left: -10px;
-		top: 8px;
-		width: 11px;
-		height: 18px;
-		border: 3px solid #211b18;
-		border-right: 0;
-		border-radius: 10px 0 0 10px;
+		right: -15px;
+		top: 20%;
+		width: 15px;
+		height: 38%;
+		border: 5px solid #245a41;
+		border-left: 0;
+		border-radius: 0 14px 14px 0;
 		box-sizing: border-box;
+		box-shadow: 2px 0 0 #0f1f18, 0 -2px 0 #0f1f18, 0 2px 0 #0f1f18;
+	}
+	/* saucer */
+	.coffee u {
+		position: absolute;
+		left: -10px;
+		right: -10px;
+		bottom: -10px;
+		height: 10px;
+		text-decoration: none;
+		background: #e8dcc0;
+		border: 3px solid #0f1f18;
+		border-radius: 2px 2px 9px 9px;
+		box-sizing: border-box;
+		box-shadow: inset 0 -3px #c9b891;
 	}
 	.coffee b {
 		position: absolute;
-		left: 8px;
-		top: -28px;
+		left: 50%;
+		margin-left: -8px;
+		top: -27px;
 		width: 4px;
 		height: 20px;
 		background: rgba(235, 225, 205, 0.45);
-		box-shadow: 6px -2px rgba(235, 225, 205, 0.35);
+		box-shadow: 8px -3px rgba(235, 225, 205, 0.35);
 		animation: steam 2s ease-in-out infinite;
+	}
+	@container (max-width: 40px) {
+		.coffee::before { height: 2px; box-shadow: 0 -2px #0f1f18, 0 2px #0f1f18; }
+		.coffee .brew { left: -3px; right: -3px; top: -4px; height: 9px; border-width: 2px; }
+		.coffee .brew::after { left: 2px; right: 2px; top: 1px; height: 2px; }
+		.coffee .plaque { border-width: 1px; box-shadow: inset 0 0 0 1px #f2d283; }
+		.coffee i { right: -9px; width: 9px; border-width: 3px; box-shadow: 1px 0 0 #0f1f18, 0 -1px 0 #0f1f18, 0 1px 0 #0f1f18; }
+		.coffee u { left: -6px; right: -6px; bottom: -7px; height: 7px; border-width: 2px; }
+		.coffee b { top: -20px; height: 12px; width: 3px; margin-left: -5px; box-shadow: 5px -2px rgba(235, 225, 205, 0.35); }
 	}
 	@keyframes steam {
 		50% {

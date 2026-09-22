@@ -20,6 +20,8 @@
 		blofinBadge = null as string | null,
 		tradeDurationMinutes = null as number | null,
 		tradeDurationEnabled = false,
+		canRelease = false,
+		onRelease = () => {},
 		takeProfit = null as { pnlUsd: number; target: 'TP1' | 'TP2' } | null,
 		onInspect = () => {},
 		onPin = () => {},
@@ -40,6 +42,8 @@
 		blofinBadge?: string | null;
 		tradeDurationMinutes?: number | null;
 		tradeDurationEnabled?: boolean;
+		canRelease?: boolean;
+		onRelease?: () => void;
 		takeProfit?: { pnlUsd: number; target: 'TP1' | 'TP2' } | null;
 		onInspect?: () => void;
 		onPin?: () => void;
@@ -218,7 +222,7 @@
 		<div class="activity">
 			<span>{activity}</span>
 			{#if trader}
-				<label class="trade-duration" title={tradeDurationEnabled ? undefined : 'Waiting for market data'}>TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={durationDraft ?? tradeDurationMinutes ?? ''} placeholder="--" disabled={!tradeDurationEnabled} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} onfocus={startDurationEdit} oninput={(event) => { durationDraft = (event.currentTarget as HTMLInputElement).value; }} onblur={commitTradeDuration} onkeydown={durationKeydown} />m</label>
+				<label class="trade-duration" title={tradeDurationEnabled ? undefined : 'Waiting for market data'}>TIME <input type="number" min="0" max="100000" step="1" aria-label={`${trader.name} trading duration in minutes`} value={durationDraft ?? tradeDurationMinutes ?? ''} placeholder="--" disabled={!tradeDurationEnabled} onclick={(event) => event.stopPropagation()} onpointerdown={(event) => event.stopPropagation()} onfocus={startDurationEdit} oninput={(event) => { durationDraft = (event.currentTarget as HTMLInputElement).value; }} onblur={commitTradeDuration} onkeydown={durationKeydown} />m{#if canRelease}<button type="button" class="release" title="Release: close this position and let the trader think again" aria-label={`Release ${trader.name}: close the position and let them think again`} onpointerdown={(event) => event.stopPropagation()} onclick={(event) => { event.stopPropagation(); onRelease(); }}>&times;</button>{/if}</label>
 			{/if}
 		</div>
 	</div>
@@ -414,6 +418,8 @@
 	.trade-duration { display:flex; align-items:center; justify-content:center; gap:2px; width:100%; margin-top:2px; color:#e3c982; font:6px var(--mono, monospace); }
 	.trade-duration input { width:30px; box-sizing:border-box; padding:1px; color:#fff0b0; background:#100b09; border:1px solid #9e7047; font:6px var(--mono, monospace); text-align:center; }
 	.trade-duration input:disabled { color:#8f8169; opacity:.7; }
+	.trade-duration .release { flex:none; width:11px; height:11px; margin-left:1px; padding:0; line-height:9px; color:#ffd9cf; background:#6b2f25; border:1px solid #b45a49; font:9px/9px var(--mono, monospace); cursor:pointer; }
+	.trade-duration .release:hover, .trade-duration .release:focus-visible { background:#8f3f30; outline:1px solid #efc870; }
 
 	.status-badge { position:absolute; left:50%; top:0; transform:translateX(-50%); white-space:nowrap; z-index:15; padding:2px 4px; background:#33433b; color:#e6d9bf; border:2px solid #201713; font:6px var(--mono, monospace); text-transform:uppercase; letter-spacing:.05em; box-shadow:2px 2px 0 rgba(20,10,5,.45); }
 	.blofin-badge { position:absolute; left:50%; top:-13px; transform:translateX(-50%); z-index:16; max-width:calc(100% - 4px); padding:2px 4px; background:#0c2a1c; color:#7dffb0; border:2px solid #1a5a3a; font:5px/1.1 var(--mono, monospace); letter-spacing:.04em; box-shadow:2px 2px 0 rgba(10,40,25,.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

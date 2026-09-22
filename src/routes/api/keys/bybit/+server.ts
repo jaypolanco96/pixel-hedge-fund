@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import {
 	isVercelEnv,
 	upsertBybitSecrets,
@@ -25,8 +26,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		baseUrl: body.baseUrl != null ? String(body.baseUrl) : undefined
 	};
 
-	const vercel = isVercelEnv();
-	const status = vercel ? validateBybitSecretsInput(input) : await upsertBybitSecrets(input);
+	// Only a local dev server keeps keys on disk; any built server validates and lets the browser session hold them.
+	const persist = dev && !isVercelEnv();
+	const status = persist ? await upsertBybitSecrets(input) : validateBybitSecretsInput(input);
 
 	if (!status.configured) {
 		return json(
@@ -34,7 +36,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				ok: false,
 				error: 'Bybit requires apiKey and apiSecret',
 				bybit: status,
-				persistence: vercel ? 'browser-session' : 'server-file'
+				persistence: persist ? 'server-file' : 'browser-session'
 			},
 			{ status: 400, headers: { 'Cache-Control': 'no-store' } }
 		);
@@ -44,10 +46,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		{
 			ok: true,
 			bybit: status,
-			message: vercel
-				? 'Bybit keys validated (browser session - not stored on Vercel)'
-				: 'Bybit keys saved (masked)',
-			persistence: vercel ? 'browser-session' : 'server-file'
+			message: persist
+				? 'Bybit keys saved (masked)'
+				: 'Bybit keys validated (browser session - not stored on the server)',
+			persistence: persist ? 'server-file' : 'browser-session'
 		},
 		{ headers: { 'Cache-Control': 'no-store' } }
 	);

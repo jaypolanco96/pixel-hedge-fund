@@ -27,5 +27,8 @@ vite.config.ts.timestamp-*
 !.secrets/.gitkeep
 
 # Live exchange snapshot cache (may contain account equity)
-static/blofin-snapshot.json
+blofin-snapshot.json
+
+# Per-machine Claude Code permissions
+.claude/settings.local.json
 

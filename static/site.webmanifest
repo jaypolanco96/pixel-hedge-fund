@@ -1,7 +1,7 @@
 {
   "name": "Pixel Hedge Fund",
   "short_name": "PHF",
-  "description": "Pixel hedge-fund office sim with live crypto TA on Kraken futures.",
+  "description": "Pixel hedge-fund office sim with live crypto TA on Bybit and BloFin.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
