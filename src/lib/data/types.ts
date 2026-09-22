@@ -93,6 +93,7 @@ export interface StaffDef {
 	role: 'cio' | 'pm' | 'senior_analyst' | 'research_analyst' | 'quant';
 	title: string;
 	skin: string;
+	female?: boolean;
 	zone: 'corner' | 'pit_walk' | 'analyst' | 'research' | 'quant';
 }
 

@@ -24,7 +24,7 @@ Do not expose the dev server to your network (`--host 0.0.0.0`) on a machine tha
 
 Camera sits **behind a cluttered foreground desk** looking across the floor:
 
-- Panoramic **NYC sunset windows** (Empire State silhouette, mullions, rain on glass; rare **King Kong** event)
+- Panoramic **NYC sunset windows** (Empire State silhouette, mullions, rain on glass; switchable **Miami Vice** neon skyline; rare UFO abduction event)
 - Wall **PIXEL HEDGE FUND** sign + values: Discipline / Research / Returns
 - **TODAY** whiteboard, **MARKET WIRE** board with **CHANNEL** pair switch + multi-crypto rows
 - Lounge sofa + Fortune, plants, brass bull on a filing cabinet
@@ -113,14 +113,17 @@ When tape bias is **LONG** and confluence is **tradeable/high** → mini **bull*
 Pixel trash can on the floor — **draggable**, position in `phf-trash-pos`. **Click** opens a crumpled “busted thesis / wrong call” research note built from live Chart Desk bias (counter-trend idea that failed, confluence that flipped, etc.). Post-mortem narrative only — real signal context, no fake live P&L.
 
 ### Rare mariachi
-Same rarity spirit as Kong: eligible in **day** or **golden** sim phases, ≤ once per sim-day, ~**7%** roll. Band enters the aisle, plays with note sprites (~36 frames). Wire status shows `MARIACHI!` while active.
+Same rarity spirit as the UFO: eligible in **day** or **golden** sim phases, ≤ once per sim-day, ~**7%** roll. Band enters the aisle, plays with note sprites (~36 frames). Wire status shows `MARIACHI!` while active.
 
-## Rare King Kong event
+## Skyline theme and rare UFO event
 
-On the Empire State Building (center window pane):
+Use **SET → Office Decor → Theme** to switch between the default NYC dusk view and a Miami Vice skyline with magenta/cyan neon, palms, waterline accents, and the same moving bird layer.
+
+The rare UFO abduction event appears over the Empire State Building (center window pane):
 
 - Eligible only during **dusk** or **night** sim phases
 - At most **once per sim-day** (1440 sim-minutes)
 - ~**8%** roll on first eligible tick of that day
-- Brief sequence: climb → roar → swipe helicopters → fade (~28 frames)
-- Wire status shows `KONG!` while active — intentionally rare, not every cycle
+- Brief sequence: approach → hover beam → abduct a pixel silhouette → depart (~36 frames)
+- Birds hide while the event is active.
+- Wire status shows `UFO!` while active — intentionally rare, not every cycle

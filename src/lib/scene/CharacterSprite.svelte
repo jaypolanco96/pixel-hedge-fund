@@ -53,7 +53,7 @@
 
 	const name = $derived(trader?.name ?? staff?.name ?? '');
 	const skin = $derived(trader?.skin ?? staff?.skin ?? 'maya');
-	const female = $derived(!!trader?.female);
+	const female = $derived(!!(trader?.female ?? staff?.female));
 	const postureKind = $derived(posture?.posture ?? null);
 	const roleLabel = $derived(trader ? `${trader.side.toUpperCase()} DESK` : staff?.title ?? '');
 	const status = $derived(posture?.status ?? 'watching');

@@ -3,7 +3,7 @@ import type { DayPhase } from '$lib/data/types';
 /**
  * Rare mariachi band visit on the trading floor.
  *
- * Spirit mirrors Kong rarity:
+ * Spirit mirrors the UFO rarity:
  * - Eligible during day or golden (office party hours).
  * - At most once per sim-day (day index = floor(totalSimMinutes / 1440)).
  * - On first eligible tick of that day, roll ~7% chance.

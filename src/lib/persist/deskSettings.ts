@@ -2,6 +2,7 @@
 import { readJson, writeJson } from './local';
 
 export const DESK_SETTINGS_KEY = 'phf-desk-settings';
+export type OfficeTheme = 'nyc' | 'miami-vice';
 
 export interface DeskSettings {
 	showClipboard: boolean;
@@ -14,6 +15,7 @@ export interface DeskSettings {
 	reduceMotion: boolean;
 	disableCoffeeTrip: boolean;
 	compactDeskTools: boolean;
+	officeTheme: OfficeTheme;
 	officeFlag: string;
 	showBlofinBadges: boolean;
 	soundOff: boolean;
@@ -36,6 +38,7 @@ export const DEFAULT_DESK_SETTINGS: DeskSettings = {
 	reduceMotion: false,
 	disableCoffeeTrip: false,
 	compactDeskTools: true,
+	officeTheme: 'nyc',
 	officeFlag: 'BR',
 	showBlofinBadges: true,
 	soundOff: true,
@@ -51,6 +54,8 @@ export function loadDeskSettings(): DeskSettings {
 		for (const key of Object.keys(settings) as (keyof DeskSettings)[]) {
 			if (key === 'officeFlag' && typeof raw[key] === 'string') {
 				settings.officeFlag = raw[key];
+			} else if (key === 'officeTheme' && (raw[key] === 'nyc' || raw[key] === 'miami-vice')) {
+				settings.officeTheme = raw[key];
 			} else if (typeof raw[key] === 'boolean') {
 				(settings as Record<string, boolean | string>)[key] = raw[key];
 			}

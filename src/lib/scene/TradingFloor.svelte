@@ -20,10 +20,10 @@
 	import DeskConsole from './DeskConsole.svelte';
 	import ToastStack from '$lib/ui/ToastStack.svelte';
 	import {
-		DEFAULT_DESK_SETTINGS,
 		loadDeskSettings,
 		saveDeskSettings,
-		type DeskSettings
+		type DeskSettings,
+		type OfficeTheme
 	} from '$lib/persist/deskSettings';
 	import MonitorPanel from './MonitorPanel.svelte';
 	import QuickTradePanel from './QuickTradePanel.svelte';
@@ -39,7 +39,7 @@
 		saveScenePosition
 	} from '$lib/persist/scenePositions';
 	import { initialSimClock, tickSimClock, applyForcedChristmasSnow, SIM_MINUTES_PER_REAL_SECOND } from '$lib/weather/timeCycle';
-	import { initialKong, tickKong } from '$lib/weather/kongEvent';
+	import { initialUfo, tickUfo } from '$lib/weather/ufoEvent';
 	import { initialMariachi, tickMariachi } from '$lib/weather/mariachiEvent';
 	import { DEFAULT_DISPLAY, SYMBOLS, SYMBOL_CATEGORIES, resolveSymbol, spotWireSymbol, symbolsInCategory, type SymbolCategory } from '$lib/data/symbols';
 	import type {
@@ -83,8 +83,8 @@
 	let inspectedId = $state('L05');
 	let pinnedId = $state<string | null>(null);
 	let activeDisplay = $state(DEFAULT_DISPLAY);
-	let kong = $state(initialKong());
-	let lastKongPulse = $state(-1);
+	let ufo = $state(initialUfo());
+	let lastUfoPulse = $state(-1);
 	let mariachi = $state(initialMariachi());
 	let leverageOverrides = $state<LeverageOverrides>({});
 	let deskConsoleOpen = $state(false);
@@ -586,23 +586,34 @@
 	function openProfitCalc() {
 		profitCalcOpen = true;
 	}
+	const DRAGGABLE_SETTING_KEYS = [
+		'showClipboard',
+		'showPricePad',
+		'showFax',
+		'showPet',
+		'showTrash',
+		'showCrtCart'
+	] as const;
+
 	function updateDeskSetting<K extends keyof DeskSettings>(key: K, value: DeskSettings[K]) {
-		deskSettings = { ...deskSettings, [key]: value };
+		const next = { ...deskSettings, [key]: value };
+		if ((DRAGGABLE_SETTING_KEYS as readonly string[]).includes(key)) {
+			const allHidden = DRAGGABLE_SETTING_KEYS.every((setting) => !next[setting]);
+			next.hideAllDraggables = allHidden;
+		}
+		deskSettings = next;
 		saveDeskSettings(deskSettings);
+	}
+
+	function updateOfficeTheme(value: OfficeTheme) {
+		updateDeskSetting('officeTheme', value);
 	}
 
 	function toggleHideAllDraggables() {
 		const hide = !deskSettings.hideAllDraggables;
-		deskSettings = {
-			...deskSettings,
-			hideAllDraggables: hide,
-			showClipboard: !hide,
-			showPricePad: !hide,
-			showFax: !hide,
-			showPet: !hide,
-			showTrash: !hide,
-			showCrtCart: !hide
-		};
+		const next = { ...deskSettings, hideAllDraggables: hide };
+		for (const setting of DRAGGABLE_SETTING_KEYS) next[setting] = !hide;
+		deskSettings = next;
 		saveDeskSettings(deskSettings);
 	}
 
@@ -1390,9 +1401,9 @@
 			totalSimMinutes += dt * SIM_MINUTES_PER_REAL_SECOND;
 			clock = applyForcedChristmasSnow(tickSimClock(clock, dt, totalSimMinutes), deskSettings.forceChristmasSnow);
 			const pulse = Math.floor(now / 350);
-			const animPulse = pulse !== lastKongPulse;
-			if (animPulse) lastKongPulse = pulse;
-			kong = tickKong(kong, clock.phase, totalSimMinutes, animPulse);
+			const animPulse = pulse !== lastUfoPulse;
+			if (animPulse) lastUfoPulse = pulse;
+			ufo = tickUfo(ufo, clock.phase, totalSimMinutes, animPulse);
 			mariachi = tickMariachi(mariachi, clock.phase, totalSimMinutes, animPulse);
 			pollAcc += dt;
 			if (pollAcc >= 10) {
@@ -1450,12 +1461,16 @@
 
 <svelte:window
 	onkeydown={(e) => {
-		if (e.key === 'Escape') pinnedId = null;
+		if (e.key === 'Escape') {
+			if (settingsOpen) settingsOpen = false;
+			else pinnedId = null;
+		}
 	}}
 />
 
 <main
 	class="scene"
+	data-theme={deskSettings.officeTheme}
 	class:reduce-motion={deskSettings.reduceMotion}
 	class:night-tint={deskSettings.nightModeTint}
 	class:crt-scan={deskSettings.crtScanlines} data-phase={clock.phase}>
@@ -1478,7 +1493,7 @@
 				</div>
 			</div>
 
-			<div class="window-wall" aria-label="Panoramic New York skyline at sunset">
+			<div class="window-wall" aria-label={`Panoramic ${deskSettings.officeTheme === 'miami-vice' ? 'Miami Vice' : 'New York'} skyline at sunset`}>
 				<!-- Render the view once so the skyline, sun, and ESB span all panes. -->
 				<div class="panoramic-skyline">
 					<Skyline
@@ -1486,8 +1501,9 @@
 						outdoorLux={clock.outdoorLux}
 						raining={clock.raining}
 						snowing={clock.snowing}
-						kongActive={kong.active}
-						kongFrame={kong.frame}
+						theme={deskSettings.officeTheme}
+						ufoActive={ufo.active}
+						ufoFrame={ufo.frame}
 						reduceMotion={deskSettings.reduceMotion}
 					/>
 					<RainLayer intensity={clock.rainIntensity} />
@@ -2162,8 +2178,8 @@
 					? ' . XMAS . SNOW'
 					: clock.holidayWindow
 						? ' . XMAS'
-						: ''}{kong.active
-					? ' . KONG!'
+					: ''}{ufo.active
+					? ' . UFO!'
 					: ''}{mariachi.active ? ' . MARIACHI!' : ''}</small
 			>
 		</aside>
@@ -2234,6 +2250,13 @@
 			</section>
 			<section>
 				<h4>OFFICE DECOR</h4>
+				<label class="theme-picker">
+					<span>Theme</span>
+					<select value={deskSettings.officeTheme} onchange={(e) => updateOfficeTheme(e.currentTarget.value as OfficeTheme)} aria-label="Office theme">
+						<option value="nyc">NYC dusk</option>
+						<option value="miami-vice">Miami Vice</option>
+					</select>
+				</label>
 				<label class="flag-picker">
 					<span>Flag</span>
 					<select value={deskSettings.officeFlag} onchange={(e) => updateDeskSetting('officeFlag', e.currentTarget.value)} aria-label="Office flag">
@@ -4483,6 +4506,11 @@
 		cursor: pointer;
 	}
 	.settings-body .flag-picker {
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+	}
+	.settings-body .theme-picker {
 		align-items: center;
 		justify-content: space-between;
 		gap: 10px;

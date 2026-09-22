@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { DayPhase } from '$lib/data/types';
+	import type { OfficeTheme } from '$lib/persist/deskSettings';
 	import { skyColors } from '$lib/weather/timeCycle';
 
 	let {
@@ -7,29 +8,48 @@
 		outdoorLux,
 		raining,
 		snowing = false,
-		kongActive = false,
-		kongFrame = 0,
+		theme = 'nyc',
+		ufoActive = false,
+		ufoFrame = 0,
 		reduceMotion = false
 	}: {
 		phase: DayPhase;
 		outdoorLux: number;
 		raining: boolean;
 		snowing?: boolean;
-		kongActive?: boolean;
-		kongFrame?: number;
+		theme?: OfficeTheme;
+		ufoActive?: boolean;
+		ufoFrame?: number;
 		reduceMotion?: boolean;
 	} = $props();
 
 	const sky = $derived(skyColors(phase));
+	const miamiVice = $derived(theme === 'miami-vice');
+	const themedSky = $derived(miamiVice ? miamiSkyColors(phase) : sky);
 	const night = $derived(phase === 'night' || phase === 'dusk');
 	const showSun = $derived(phase === 'golden' || phase === 'dusk' || phase === 'dawn');
 	const sunPhase = $derived(
 		phase === 'dawn' ? 'dawn' : phase === 'golden' ? 'golden' : phase === 'dusk' ? 'dusk' : 'off'
 	);
 
-	/** Birds fly in dawn/day/golden; roost sparsely at dusk; hide at night & when Kong is up. */
+	function miamiSkyColors(currentPhase: DayPhase) {
+		switch (currentPhase) {
+			case 'dawn':
+				return { top: '#342259', mid: '#a64879', bottom: '#ef9b58', wash: 'rgba(255, 92, 185, 0.12)' };
+			case 'day':
+				return { top: '#17284e', mid: '#237f9c', bottom: '#ee9d4d', wash: 'rgba(73, 224, 214, 0.1)' };
+			case 'golden':
+				return { top: '#3b2966', mid: '#ca5d82', bottom: '#f6a04e', wash: 'rgba(255, 92, 185, 0.14)' };
+			case 'dusk':
+				return { top: '#11163c', mid: '#493467', bottom: '#d9607d', wash: 'rgba(54, 221, 216, 0.1)' };
+			case 'night':
+				return { top: '#080b27', mid: '#151b4c', bottom: '#1e3760', wash: 'rgba(61, 214, 226, 0.08)' };
+		}
+	}
+
+	/** Birds fly in dawn/day/golden; roost sparsely at dusk; hide at night & during the UFO event. */
 	const birdMode = $derived.by((): 'fly' | 'roost' | 'hidden' => {
-		if (kongActive) return 'hidden';
+		if (ufoActive) return 'hidden';
 		if (phase === 'night') return 'hidden';
 		if (phase === 'dusk') return 'roost';
 		return 'fly'; // dawn, day, golden
@@ -47,24 +67,16 @@
 		];
 	});
 
-	/** Helicopters: positions cycle; when Kong swipes, they tumble. */
-	const helis = $derived.by(() => {
-		if (!kongActive) return [] as { x: number; y: number; tumble: boolean; id: number }[];
-		const swipe = kongFrame >= 8 && kongFrame < 22;
-		return [
-			{ id: 0, x: 250 + (kongFrame % 6) * 2, y: 18, tumble: swipe && kongFrame % 3 === 0 },
-			{ id: 1, x: 380 - (kongFrame % 5) * 3, y: 28, tumble: swipe && kongFrame % 3 === 1 },
-			{ id: 2, x: 310 + Math.sin(kongFrame / 2) * 12, y: 8, tumble: swipe }
-		];
+	const ufoPose = $derived.by(() => {
+		if (!ufoActive) return 'hidden';
+		if (ufoFrame < 8) return 'approach';
+		if (ufoFrame < 29) return 'hover';
+		return 'depart';
 	});
-
-	const kongPose = $derived.by(() => {
-		if (!kongActive) return 'hidden';
-		if (kongFrame < 4) return 'climb';
-		if (kongFrame < 8) return 'roar';
-		if (kongFrame < 22) return 'swipe';
-		return 'fade';
-	});
+	const ufoX = $derived(ufoFrame < 8 ? 492 - ufoFrame * 16 : ufoFrame < 29 ? 364 : 364 + (ufoFrame - 29) * 18);
+	const ufoY = $derived(ufoFrame < 8 ? 14 + ufoFrame * 0.6 : 18 - Math.max(0, ufoFrame - 29) * 2);
+	const beamVisible = $derived(ufoActive && ufoFrame >= 8 && ufoFrame < 31);
+	const abducteeY = $derived(149 - Math.min(52, Math.max(0, ufoFrame - 10) * 3.2));
 
 	const festive = $derived(snowing);
 </script>
@@ -75,10 +87,11 @@
 	class:snowing
 	class:reduce-motion={reduceMotion}
 	data-sun={sunPhase}
-	style:--sky-top={sky.top}
-	style:--sky-mid={sky.mid}
-	style:--sky-bottom={sky.bottom}
-	style:--wash={sky.wash}
+	data-theme={theme}
+	style:--sky-top={themedSky.top}
+	style:--sky-mid={themedSky.mid}
+	style:--sky-bottom={themedSky.bottom}
+	style:--wash={themedSky.wash}
 	style:--lux={outdoorLux}
 >
 	<div class="gradient"></div>
@@ -155,6 +168,26 @@
 			<rect x="334" y="2" width="4" height="8" />
 			<rect x="335" y="0" width="2" height="4" class="antenna" />
 		</g>
+
+		{#if miamiVice}
+			<!-- Miami Vice accents: palms, art-deco neon, and a dark waterline. -->
+			<g class="miami-details" aria-hidden="true">
+				<g class="miami-palms" fill="none" stroke-linecap="square">
+					<path d="M72 180 L74 116 M74 120 L62 111 M74 120 L69 105 M74 118 L84 108 M74 116 L79 101" />
+					<path d="M552 180 L550 124 M550 128 L538 119 M550 128 L546 114 M550 126 L560 116 M550 124 L556 110" />
+				</g>
+				<g class="miami-neon">
+					<rect x="112" y="92" width="38" height="2" class="neon-pink" />
+					<rect x="208" y="64" width="43" height="2" class="neon-cyan" />
+					<rect x="421" y="76" width="46" height="2" class="neon-pink" />
+					<rect x="478" y="96" width="30" height="2" class="neon-cyan" />
+				</g>
+				<g class="miami-water">
+					<rect x="0" y="163" width="640" height="17" />
+					<path d="M0 166 H120 M180 168 H300 M390 165 H520 M560 169 H640" />
+				</g>
+			</g>
+		{/if}
 
 		<!-- Roosted birds on antenna / ledge at dusk -->
 		{#if birdMode === 'roost'}
@@ -247,59 +280,29 @@
 			<rect x="555" y="59" width="40" height="2" fill="#e8f0f8" opacity="0.3" />
 		{/if}
 
-		<!-- Rare King Kong event on ESB -->
-		{#if kongActive}
-			<g class="kong-event" opacity={kongPose === 'fade' ? 0.35 : 1}>
-				{#each helis as h (h.id)}
-					<g
-						transform="translate({h.x},{h.y}) rotate({h.tumble ? 25 + kongFrame * 8 : 0})"
-						opacity={h.tumble ? 0.55 : 0.9}
-					>
-						<!-- chopper body -->
-						<rect x="0" y="4" width="14" height="5" fill="#c8d0dc" />
-						<rect x="12" y="5" width="6" height="3" fill="#a8b0bc" />
-						<rect x="-2" y="2" width="18" height="1" fill="#e8eef4" class="rotor" />
-						<rect x="5" y="9" width="1" height="4" fill="#8890a0" />
-						<rect x="3" y="12" width="5" height="1" fill="#8890a0" />
-					</g>
-				{/each}
-
-				<!-- Kong on upper setback -->
-				<g class="kong" transform="translate(328,{kongPose === 'climb' ? 28 - kongFrame : 18})">
-					<!-- body -->
-					<rect x="2" y="8" width="10" height="12" fill="#4a3020" />
-					<!-- head -->
-					<rect x="3" y="2" width="8" height="7" fill="#5a3a28" />
-					<rect x="4" y="4" width="2" height="2" fill="#e8c060" />
-					<rect x="8" y="4" width="2" height="2" fill="#e8c060" />
-					<!-- arms -->
-					{#if kongPose === 'swipe' || kongPose === 'roar'}
-						<rect
-							x={kongFrame % 2 === 0 ? -8 : 14}
-							y="6"
-							width="10"
-							height="3"
-							fill="#4a3020"
-							transform="rotate({kongFrame % 2 === 0 ? -20 : 20} {kongFrame % 2 === 0 ? -8 : 14} 7)"
-						/>
-						<rect
-							x={kongFrame % 2 === 0 ? 14 : -8}
-							y="10"
-							width="9"
-							height="3"
-							fill="#4a3020"
-						/>
-					{:else}
-						<rect x="-2" y="10" width="4" height="8" fill="#4a3020" />
-						<rect x="12" y="10" width="4" height="8" fill="#4a3020" />
-					{/if}
-					<!-- legs -->
-					<rect x="3" y="18" width="3" height="6" fill="#3a2818" />
-					<rect x="8" y="18" width="3" height="6" fill="#3a2818" />
-					{#if kongPose === 'roar'}
-						<rect x="5" y="0" width="4" height="3" fill="#c07060" opacity="0.8" />
-					{/if}
+		<!-- Rare UFO abduction event over the ESB. -->
+		{#if ufoActive}
+			<g class="ufo-event" opacity={ufoPose === 'depart' ? 0.45 : 1}>
+				<g class="ufo-craft" transform="translate({ufoX},{ufoY})">
+					<rect x="-18" y="1" width="36" height="4" />
+					<rect x="-11" y="-3" width="22" height="4" />
+					<rect x="-24" y="5" width="48" height="3" />
+					<rect x="-10" y="8" width="20" height="2" class="ufo-glow" />
+					<rect x="-14" y="5" width="4" height="2" class="ufo-light pink" />
+					<rect x="10" y="5" width="4" height="2" class="ufo-light cyan" />
 				</g>
+
+				{#if beamVisible}
+					<path class="abduction-beam" d="M {ufoX - 11} {ufoY + 9} L {ufoX + 11} {ufoY + 9} L 347 157 L 327 157 Z" />
+					<g class="abductee" transform="translate(337,{abducteeY})">
+						<rect x="-3" y="0" width="6" height="6" />
+						<rect x="-4" y="6" width="8" height="9" />
+						<rect x="-7" y="8" width="3" height="2" />
+						<rect x="4" y="8" width="3" height="2" />
+						<rect x="-3" y="15" width="2" height="5" />
+						<rect x="1" y="15" width="2" height="5" />
+					</g>
+				{/if}
 			</g>
 		{/if}
 
@@ -468,6 +471,37 @@
 	.snowing .haze {
 		background: linear-gradient(transparent, rgba(200, 220, 240, calc(0.18 * var(--lux, 0.5))));
 	}
+	.sky[data-theme='miami-vice'] .haze {
+		background: linear-gradient(transparent, rgba(14, 20, 66, calc(0.28 * (1 - var(--lux)))))
+	}
+	.miami-details {
+		pointer-events: none;
+	}
+	.miami-palms {
+		stroke: #101a2e;
+		stroke-width: 2;
+		opacity: 0.9;
+	}
+	.miami-neon .neon-pink {
+		fill: #ff4da6;
+		opacity: 0.8;
+		filter: drop-shadow(0 0 2px #ff4da6);
+	}
+	.miami-neon .neon-cyan {
+		fill: #51e4dc;
+		opacity: 0.82;
+		filter: drop-shadow(0 0 2px #51e4dc);
+	}
+	.miami-water rect {
+		fill: #101d43;
+		opacity: 0.72;
+	}
+	.miami-water path {
+		fill: none;
+		stroke: #37bfc1;
+		stroke-width: 1;
+		opacity: 0.55;
+	}
 
 	/* Birds */
 	.birds-layer {
@@ -504,13 +538,46 @@
 		}
 	}
 
-	.rotor {
-		animation: spin 0.15s steps(2) infinite;
+	.ufo-event {
+		pointer-events: none;
 	}
-	@keyframes spin {
-		to {
-			transform: scaleX(-1);
+	.ufo-craft rect {
+		fill: #b7d5d4;
+		stroke: #182039;
+		stroke-width: 1;
+	}
+	.ufo-craft .ufo-glow {
+		fill: #e8f6bc;
+		stroke: #8ad9c9;
+		filter: drop-shadow(0 0 3px #7fe8d8);
+	}
+	.ufo-craft .ufo-light {
+		stroke: none;
+	}
+	.ufo-craft .ufo-light.pink {
+		fill: #ff5eaa;
+	}
+	.ufo-craft .ufo-light.cyan {
+		fill: #58f0e1;
+	}
+	.abduction-beam {
+		fill: rgba(115, 242, 218, 0.24);
+		stroke: #78e6d1;
+		stroke-width: 1;
+		opacity: 0.9;
+	}
+	.abductee rect {
+		fill: #b9eadb;
+		stroke: #1d2841;
+		stroke-width: 1;
+	}
+	@keyframes ufo-pulse {
+		50% {
+			filter: brightness(1.35) drop-shadow(0 0 3px #7fe8d8);
 		}
+	}
+	.ufo-glow {
+		animation: ufo-pulse 0.8s steps(2) infinite;
 	}
 	@media (max-width: 768px) {
 		.skyline {
@@ -552,7 +619,7 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.crown-glow,
-		.rotor,
+		.ufo-glow,
 		.bird-flight {
 			animation: none;
 		}
@@ -562,7 +629,7 @@
 		}
 	}
 	.sky.reduce-motion .crown-glow,
-	.sky.reduce-motion .rotor,
+	.sky.reduce-motion .ufo-glow,
 	.sky.reduce-motion .bird-flight {
 		animation: none;
 	}

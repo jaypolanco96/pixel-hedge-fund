@@ -14,9 +14,9 @@ export const TRADERS: TraderDef[] = [
 ];
 
 export const STAFF: StaffDef[] = [
-	{ id: 'CIO', name: 'Helena Voss', role: 'cio', title: 'CIO', skin: 'helena', zone: 'corner' },
+	{ id: 'CIO', name: 'Helena Voss', role: 'cio', title: 'CIO', skin: 'helena', female: true, zone: 'corner' },
 	{ id: 'PM', name: 'Theo Rankin', role: 'pm', title: 'Portfolio Manager', skin: 'theo', zone: 'pit_walk' },
-	{ id: 'SA', name: 'Nora Blake', role: 'senior_analyst', title: 'Senior Analyst', skin: 'nora', zone: 'analyst' },
+	{ id: 'SA', name: 'Nora Blake', role: 'senior_analyst', title: 'Senior Analyst', skin: 'nora', female: true, zone: 'analyst' },
 	{ id: 'RA', name: 'Chris Park', role: 'research_analyst', title: 'Research Analyst', skin: 'chris', zone: 'research' },
 	{ id: 'QR', name: 'Samir Patel', role: 'quant', title: 'Quantitative Researcher', skin: 'samir', zone: 'quant' }
 ];

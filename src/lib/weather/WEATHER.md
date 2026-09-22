@@ -17,9 +17,18 @@
 | dawn / day / golden | Sparse silhouettes + V-formations fly across panes |
 | dusk    | Roosted pixels on ESB antenna / ledges |
 | night   | Hidden |
-| Kong active | Hidden / scattered (layer off) |
+| UFO active | Hidden / scattered (layer off) |
 
 Respects `prefers-reduced-motion` and desk `reduceMotion` (static birds).
+
+## Miami Vice theme
+- Desk **SET → Office Decor → Theme → Miami Vice** switches the skyline palette to violet, sunset orange, cyan water, magenta neon, and palm silhouettes.
+- The existing bird layer and phase behavior remain active in this theme.
+
+## Rare UFO abduction
+- Eligible during **dusk** or **night**, at most once per sim-day, with an ~8% roll.
+- The UFO approaches, holds a beam over the Empire State Building, lifts a pixel silhouette, and departs over ~36 frames.
+- Birds hide during the event. The wire shows `UFO!` while it is active.
 
 ## Festive accents (while snowing)
 - Brighter warm window lights, soft rooftop/ground snow tint, tiny string lights + wreath on far buildings.
