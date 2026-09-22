@@ -58,7 +58,7 @@
 	.chart-desk {
 		position: relative;
 		height: 100%;
-		padding: 10px 12px;
+		padding: 7px 12px;
 		overflow: hidden;
 		background: #06120d;
 		color: #72e3a3;
@@ -69,7 +69,7 @@
 		display: flex;
 		justify-content: space-between;
 		gap: 8px;
-		padding-bottom: 5px;
+		padding-bottom: 3px;
 		border-bottom: 1px solid rgba(95, 220, 145, 0.35);
 		font-size: 8px;
 		letter-spacing: 0.09em;
@@ -79,7 +79,7 @@
 		grid-template-columns: auto 1fr auto;
 		align-items: center;
 		gap: 9px;
-		margin: 8px 0;
+		margin: 4px 0 3px;
 	}
 	.bias {
 		font-size: 23px;
@@ -114,7 +114,7 @@
 		display: grid;
 		grid-template-columns: max-content max-content;
 		justify-content: center;
-		gap: 4px 18px;
+		gap: 2px 18px;
 		font-size: 8px;
 	}
 	.terminal-grid span {
@@ -128,8 +128,8 @@
 	.risk-rail {
 		display: flex;
 		justify-content: space-between;
-		margin-top: 8px;
-		padding-top: 6px;
+		margin-top: 4px;
+		padding-top: 3px;
 		border-top: 1px dotted rgba(95, 220, 145, 0.35);
 		color: #ecc66f;
 		font-size: 7px;
@@ -138,7 +138,7 @@
 		color: #ff766a;
 	}
 	.mtf {
-		margin-top: 6px;
+		margin-top: 3px;
 		font-size: 7px;
 		opacity: 0.65;
 	}

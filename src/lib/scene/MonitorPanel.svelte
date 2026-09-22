@@ -19,7 +19,8 @@
 		tapeQuotes = [],
 		activeDisplay = 'SOLUSDT',
 		priceDecimals = 2,
-		onSelectSymbol = (_d: string) => {}
+		onSelectSymbol = (_d: string) => {},
+		onResetTraders = () => {}
 	}: {
 		open?: boolean;
 		bars?: Bar[];
@@ -29,6 +30,7 @@
 		activeDisplay?: string;
 		priceDecimals?: number;
 		onSelectSymbol?: (display: string) => void;
+		onResetTraders?: () => void;
 	} = $props();
 
 	let tab = $state<Tab>('chart');
@@ -127,6 +129,17 @@
 				>
 			{/each}
 		</nav>
+		<div class="crt-action-bar">
+			<button
+				type="button"
+				class="reset-thinking"
+				title="Close simulated legs and make every trader reassess for one minute"
+				onclick={onResetTraders}
+			>
+				RESET ALL TO THINKING
+			</button>
+			<span>SIM RESET . CLOSES CAST LEGS . 1M REASSESS</span>
+		</div>
 
 		<div class="body">
 			{#if tab === 'chart'}
@@ -394,6 +407,35 @@
 		background: #143226;
 		color: #9dffc0;
 		border-color: #4a8a62;
+	}
+	.crt-action-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 8px;
+		background: #07150f;
+		border-bottom: 2px solid #2f5a42;
+	}
+	.reset-thinking {
+		padding: 6px 8px;
+		background: #4b3020;
+		color: #f5d477;
+		border: 1px solid #b8793d;
+		font: 900 8px/1 var(--mono, monospace);
+		letter-spacing: 0.04em;
+		cursor: pointer;
+	}
+	.reset-thinking:hover,
+	.reset-thinking:focus-visible {
+		background: #6b3f24;
+		color: #fff0b5;
+		outline: 2px solid #efc870;
+		outline-offset: 2px;
+	}
+	.crt-action-bar span {
+		font-size: 7px;
+		line-height: 1.2;
+		color: #75bd91;
 	}
 	.body {
 		flex: 1;
