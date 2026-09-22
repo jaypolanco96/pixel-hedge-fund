@@ -4346,6 +4346,17 @@
 		}
 	}
 
+	/* Expanded news is a reading surface, so keep it centered in the viewport
+	 * instead of leaving it at the newspaper's draggable desk coordinates. */
+	.wsj.desk-prop.expanded {
+		position: fixed !important;
+		left: 50% !important;
+		top: 50% !important;
+		right: auto !important;
+		bottom: auto !important;
+		transform: translate(-50%, -50%) rotate(-1deg) !important;
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.coffee-trip,
 		.coffee-trip::before,
