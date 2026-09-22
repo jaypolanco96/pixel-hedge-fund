@@ -159,15 +159,31 @@
 			<rect x="475" y="70" width="38" height="110" />
 		</g>
 
-		<!-- Empire State Building (center) -->
+		<!-- Center tower: Empire State Building (NYC) or Miami Tower's rounded, neon-lit
+		     crown (Miami Vice) - the lower tiers stay shared, since night window lights,
+		     snow dusting, and the UFO abduction beam all target this same silhouette. -->
 		<g class="esb" fill="#111a28">
 			<rect x="300" y="95" width="72" height="85" />
 			<rect x="312" y="45" width="48" height="50" />
 			<rect x="322" y="22" width="28" height="24" />
-			<rect x="332" y="8" width="8" height="14" />
-			<rect x="334" y="2" width="4" height="8" />
-			<rect x="335" y="0" width="2" height="4" class="antenna" />
+			{#if miamiVice}
+				<rect x="323" y="12" width="26" height="10" rx="3" />
+				<rect x="329" y="3" width="14" height="11" rx="5" />
+				<ellipse cx="336" cy="3" rx="6" ry="4" class="miami-beacon" />
+			{:else}
+				<rect x="332" y="8" width="8" height="14" />
+				<rect x="334" y="2" width="4" height="8" />
+				<rect x="335" y="0" width="2" height="4" class="antenna" />
+			{/if}
 		</g>
+		{#if miamiVice}
+			<!-- Miami Tower's signature illuminated setbacks. -->
+			<g class="miami-neon" aria-hidden="true">
+				<rect x="304" y="94" width="64" height="2" class="neon-cyan" />
+				<rect x="316" y="44" width="40" height="2" class="neon-pink" />
+				<rect x="326" y="21" width="20" height="2" class="neon-cyan" />
+			</g>
+		{/if}
 
 		{#if miamiVice}
 			<!-- Miami Vice accents: palms, art-deco neon, and a dark waterline. -->
@@ -366,6 +382,10 @@
 	}
 	.antenna {
 		fill: #c8d0dc;
+	}
+	.miami-beacon {
+		fill: #ff8fd1;
+		filter: drop-shadow(0 0 3px #ff4da6);
 	}
 	.crown-glow {
 		animation: pulse 2.4s ease-in-out infinite;
