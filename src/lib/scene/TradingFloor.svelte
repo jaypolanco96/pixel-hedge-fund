@@ -402,6 +402,9 @@
 	// until the layout has gone quiet for a bit, then lock it so later resizes never move it.
 	let deskLayoutSettled = false;
 	let deskSettleTimer: ReturnType<typeof setTimeout> | undefined;
+	// The market fetch is what actually grows the content above the desk and can take well
+	// over a second; don't allow the settle countdown to start until it has resolved once.
+	let firstMarketPollDone = false;
 	let deskProps = $state<Record<DeskPropId, DeskPropState>>(
 		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).reduce(
 			(acc, id) => {
@@ -1354,6 +1357,13 @@
 			// missing poll is not a closed-candle invalidation and should not
 			// turn open traders into thinking or watching traders.
 			err = e instanceof Error ? e.message : 'Market poll failed';
+		} finally {
+			// The first poll to resolve (success or failure) is what settles the layout above
+			// the foreground desk; let the desk-prop placement debounce know it can start.
+			if (!firstMarketPollDone) {
+				firstMarketPollDone = true;
+				requestAnimationFrame(() => requestAnimationFrame(updateDeskTop));
+			}
 		}
 	}
 
@@ -1470,16 +1480,20 @@
 			placePricePad();
 		});
 	});
+	function updateDeskTop() {
+		if (!sceneFrame || !foregroundDesk) return;
+		foregroundDeskTop = deskSurfaceOffsetTop();
+		placeAllDeskProps();
+		// Don't even start the settle countdown until the first market poll has resolved
+		// (success or failure) - that fetch is what actually grows the content above the
+		// desk, and it can take well over a second, far longer than a short fixed debounce.
+		if (!deskLayoutSettled && firstMarketPollDone) {
+			clearTimeout(deskSettleTimer);
+			deskSettleTimer = setTimeout(() => { deskLayoutSettled = true; }, 600);
+		}
+	}
 	$effect(() => {
 		if (!sceneFrame || !foregroundDesk) return;
-		const updateDeskTop = () => {
-			foregroundDeskTop = deskSurfaceOffsetTop();
-			placeAllDeskProps();
-			if (!deskLayoutSettled) {
-				clearTimeout(deskSettleTimer);
-				deskSettleTimer = setTimeout(() => { deskLayoutSettled = true; }, 600);
-			}
-		};
 		const observer = new ResizeObserver(updateDeskTop);
 		// foregroundDesk's own box is a fixed height at most breakpoints, so watch sceneFrame too -
 		// content loading above the desk (market data filling in empty panels) grows sceneFrame's
@@ -3588,14 +3602,6 @@
 		border: 4px solid #3e3930;
 		border-top: 0;
 	}
-	/* The full readout (bias, six stats, risk rail, MTF line) is taller than the bezel at
-	   native size; scale it down to fit, same technique the mobile breakpoints already use. */
-	:global(.foreground-monitor .chart-desk) {
-		width: 123%;
-		height: 123%;
-		transform: scale(0.81);
-		transform-origin: top left;
-	}
 	.pinned-head {
 		display: flex;
 		justify-content: space-between;
@@ -4726,13 +4732,6 @@
 			margin: 0;
 			transform: none;
 		}
-		/* Keep the dense CRT readout inside the glass on touch widths. */
-		:global(.foreground-monitor .chart-desk) {
-			width: 122%;
-			height: 122%;
-			transform: scale(0.82);
-			transform-origin: top left;
-		}
 		.phone-main {
 			display: none !important;
 		}
@@ -4801,11 +4800,6 @@
 		}
 		.foreground-monitor {
 			height: 180px;
-		}
-		:global(.foreground-monitor .chart-desk) {
-			width: 142%;
-			height: 142%;
-			transform: scale(0.7);
 		}
 	}
 

@@ -58,7 +58,7 @@
 	.chart-desk {
 		position: relative;
 		height: 100%;
-		padding: 7px 12px;
+		padding: 5px 10px;
 		overflow: hidden;
 		background: #06120d;
 		color: #72e3a3;
@@ -69,22 +69,22 @@
 		display: flex;
 		justify-content: space-between;
 		gap: 8px;
-		padding-bottom: 3px;
+		padding-bottom: 2px;
 		border-bottom: 1px solid rgba(95, 220, 145, 0.35);
-		font-size: 8px;
+		font-size: 7px;
 		letter-spacing: 0.09em;
 	}
 	.readout {
 		display: grid;
 		grid-template-columns: auto 1fr auto;
 		align-items: center;
-		gap: 9px;
-		margin: 4px 0 3px;
+		gap: 7px;
+		margin: 3px 0 2px;
 	}
 	.bias {
-		font-size: 23px;
+		font-size: 18px;
 		font-weight: 900;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.06em;
 	}
 	.bias[data-bias='SHORT'] {
 		color: #ff766a;
@@ -94,28 +94,28 @@
 	}
 	.pips {
 		display: flex;
-		gap: 3px;
+		gap: 2px;
 	}
 	.pips i {
-		width: 7px;
-		height: 7px;
+		width: 6px;
+		height: 6px;
 		border: 1px solid #38634e;
 	}
 	.pips i.on {
 		background: #72e3a3;
-		box-shadow: 0 0 5px #72e3a3;
+		box-shadow: 0 0 4px #72e3a3;
 	}
 	.structure {
 		color: #ecc66f;
-		font-size: 8px;
+		font-size: 7px;
 		text-align: right;
 	}
 	.terminal-grid {
 		display: grid;
 		grid-template-columns: max-content max-content;
 		justify-content: center;
-		gap: 2px 18px;
-		font-size: 8px;
+		gap: 1px 16px;
+		font-size: 7px;
 	}
 	.terminal-grid span {
 		opacity: 0.55;
@@ -128,18 +128,18 @@
 	.risk-rail {
 		display: flex;
 		justify-content: space-between;
-		margin-top: 4px;
-		padding-top: 3px;
+		margin-top: 3px;
+		padding-top: 2px;
 		border-top: 1px dotted rgba(95, 220, 145, 0.35);
 		color: #ecc66f;
-		font-size: 7px;
+		font-size: 6px;
 	}
 	.risk-rail .stop {
 		color: #ff766a;
 	}
 	.mtf {
-		margin-top: 3px;
-		font-size: 7px;
+		margin-top: 2px;
+		font-size: 6px;
 		opacity: 0.65;
 	}
 	.boot {
