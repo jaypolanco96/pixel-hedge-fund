@@ -397,6 +397,11 @@
 	let foregroundDesk = $state<HTMLElement>();
 	let foregroundDeskTop = $state(0);
 	let deskPropEls: Partial<Record<DeskPropId, HTMLElement>> = {};
+	// Content that loads above the foreground desk (market data filling in empty panels) can
+	// shift the desk's position after the first paint. Keep recomputing default prop placement
+	// until the layout has gone quiet for a bit, then lock it so later resizes never move it.
+	let deskLayoutSettled = false;
+	let deskSettleTimer: ReturnType<typeof setTimeout> | undefined;
 	let deskProps = $state<Record<DeskPropId, DeskPropState>>(
 		(Object.keys(DESK_PROP_DEFAULTS) as DeskPropId[]).reduce(
 			(acc, id) => {
@@ -866,7 +871,11 @@
 
 
 	function deskSurfaceOffsetTop() {
-		return foregroundDesk?.offsetTop ?? 0;
+		// Desk-prop left/top are scene-frame-relative (see clampDeskProp), but offsetTop is
+		// relative to foregroundDesk's own offsetParent, which is not always sceneFrame - that
+		// mismatch placed the mobile "row below the CRT" on top of the CRT instead.
+		if (!foregroundDesk || !sceneFrame) return foregroundDesk?.offsetTop ?? 0;
+		return foregroundDesk.getBoundingClientRect().top - sceneFrame.getBoundingClientRect().top;
 	}
 
 	function clampDeskProp(id: DeskPropId, left: number, top: number) {
@@ -925,7 +934,9 @@
 	}
 
 	function placeDeskProp(id: DeskPropId) {
-		if (deskProps[id].placed || !deskPropEls[id] || !sceneFrame || !foregroundDesk) return;
+		// Recompute freely until the desk layout settles (see deskLayoutSettled); once settled,
+		// an already-placed prop is locked in and a resize alone will not move it again.
+		if ((deskLayoutSettled && deskProps[id].placed) || !deskPropEls[id] || !sceneFrame || !foregroundDesk) return;
 		const saved = loadScenePosition(DESK_PROP_KEYS[id]);
 		const narrow = sceneFrame.clientWidth <= 768;
 		const deskTop = deskSurfaceOffsetTop();
@@ -1096,7 +1107,9 @@
 
 	function bindDeskProp(id: DeskPropId, node: HTMLElement) {
 		deskPropEls[id] = node;
-		queueMicrotask(() => placeDeskProp(id));
+		// Initial placement runs from the ResizeObserver effect below, once foregroundDesk/sceneFrame
+		// are bound - placing here too raced content that loads above the desk and shifts it down,
+		// baking in a stale offset that the "never move after placement" guard then made permanent.
 	}
 
 	function deskPropClick(id: DeskPropId, action: () => void) {
@@ -1462,11 +1475,19 @@
 		const updateDeskTop = () => {
 			foregroundDeskTop = deskSurfaceOffsetTop();
 			placeAllDeskProps();
+			if (!deskLayoutSettled) {
+				clearTimeout(deskSettleTimer);
+				deskSettleTimer = setTimeout(() => { deskLayoutSettled = true; }, 600);
+			}
 		};
 		const observer = new ResizeObserver(updateDeskTop);
+		// foregroundDesk's own box is a fixed height at most breakpoints, so watch sceneFrame too -
+		// content loading above the desk (market data filling in empty panels) grows sceneFrame's
+		// height and pushes the desk down without foregroundDesk's own size ever changing.
 		observer.observe(foregroundDesk);
+		observer.observe(sceneFrame);
 		requestAnimationFrame(updateDeskTop);
-		return () => observer.disconnect();
+		return () => { observer.disconnect(); clearTimeout(deskSettleTimer); };
 	});
 	$effect(() => {
 		if (!sceneFrame || !officeFlagEl) return;
