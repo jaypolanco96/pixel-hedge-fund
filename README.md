@@ -27,7 +27,7 @@ Camera sits **behind a cluttered foreground desk** looking across the floor:
 - Panoramic **NYC sunset windows** (Empire State silhouette, mullions, rain on glass; switchable **Miami Vice** neon skyline; rare UFO abduction event)
 - Wall **PIXEL HEDGE FUND** sign + values: Discipline / Research / Returns
 - **TODAY** whiteboard, **MARKET WIRE** board with **CHANNEL** pair switch + multi-crypto rows
-- Lounge sofa + Fortune, plants, brass bull on a filing cabinet
+- Lounge sofa + Fortune, plants, brass horse-head trophy on a filing cabinet
 - 10 traders at wooden CRT desks (5 LONG / 5 SHORT, 5×–100×) + CIO, PM, Senior Analyst, Research Analyst, Quant
 - Foreground props: books, WSJ, legal pad, beige CRT, keyboard, corded phone, calculator, **PHF-monogram coffee mug** (deep green with a brass PHF plaque, click for the coffee trip), **PAIR** desk pad
 

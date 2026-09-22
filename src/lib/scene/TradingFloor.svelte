@@ -121,35 +121,38 @@
 	const PRICE_PAD_KEY = 'phf-price-pad-pos';
 	const CLIPBOARD_KEY = 'phf-clipboard-pos';
 	const WIRE_MARKET_KEY = 'phf-wire-market';
-	type WireDecorId = 'bull' | 'cabinet' | 'plant';
+	type WireDecorId = 'horse' | 'cabinet' | 'plant';
 	const WIRE_DECOR_KEYS: Record<WireDecorId, string> = {
-		bull: 'phf-market-wire-bull-pos',
+		horse: 'phf-market-wire-horse-pos',
 		cabinet: 'phf-market-wire-cabinet-pos',
 		plant: 'phf-market-wire-plant-pos'
 	};
 	const WIRE_DECOR_DEFAULTS: Record<WireDecorId, { left: number; top: number }> = {
-		bull: { left: 369, top: 219 },
+		horse: { left: 393, top: 192 },
 		cabinet: { left: 356, top: 245 },
 		plant: { left: 728, top: 219 }
 	};
 	let wireDecorEls: Partial<Record<WireDecorId, HTMLElement>> = {};
 	let wireDecorPositions = $state<Record<WireDecorId, { left: number; top: number; dragging: boolean }>>({
-		bull: { ...WIRE_DECOR_DEFAULTS.bull, dragging: false },
+		horse: { ...WIRE_DECOR_DEFAULTS.horse, dragging: false },
 		cabinet: { ...WIRE_DECOR_DEFAULTS.cabinet, dragging: false },
 		plant: { ...WIRE_DECOR_DEFAULTS.plant, dragging: false }
 	});
 	const wireDecorDrag: Partial<Record<WireDecorId, { pointerId: number; offsetX: number; offsetY: number }>> = {};
-	type LoungeDecorId = 'fortune' | 'loungePlant';
+	type LoungeDecorId = 'fortune' | 'loungePlant' | 'sofa';
 	const LOUNGE_DECOR_KEYS: Record<LoungeDecorId, string> = {
-		fortune: 'phf-lounge-fortune-pos', loungePlant: 'phf-lounge-plant-pos'
+		fortune: 'phf-lounge-fortune-pos', loungePlant: 'phf-lounge-plant-pos', sofa: 'phf-lounge-sofa-pos'
 	};
 	const LOUNGE_DECOR_DEFAULTS: Record<LoungeDecorId, { left: number; top: number }> = {
 		fortune: { left: 295, top: 778 },
-		loungePlant: { left: 1264, top: 546 }
+		loungePlant: { left: 1264, top: 546 },
+		// Matches where the sofa used to sit as static scenery (right:9/bottom:11 of the lounge).
+		sofa: { left: 1326, top: 823 }
 	};
 	let loungeDecorEls: Partial<Record<LoungeDecorId, HTMLElement>> = {};
 	let loungeDecorPositions = $state<Record<LoungeDecorId, { left: number; top: number; dragging: boolean }>>({
-		fortune: { left: 0, top: 0, dragging: false }, loungePlant: { left: 0, top: 0, dragging: false }
+		fortune: { left: 0, top: 0, dragging: false }, loungePlant: { left: 0, top: 0, dragging: false },
+		sofa: { left: 0, top: 0, dragging: false }
 	});
 	const loungeDecorDrag: Partial<Record<LoungeDecorId, { pointerId: number; offsetX: number; offsetY: number }>> = {};
 	const OFFICE_FLAG_KEY = 'phf-office-flag-pos';
@@ -1608,19 +1611,19 @@
 			</div>
 		</section>
 		<div
-			class="bull wire-decor-piece"
-			class:is-dragging={wireDecorPositions.bull.dragging}
+			class="horse wire-decor-piece"
+			class:is-dragging={wireDecorPositions.horse.dragging}
 			hidden={deskSettings.hideAllDraggables}
-			use:bindWireDecor={'bull'}
-			style={`left: ${wireDecorPositions.bull.left}px; top: ${wireDecorPositions.bull.top}px;`}
-			role="button" tabindex="0" aria-label="Drag market bull decoration" title="Drag market bull"
-			onpointerdown={(e) => onWireDecorPointerDown('bull', e)}
-			onpointermove={(e) => onWireDecorPointerMove('bull', e)}
-			onpointerup={(e) => onWireDecorPointerUp('bull', e)}
-			onpointercancel={(e) => onWireDecorPointerUp('bull', e)}
-			onlostpointercapture={(e) => onWireDecorPointerUp('bull', e)}
-			onkeydown={(e) => onWireDecorKeyDown('bull', e)}
-		><span class="bull-horns" aria-hidden="true"></span><span class="bull-head" aria-hidden="true"></span><span class="bull-body" aria-hidden="true"></span></div>
+			use:bindWireDecor={'horse'}
+			style={`left: ${wireDecorPositions.horse.left}px; top: ${wireDecorPositions.horse.top}px;`}
+			role="button" tabindex="0" aria-label="Drag market horse decoration" title="Drag market horse"
+			onpointerdown={(e) => onWireDecorPointerDown('horse', e)}
+			onpointermove={(e) => onWireDecorPointerMove('horse', e)}
+			onpointerup={(e) => onWireDecorPointerUp('horse', e)}
+			onpointercancel={(e) => onWireDecorPointerUp('horse', e)}
+			onlostpointercapture={(e) => onWireDecorPointerUp('horse', e)}
+			onkeydown={(e) => onWireDecorKeyDown('horse', e)}
+		><span class="horse-head" aria-hidden="true">♞</span></div>
 		<div
 			class="cabinet wire-decor-piece"
 			class:is-dragging={wireDecorPositions.cabinet.dragging}
@@ -1744,11 +1747,6 @@
 				</div>
 			</div>
 
-			<div class="lounge" aria-hidden="true">
-				<div class="sofa"><i></i><i></i></div>
-			</div>
-
-
 		</section>
 		<div
 			class="coffee-table lounge-decor-piece"
@@ -1762,6 +1760,18 @@
 			onpointercancel={(e) => onLoungeDecorPointerUp('fortune', e)}
 			onlostpointercapture={(e) => onLoungeDecorPointerUp('fortune', e)}
 		><span>FORTUNE</span></div>
+		<div
+			class="sofa lounge-decor-piece"
+			class:is-dragging={loungeDecorPositions.sofa.dragging}
+			use:bindLoungeDecor={'sofa'}
+			style={`left: ${loungeDecorPositions.sofa.left}px; top: ${loungeDecorPositions.sofa.top}px;`}
+			role="button" tabindex="0" aria-label="Drag lounge sofa decoration" title="Drag lounge sofa"
+			onpointerdown={(e) => onLoungeDecorPointerDown('sofa', e)}
+			onpointermove={(e) => onLoungeDecorPointerMove('sofa', e)}
+			onpointerup={(e) => onLoungeDecorPointerUp('sofa', e)}
+			onpointercancel={(e) => onLoungeDecorPointerUp('sofa', e)}
+			onlostpointercapture={(e) => onLoungeDecorPointerUp('sofa', e)}
+		><span class="sofa-arm sofa-arm-l" aria-hidden="true"></span><span class="sofa-arm sofa-arm-r" aria-hidden="true"></span><span class="sofa-leg sofa-leg-l" aria-hidden="true"></span><span class="sofa-leg sofa-leg-r" aria-hidden="true"></span><i></i><i></i></div>
 		<div
 			class="plant lounge-decor-piece lounge-plant"
 			class:is-dragging={loungeDecorPositions.loungePlant.dragging}
@@ -2705,69 +2715,24 @@
 		background: #20251f;
 		box-shadow: 0 1px #abb29e;
 	}
-	.bull {
+	/* The desk's original decor: the market wire's horse is just the black-chess-knight glyph in brass. */
+	.horse {
+		/* left/top come from the drag position inline style; width/height anchor from the top-left. */
 		position: absolute;
-		left: 47px;
-		bottom: 46px;
-		width: 56px;
-		height: 42px;
+		width: 44px;
+		height: 44px;
 		filter: drop-shadow(3px 3px 0 #402711);
 	}
-	.bull-horns,
-	.bull-head,
-	.bull-body {
+	.horse-head {
 		position: absolute;
 		display: block;
+		left: 0;
+		bottom: 0;
+		font: 44px/1 var(--pixel, var(--mono, monospace));
+		color: #e3bd61;
+		text-shadow: 2px 2px 0 #5b3518, -1px 0 #5b3518, 1px 0 #5b3518, 0 -1px #5b3518, 0 1px #5b3518;
 	}
-	.bull-body {
-		left: 9px;
-		bottom: 4px;
-		width: 38px;
-		height: 22px;
-		background: linear-gradient(135deg, #e3bd61, #a96d2f 74%);
-		border: 3px solid #5b3518;
-		box-shadow: inset 3px 3px #f2d27b, inset -3px -3px #82451f;
-	}
-	.bull-body::before,
-	.bull-body::after {
-		content: '';
-		position: absolute;
-		bottom: -8px;
-		width: 7px;
-		height: 10px;
-		background: #6e3d1d;
-		border: 2px solid #452713;
-	}
-	.bull-body::before { left: 3px; }
-	.bull-body::after { right: 4px; }
-	.bull-head {
-		right: 1px;
-		top: 9px;
-		width: 21px;
-		height: 19px;
-		background: #d6a64b;
-		border: 3px solid #5b3518;
-		box-shadow: inset 2px 2px #f4d47b, inset -2px -2px #8c4b20;
-	}
-	.bull-head::after {
-		content: '';
-		position: absolute;
-		right: 3px;
-		top: 5px;
-		width: 3px;
-		height: 3px;
-		background: #24140b;
-		box-shadow: -8px 5px #6f3919;
-	}
-	.bull-horns {
-		right: 0;
-		top: 0;
-		width: 28px;
-		height: 16px;
-		background: #e7d4a0;
-		clip-path: polygon(0 82%, 8% 30%, 43% 64%, 50% 22%, 58% 64%, 94% 30%, 100% 82%, 73% 55%, 50% 100%, 27% 55%);
-		filter: drop-shadow(1px 2px #5b3518);
-	}
+
 	.plant {
 		position: absolute;
 		width: 48px;
@@ -2831,7 +2796,7 @@
 		z-index: 95;
 		cursor: grabbing;
 	}
-	.wire-decor-piece.bull {
+	.wire-decor-piece.horse {
 		font-size: inherit;
 	}
 	.wire-decor-piece.cabinet {
@@ -3079,38 +3044,73 @@
 		margin: 5px 0;
 		background: repeating-linear-gradient(#b38961 0 6px, transparent 6px 12px);
 	}
-	.lounge {
-		position: absolute;
-		z-index: 6;
-		right: 9px;
-		bottom: 11px;
-		width: 126px;
-		height: 135px;
-	}
+	/* Draggable lounge sofa - was static scenery, now a lounge-decor-piece like the table/plant. */
+	/* Oxblood leather chesterfield: rolled arms, tufted cushions with brass rivets, short wood legs. */
 	.sofa {
-		position: absolute;
-		bottom: 28px;
-		right: 0;
 		width: 105px;
-		height: 53px;
-		background: #28201f;
-		border: 4px solid #130f0e;
-		border-radius: 8px 8px 2px 2px;
-		box-shadow: inset 0 -14px #191414;
+		height: 50px;
+		background: linear-gradient(160deg, #7a3530 0%, #5a231f 55%, #431a17 100%);
+		border: 3px solid #2a1210;
+		border-radius: 9px 9px 3px 3px;
+		box-shadow: inset 0 -15px #3a1613, inset 0 2px #9a4a42;
+	}
+	.sofa-arm {
+		position: absolute;
+		top: -6px;
+		bottom: -3px;
+		width: 13px;
+		background: linear-gradient(160deg, #7a3530, #431a17 85%);
+		border: 3px solid #2a1210;
+		border-radius: 7px 7px 3px 3px;
+		box-shadow: inset 1px 1px #9a4a42;
+	}
+	.sofa-arm-l {
+		left: -9px;
+	}
+	.sofa-arm-r {
+		right: -9px;
+	}
+	.sofa-leg {
+		position: absolute;
+		bottom: -8px;
+		width: 6px;
+		height: 9px;
+		background: linear-gradient(180deg, #d9a94a, #8a6a34);
+		border: 1px solid #5b4420;
+	}
+	.sofa-leg-l {
+		left: 11px;
+	}
+	.sofa-leg-r {
+		right: 11px;
 	}
 	.sofa i {
 		position: absolute;
-		top: 7px;
-		width: 43px;
-		height: 26px;
-		background: #3b302e;
-		border: 2px solid #1b1514;
+		top: 6px;
+		width: 41px;
+		height: 25px;
+		background: linear-gradient(160deg, #944038 0%, #6b2b26 60%, #4c1e1a 100%);
+		border: 2px solid #2a1210;
+		border-radius: 3px;
+		box-shadow: inset 1px 1px #b8564a, inset -2px -2px #341210;
+	}
+	.sofa i::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		width: 3px;
+		height: 3px;
+		margin: -1.5px 0 0 -1.5px;
+		background: #d9a94a;
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px #2a1210;
 	}
 	.sofa i:first-child {
-		left: 7px;
+		left: 6px;
 	}
 	.sofa i:last-child {
-		right: 7px;
+		right: 6px;
 	}
 	.coffee-table {
 		position: absolute;
@@ -4504,7 +4504,7 @@
 			margin: 0;
 			background: repeating-linear-gradient(90deg, #b38961 0 6px, transparent 6px 12px);
 		}
-		.lounge {
+		.sofa.lounge-decor-piece {
 			display: none; /* avoid overlap when floor stacks */
 		}
 
