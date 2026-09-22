@@ -462,6 +462,52 @@ export function staffNote(
 	}
 }
 
+export function staffDetails(
+	staff: StaffDef,
+	signal: SignalResponse | null,
+	risk?: BookExposure & { denied: number }
+): string[] {
+	if (!signal) return ['Waiting for the live tape before making a desk call.'];
+
+	const alignment = signal.mtf.aligned ? 'regime and setup agree' : 'regime and setup are mixed';
+	const exposure = risk && risk.grossUsd > 0
+		? `net ${risk.netUsd >= 0 ? 'long' : 'short'} ${fmtUsd(risk.netUsd)} / gross ${fmtUsd(risk.grossUsd)}`
+		: 'no open simulated exposure';
+
+	switch (staff.role) {
+		case 'cio':
+			return [
+				`Mandate: protect capital while the ${signal.bias === 'FLAT' ? 'book stays balanced' : `${signal.bias} bias develops`}.`,
+				`Risk: ${exposure}${risk?.denied ? `; ${risk.denied} desk hold${risk.denied > 1 ? 's' : ''}` : ''}.`,
+				`Regime: ${signal.mtf.regime}; setup ${signal.mtf.setup}; ${alignment}.`
+			];
+		case 'pm':
+			return [
+				`Allocation: ${exposure}.`,
+				`Action: ${signal.bias === 'FLAT' ? 'keep both books balanced' : `control ${signal.bias.toLowerCase()} concentration`}.`,
+				`Confluence: ${signal.confluence}/6; ${alignment}.`
+			];
+		case 'senior_analyst':
+			return [
+				`Structure: ${signal.structure}.`,
+				`Momentum: RSI ${signal.rsi.toFixed(0)}; EMA21 ${signal.ema['21'].toFixed(1)} / EMA55 ${signal.ema['55'].toFixed(1)}.`,
+				`Read: ${signal.bias === 'FLAT' ? 'wait for cleaner structure' : 'track whether price holds the structure before sizing up'}.`
+			];
+		case 'research_analyst':
+			return [
+				`Trend line: Supertrend ${signal.supertrend.direction === 1 ? 'up' : 'down'} at ${signal.supertrend.value.toFixed(1)}.`,
+				`Risk map: stop ${signal.risk.stop.toFixed(1)}; ATR ${signal.atr.pct.toFixed(2)}% (${signal.atr.state}).`,
+				`Research flag: ${signal.structure === 'none' ? 'no confirmed structure' : `${signal.structure} structure under review`}.`
+			];
+		case 'quant':
+			return [
+				`Model confidence: ${signal.confluence}/6 (${signal.confluenceBand}).`,
+				`Volatility: ATR ${signal.atr.pct.toFixed(2)}% and ${signal.atr.state}.`,
+				`Cross-check: 4h ${signal.mtf.regime} / 15m ${signal.mtf.setup}; ${alignment}.`
+			];
+	}
+}
+
 export function statusLabel(status: FloorStatus): string {
 	switch (status) {
 		case 'open':

@@ -52,7 +52,7 @@
 		TraderDef,
 		TraderLeg,
 	} from '$lib/data/types';
-	import { bookExposure, forceBookEntry, postureForTrader, priceAt, reconcileBook, staffNote, statusLabel, type OpenBook } from '$lib/ta/posture';
+	import { bookExposure, forceBookEntry, postureForTrader, priceAt, reconcileBook, staffDetails, staffNote, statusLabel, type OpenBook } from '$lib/ta/posture';
 	import {
 		loadLeverageOverrides,
 		saveLeverageOverrides,
@@ -2123,15 +2123,11 @@
 					<b>{inspectedStaff.title}</b>
 				</header>
 				<div class="staff-sheet">{staffNote(inspectedStaff, signal, bookRisk)}</div>
-				<p>
-					{inspectedStaff.role === 'cio'
-						? 'Scanning floor risk and mandate alignment.'
-						: inspectedStaff.role === 'pm'
-							? 'Maintaining allocation notes across long and short books.'
-							: inspectedStaff.role === 'quant'
-								? 'Monitoring model confidence and volatility state.'
-								: 'Research clipboard tied to live Chart Desk structure.'}
-				</p>
+				<div class="staff-details" aria-label="Staff detail note">
+					{#each staffDetails(inspectedStaff, signal, bookRisk) as detail}
+						<p>{detail}</p>
+					{/each}
+				</div>
 			{/if}
 	</aside>
 {/if}
@@ -3107,11 +3103,29 @@
 	}
 	.staff-sheet {
 		margin: 15px 0 8px;
-		padding: 11px;
+		padding: 12px;
 		background: #f0e2b9;
 		border: 1px solid #7f6240;
-		font-size: 9px;
+		font-size: 11px;
+		line-height: 1.35;
 		font-weight: 900;
+	}
+	.staff-details {
+		display: grid;
+		gap: 5px;
+		margin-top: 8px;
+	}
+	.staff-details p {
+		margin: 0;
+		padding: 7px 8px;
+		background: #211914;
+		border-left: 3px solid #d2a45d;
+		color: #f3e2b6;
+		font-size: 9px;
+		font-weight: 700;
+		line-height: 1.45;
+		letter-spacing: 0.01em;
+		overflow-wrap: anywhere;
 	}
 	.staff-card {
 		min-height: 150px;
