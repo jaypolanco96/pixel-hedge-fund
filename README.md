@@ -79,6 +79,10 @@ The full symbol list lives in `SYMBOLS` in `src/lib/data/symbols.ts`; unlisted `
 
 Production is always live-only: Bybit is tried first, BloFin is the permitted public-data fallback, and unavailable exchange data returns an empty or `503` response. Local `npm run dev` keeps the labeled SAMPLE fallback for offline work; set `PHF_LIVE_ONLY=true` locally when you want to test the live-only behavior.
 
+### Real WSJ wire headlines
+
+The WSJ desk prop requests real, multi-outlet crypto headlines through Google News RSS at `GET /api/news?symbol=BTCUSDT`. The active symbol's configured news phrase is searched, each story keeps its publisher and link, and successful results are cached for five minutes. The visible `SAMPLE` stories remain the final fallback when the live feed is unavailable.
+
 
 ## Feature pack (office toys)
 

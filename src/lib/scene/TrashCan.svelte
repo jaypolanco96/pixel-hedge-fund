@@ -172,6 +172,9 @@
 		dragging = false;
 		movedSinceDrag = false;
 		suppressClick = false;
+		// Capture the touch immediately so dragging still works when the finger
+		// leaves the compact can before the movement threshold is reached.
+		root.setPointerCapture(event.pointerId);
 		holdTimer = setTimeout(() => {
 			if (activePointer === event.pointerId && !dragging) beginDrag(event);
 		}, HOLD_MS);

@@ -437,7 +437,14 @@
 
 	/** WSJ headlines for active symbol */
 	type DeskHeadline = { title: string; link: string; source: string };
-	let newsHeadlines = $state<DeskHeadline[]>([]);
+	function sampleDeskHeadlines(label: string): DeskHeadline[] {
+		return [
+			{ title: `${label} in focus as crypto desks watch flows`, link: '', source: 'SAMPLE' },
+			{ title: `Markets: traders map levels for ${label}`, link: '', source: 'SAMPLE' },
+			{ title: `${label} tape quiet - SAMPLE wire`, link: '', source: 'SAMPLE' }
+		];
+	}
+	let newsHeadlines = $state<DeskHeadline[]>(sampleDeskHeadlines(DEFAULT_DISPLAY));
 	let newsSample = $state(true);
 	let wsjExpanded = $state(false);
 
@@ -1136,22 +1143,17 @@
 				headlines?: { title: string; link: string; source: string }[];
 			};
 			if (sym !== activeDisplay) return;
-			newsHeadlines = (data.headlines ?? []).slice(0, 5).map((h) => ({
+			const incoming = (data.headlines ?? []).slice(0, 5).map((h) => ({
 				title: h.title,
 				link: h.link ?? '',
 				source: h.source ?? ''
 			}));
-			newsSample = !!data.sample || newsHeadlines.length === 0;
+			newsHeadlines = incoming.length ? incoming : sampleDeskHeadlines(activeDef.label);
+			newsSample = !!data.sample || incoming.length === 0;
 		} catch {
 			if (sym !== activeDisplay) return;
 			newsSample = true;
-			newsHeadlines = [
-				{
-					title: `${activeDef.label} - wire quiet (SAMPLE)`,
-					link: '',
-					source: 'SAMPLE'
-				}
-			];
+			newsHeadlines = sampleDeskHeadlines(activeDef.label);
 		}
 	}
 
@@ -1249,6 +1251,8 @@
 		quote = null;
 		signal = null;
 		bars = [];
+		newsHeadlines = sampleDeskHeadlines(def.label);
+		newsSample = true;
 		persistSymbol(def.display);
 		pollMarket();
 		pollNews();
@@ -1331,6 +1335,8 @@
 			initial = DEFAULT_DISPLAY;
 		}
 		activeDisplay = initial;
+		newsHeadlines = sampleDeskHeadlines(resolveSymbol(initial).label);
+		newsSample = true;
 		try {
 			const storedMarket = localStorage.getItem(WIRE_MARKET_KEY);
 			if (storedMarket === 'spot' || storedMarket === 'futures') wireMarket = storedMarket;
@@ -1874,18 +1880,31 @@
 			{:else if !wsjExpanded}
 				<b class="wsj-hed">Markets Watch<br />{activeDef.label}</b>
 			{/if}
-			{#if newsSample}<em class="wsj-sample">SAMPLE</em>{/if}
+			{#if newsSample}<em class="wsj-sample">SAMPLE</em>{:else}<em class="wsj-live">LIVE</em>{/if}
 			{#if wsjExpanded}
 				<div class="wsj-edition">
 					<p class="wsj-kicker">MARKET EDITION . {activeDef.label}</p>
 					{#if newsHeadlines[0]}
-						<h2>{newsHeadlines[0].title}</h2>
+						{#if newsHeadlines[0].link}
+							<a class="wsj-story-link" href={newsHeadlines[0].link} target="_blank" rel="noreferrer" onclick={(event) => event.stopPropagation()}>
+								<h2>{newsHeadlines[0].title}</h2>
+							</a>
+						{:else}
+							<h2>{newsHeadlines[0].title}</h2>
+						{/if}
 						<p class="wsj-byline">{newsHeadlines[0].source} . full wire headline</p>
 					{/if}
 					<p class="wsj-dek">Latest complete headlines for the active market. Click the paper again to fold it up.</p>
 					<ul class="wsj-more">
 						{#each newsHeadlines.slice(1) as h, i (i)}
-							<li><strong>{h.source}</strong> - {h.title}</li>
+							<li>
+								<strong>{h.source}</strong> -
+								{#if h.link}
+									<a class="wsj-story-link" href={h.link} target="_blank" rel="noreferrer" onclick={(event) => event.stopPropagation()}>{h.title}</a>
+								{:else}
+									{h.title}
+								{/if}
+							</li>
 						{/each}
 					</ul>
 				</div>
@@ -2340,14 +2359,20 @@
 		border-bottom: 2px solid #45585d;
 	}
 	.whiteboard p {
-		margin: 3px 0;
-		font-size: 6px;
+		margin: 4px 0;
+		color: #17262d;
+		font-size: 8px;
+		font-weight: 700;
+		line-height: 1.3;
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 	}
 	.whiteboard b {
 		display: block;
 		margin-top: 7px;
 		color: #9c412c;
-		font-size: 6px;
+		font-size: 8px;
+		font-weight: 800;
+		line-height: 1.25;
 		transform: rotate(-2deg);
 	}
 	.window-wall {
@@ -3402,6 +3427,19 @@
 		color: #7a3a2a;
 		border: 1px solid #7a3a2a;
 	}
+	.wsj-live {
+		display: inline-block;
+		margin-top: 2px;
+		padding: 0 3px;
+		color: #8f261a;
+		font: bold 9px/1.25 monospace;
+		letter-spacing: 0.08em;
+		border: 1px solid #8f261a;
+		animation: wsj-live-pulse 1.8s ease-in-out infinite;
+	}
+	@keyframes wsj-live-pulse {
+		50% { opacity: 0.48; }
+	}
 	.wsj.expanded,
 	.wsj:has(.wsj-more) {
 		height: auto;
@@ -3438,6 +3476,15 @@
 		margin: 5px 0;
 		font: bold 20px/1.05 Georgia, serif;
 		letter-spacing: -0.025em;
+	}
+	.wsj-story-link {
+		color: inherit;
+		text-decoration: underline;
+		text-decoration-color: #846d3c;
+		text-underline-offset: 2px;
+	}
+	.wsj-story-link:hover {
+		color: #604621;
 	}
 	.wsj-byline {
 		font-weight: 700;
@@ -4217,6 +4264,13 @@
 			margin: 0;
 			transform: none;
 		}
+		/* Keep the dense CRT readout inside the glass on touch widths. */
+		:global(.foreground-monitor .chart-desk) {
+			width: 122%;
+			height: 122%;
+			transform: scale(0.82);
+			transform-origin: top left;
+		}
 		.book-stack,
 		.phone-main {
 			display: none !important;
@@ -4277,6 +4331,11 @@
 		}
 		.foreground-monitor {
 			height: 180px;
+		}
+		:global(.foreground-monitor .chart-desk) {
+			width: 142%;
+			height: 142%;
+			transform: scale(0.7);
 		}
 	}
 

@@ -207,6 +207,9 @@
 		dragging = false;
 		movedSinceDrag = false;
 		suppressClick = false;
+		// Capture the touch immediately. Without capture, mobile browsers can
+		// hand the pointer to the page before the drag crosses the small prop.
+		root.setPointerCapture(event.pointerId);
 		holdTimer = setTimeout(() => {
 			if (activePointer === event.pointerId && !dragging) beginDrag(event);
 		}, HOLD_MS);

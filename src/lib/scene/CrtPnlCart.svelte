@@ -394,6 +394,8 @@
 		activePointer = event.pointerId;
 		dragging = false;
 		suppressClick = false;
+		// Keep the cart under the finger while it crosses the small mobile hit area.
+		root.setPointerCapture(event.pointerId);
 	}
 
 	function onPointerMove(event: PointerEvent) {
@@ -1092,5 +1094,126 @@
 		letter-spacing: 0.04em;
 		color: #5a7a5a;
 		background: #0a140c;
+	}
+
+	@media (max-width: 768px) {
+		.crt-cart-wrap {
+			width: 128px;
+		}
+		.crt-cart {
+			width: 128px;
+		}
+		.crt-monitor {
+			width: 122px;
+		}
+		.crt-screen {
+			height: 86px;
+		}
+		.crt-text {
+			padding: 5px 6px 3px;
+			font-size: 8px;
+			line-height: 1.35;
+		}
+		.page-chip {
+			font-size: 6px;
+			padding: 1px 3px;
+		}
+		.crt-knobs {
+			padding: 4px 6px 5px;
+		}
+		.page-btn {
+			height: 17px;
+			padding: 0 5px;
+			font-size: 7px;
+		}
+		.crt-knobs i {
+			width: 8px;
+			height: 8px;
+		}
+		.cart-stand {
+			width: 92px;
+			height: 52px;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.crt-cart-wrap {
+			width: 112px;
+		}
+		.crt-cart {
+			width: 112px;
+		}
+		.crt-monitor {
+			width: 106px;
+		}
+		.crt-screen {
+			height: 76px;
+		}
+		.crt-text {
+			font-size: 7px;
+		}
+		.cart-stand {
+			width: 82px;
+		}
+	}
+
+	@media (max-width: 600px) {
+		.detail {
+			width: calc(100vw - 12px);
+			max-height: calc(100vh - 12px);
+			border-width: 3px;
+		}
+		.titlebar {
+			gap: 5px;
+			padding: 7px 8px;
+			font-size: 9px;
+		}
+		.refresh,
+		.x {
+			width: 30px;
+			height: 30px;
+		}
+		.body {
+			min-width: 0;
+			padding: 8px;
+			gap: 10px;
+			overflow-x: hidden;
+		}
+		.venue {
+			min-width: 0;
+			overflow-x: auto;
+			padding-bottom: 2px;
+		}
+		.venue h3 {
+			font-size: 10px;
+		}
+		.summary {
+			min-width: 0;
+			gap: 4px;
+		}
+		.summary div {
+			min-width: 0;
+			padding: 4px;
+		}
+		.summary dt {
+			font-size: 7px;
+		}
+		.summary dd {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			font-size: 10px;
+		}
+		table {
+			min-width: 430px;
+			font-size: 9px;
+		}
+		th,
+		td {
+			padding: 4px 3px;
+		}
+		footer {
+			font-size: 7px;
+			line-height: 1.35;
+		}
 	}
 </style>

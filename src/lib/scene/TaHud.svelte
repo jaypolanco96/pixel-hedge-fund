@@ -58,7 +58,7 @@
 	.chart-desk {
 		position: relative;
 		height: 100%;
-		padding: 9px 11px;
+		padding: 10px 12px;
 		overflow: hidden;
 		background: #06120d;
 		color: #72e3a3;
@@ -71,18 +71,18 @@
 		gap: 8px;
 		padding-bottom: 5px;
 		border-bottom: 1px solid rgba(95, 220, 145, 0.35);
-		font-size: 7px;
+		font-size: 8px;
 		letter-spacing: 0.09em;
 	}
 	.readout {
 		display: grid;
 		grid-template-columns: auto 1fr auto;
 		align-items: center;
-		gap: 8px;
-		margin: 7px 0;
+		gap: 9px;
+		margin: 8px 0;
 	}
 	.bias {
-		font-size: 20px;
+		font-size: 23px;
 		font-weight: 900;
 		letter-spacing: 0.08em;
 	}
@@ -107,43 +107,45 @@
 	}
 	.structure {
 		color: #ecc66f;
-		font-size: 7px;
+		font-size: 8px;
 		text-align: right;
 	}
 	.terminal-grid {
 		display: grid;
-		grid-template-columns: 1fr auto;
-		gap: 3px 10px;
-		font-size: 7px;
+		grid-template-columns: max-content max-content;
+		justify-content: center;
+		gap: 4px 18px;
+		font-size: 8px;
 	}
 	.terminal-grid span {
 		opacity: 0.55;
+		text-align: right;
 	}
 	.terminal-grid b {
 		font-weight: 500;
-		text-align: right;
+		text-align: left;
 	}
 	.risk-rail {
 		display: flex;
 		justify-content: space-between;
-		margin-top: 7px;
-		padding-top: 5px;
+		margin-top: 8px;
+		padding-top: 6px;
 		border-top: 1px dotted rgba(95, 220, 145, 0.35);
 		color: #ecc66f;
-		font-size: 6px;
+		font-size: 7px;
 	}
 	.risk-rail .stop {
 		color: #ff766a;
 	}
 	.mtf {
-		margin-top: 5px;
-		font-size: 6px;
+		margin-top: 6px;
+		font-size: 7px;
 		opacity: 0.65;
 	}
 	.boot {
 		padding: 32px 0;
 		text-align: center;
-		font-size: 9px;
+		font-size: 10px;
 	}
 	.scanlines {
 		position: absolute;
