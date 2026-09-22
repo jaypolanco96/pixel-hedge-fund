@@ -3567,6 +3567,14 @@
 		border: 4px solid #3e3930;
 		border-top: 0;
 	}
+	/* The full readout (bias, six stats, risk rail, MTF line) is taller than the bezel at
+	   native size; scale it down to fit, same technique the mobile breakpoints already use. */
+	:global(.foreground-monitor .chart-desk) {
+		width: 123%;
+		height: 123%;
+		transform: scale(0.81);
+		transform-origin: top left;
+	}
 	.pinned-head {
 		display: flex;
 		justify-content: space-between;
