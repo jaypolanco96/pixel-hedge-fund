@@ -9,7 +9,7 @@ Use this skill for work in the Pixel Hedge Fund repository. Read `AGENTS.md`, th
 
 ## Preserve the product
 
-Keep the experience as a lived-in 1990s pixel hedge-fund office. Prefer diegetic scene elements such as CRTs, boards, ticker tape, paper, fax, desks, and props over floating dashboard panels. Keep the foreground desk camera, NYC window skyline, Empire State silhouette, and rain-on-glass treatment coherent when changing scene layout.
+Keep the experience as a lived-in 1990s pixel hedge-fund office. Prefer diegetic scene elements such as CRTs, boards, ticker tape, paper, fax, desks, and props over floating dashboard panels. Keep the foreground desk camera, NYC window skyline, Empire State silhouette, and rain-on-glass treatment coherent when changing scene layout. Desk SET offers a Miami Vice skyline theme alongside the NYC default (`OfficeTheme` in `src/lib/persist/deskSettings.ts`); the rare skyline event is a UFO abduction (`src/lib/weather/ufoEvent.ts`), which replaced the old King Kong event — do not bring Kong back.
 
 ## Market and signal behavior
 
@@ -17,6 +17,7 @@ Keep the experience as a lived-in 1990s pixel hedge-fund office. Prefer diegetic
 - Use the existing 15m setup plus 4h regime signal path and its Supertrend, EMA, RSI, MACD, and ATR inputs.
 - Propagate `sample: true` through fallbacks. Label sample data visibly and never imply it is live.
 - Keep trader posture derived from bias, confluence, and structure. Open positions may show risk detail; considering traders get thought clouds; weak, conflicting, or unavailable signals must not create fake fills.
+- To send a trader back to thinking, use the existing per-trader Release button (`releaseTrader` in `TradingFloor.svelte`, closes the position with no P&L event and shows a `rethinking the trade` cloud for 60s) or the monitor panel's reset-all control (`resetAllTradersToThinking`). Do not add a second mechanism for this.
 - Gate celebrations and stress effects on open posture. Preserve the cast MTM model and its sample inheritance.
 
 ## Live trading safety
