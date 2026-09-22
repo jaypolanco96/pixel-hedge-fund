@@ -91,9 +91,25 @@
 		return `${sign}${n.toFixed(2)}`;
 	}
 
+	/** Bounded width regardless of magnitude (k-suffix above 1000) - the tiny CRT
+	 * screen has no room for a real account's full-precision PNL at four figures. */
+	function fmtSignedCompact(n: number | null | undefined): string {
+		if (n == null || !Number.isFinite(n)) return '-';
+		const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+		const abs = Math.abs(n);
+		if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(abs >= 100000 ? 0 : 1)}k`;
+		return `${sign}${abs.toFixed(2)}`;
+	}
+
 	function fmtEq(n: number | null | undefined): string {
 		if (n == null || !Number.isFinite(n)) return '-';
 		return `~${n.toFixed(2)} USDT`;
+	}
+
+	/** No "USDT" suffix - the tiny CRT screen doesn't have room for it. */
+	function fmtEqCompact(n: number | null | undefined): string {
+		if (n == null || !Number.isFinite(n)) return '-';
+		return `~${n.toFixed(2)}`;
 	}
 
 	function fmtNum(n: number | null | undefined, d = 4): string {
@@ -128,19 +144,19 @@
 	const screenText = $derived.by(() => {
 		if (page === 'floor') {
 			return [
-				`CRT . FLOOR [${feedLabel}]`,
+				`FLR [${feedLabel}]`,
 				'BOOK uPNL',
-				fmtSigned(floorUpnl),
+				fmtSignedCompact(floorUpnl),
 				`legs ${legs.length}`
 			].join('\n');
 		}
 		const lines = [
-			`CRT . P&L  [${feedLabel}]`,
-			`BF  uPNL  ${fmtSigned(bfUpnl)}`,
-			`BY  uPNL  ${fmtSigned(byUpnl)}`
+			`P&L [${feedLabel}]`,
+			`BF uPNL ${fmtSignedCompact(bfUpnl)}`,
+			`BY uPNL ${fmtSignedCompact(byUpnl)}`
 		];
-		if (page === 'both') lines.push(`FLOOR     ${fmtSigned(floorUpnl)}`);
-		lines.push(`EQ ${fmtEq(equityUsdt)}`);
+		if (page === 'both') lines.push(`FLOOR   ${fmtSignedCompact(floorUpnl)}`);
+		lines.push(`EQ ${fmtEqCompact(equityUsdt)}`);
 		return lines.join('\n');
 	});
 
@@ -746,7 +762,7 @@
 	}
 	.crt-text {
 		margin: 0;
-		padding: 3px 3px 2px;
+		padding: 3px 2px 2px;
 		font-size: 5.5px;
 		line-height: 1.35;
 		letter-spacing: 0.02em;
