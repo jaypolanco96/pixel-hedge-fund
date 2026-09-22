@@ -172,12 +172,14 @@
 		dragging = false;
 		movedSinceDrag = false;
 		suppressClick = false;
-		// Capture the touch immediately so dragging still works when the finger
-		// leaves the compact can before the movement threshold is reached.
-		root.setPointerCapture(event.pointerId);
-		holdTimer = setTimeout(() => {
-			if (activePointer === event.pointerId && !dragging) beginDrag(event);
-		}, HOLD_MS);
+		if (event.pointerType !== 'mouse') {
+			// Keep touch and pen drags attached to the prop when the pointer
+			// leaves its compact bounds. Mouse clicks stay on the normal click path.
+			root.setPointerCapture(event.pointerId);
+			holdTimer = setTimeout(() => {
+				if (activePointer === event.pointerId && !dragging) beginDrag(event);
+			}, HOLD_MS);
+		}
 	}
 
 	function beginDrag(event: PointerEvent) {
