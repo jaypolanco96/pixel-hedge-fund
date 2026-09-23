@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { exchangeFetch } from '$lib/client/exchangeHeaders';
 	import { completedBars } from '$lib/data/validation';
 	import { onMount } from 'svelte';
@@ -52,7 +53,7 @@
 		TraderDef,
 		TraderLeg,
 	} from '$lib/data/types';
-	import { bookExposure, forceBookEntry, postureForTrader, priceAt, reconcileBook, staffDetails, staffNote, statusLabel, type OpenBook } from '$lib/ta/posture';
+	import { bookExposure, forceBookEntry, postureForTrader, priceAt, reconcileBook, staffDetails, staffNote, statusLabel, type BookEntry, type OpenBook } from '$lib/ta/posture';
 	import {
 		loadLeverageOverrides,
 		saveLeverageOverrides,
@@ -62,6 +63,17 @@
 	} from '$lib/persist/leverage';
 
 	const STORAGE_KEY = 'phf-active-symbol';
+	const BREAK_STATE_KEY = 'phf-floor-break-state';
+	type PersistedBreakState = {
+		version: 1;
+		symbol: string;
+		savedAt: number;
+		book: OpenBook;
+		legs: TraderLeg[];
+		reentryCooldowns: Record<string, number>;
+		reassessUntil: Record<string, number>;
+		riskDenied: string[];
+	};
 
 	let clock = $state<SimClockState>(initialSimClock());
 	let quote = $state<QuoteResponse | null>(null);
@@ -360,7 +372,7 @@
 
 
 	/** Individual desk props - each drags alone; positions in localStorage. */
-	type DeskPropId = 'pad' | 'calc' | 'coffee' | 'set' | 'keyboard' | 'wsj' | 'legal';
+	type DeskPropId = 'pad' | 'calc' | 'coffee' | 'set' | 'keyboard' | 'wsj' | 'legal' | 'break';
 	type DeskPropState = {
 		left: number;
 		top: number;
@@ -377,11 +389,13 @@
 		set: 'phf-tool-set-pos',
 		keyboard: 'phf-tool-keyboard-pos',
 		wsj: 'phf-wsj-pos',
-		legal: 'phf-legal-pad-pos'
+		legal: 'phf-legal-pad-pos',
+		break: 'phf-tool-break-pos'
 	};
 	const DESK_PROP_DEFAULT_KEYS: Record<DeskPropId, string> = {
 		pad: 'phf-default-tool-pad-pos', calc: 'phf-default-tool-calc-pos', coffee: 'phf-default-tool-coffee-pos',
-		set: 'phf-default-tool-set-pos', keyboard: 'phf-default-tool-keyboard-pos', wsj: 'phf-default-wsj-pos', legal: 'phf-default-legal-pad-pos'
+		set: 'phf-default-tool-set-pos', keyboard: 'phf-default-tool-keyboard-pos', wsj: 'phf-default-wsj-pos', legal: 'phf-default-legal-pad-pos',
+		break: 'phf-default-tool-break-pos'
 	};
 
 	const DESK_PROP_DEFAULTS: Record<DeskPropId, { left: number; top: number }> = {
@@ -391,7 +405,8 @@
 		set: { left: 1323, top: 78 },
 		keyboard: { left: 870, top: 69 },
 		wsj: { left: 232, top: 20 },
-		legal: { left: 384, top: 21 }
+		legal: { left: 384, top: 21 },
+		break: { left: 1323, top: 17 }
 	};
 
 	let foregroundDesk = $state<HTMLElement>();
@@ -531,6 +546,101 @@
 			now
 		);
 	}
+	function isFiniteNumber(value: unknown): value is number {
+		return typeof value === 'number' && Number.isFinite(value);
+	}
+	function isBookEntry(value: unknown): value is BookEntry {
+		if (!value || typeof value !== 'object') return false;
+		const entry = value as Record<string, unknown>;
+		return (
+			isFiniteNumber(entry.entryMark) &&
+			isFiniteNumber(entry.stop) &&
+			isFiniteNumber(entry.tp1) &&
+			isFiniteNumber(entry.tp2) &&
+			(entry.strategy === 'trend' || entry.strategy === 'hedge') &&
+			isFiniteNumber(entry.rrTp1) &&
+			isFiniteNumber(entry.rrTp2) &&
+			isFiniteNumber(entry.openedAt) &&
+			(entry.manual === undefined || typeof entry.manual === 'boolean')
+		);
+	}
+	function isTraderLeg(value: unknown): value is TraderLeg {
+		if (!value || typeof value !== 'object') return false;
+		const leg = value as Record<string, unknown>;
+		return (
+			typeof leg.traderId === 'string' &&
+			TRADERS.some((trader) => trader.id === leg.traderId) &&
+			(leg.side === 'long' || leg.side === 'short') &&
+			isFiniteNumber(leg.leverage) &&
+			typeof leg.symbol === 'string' &&
+			typeof leg.exchangeSymbol === 'string' &&
+			isFiniteNumber(leg.notionalUsd) &&
+			isFiniteNumber(leg.entryMark) &&
+			isFiniteNumber(leg.mark) &&
+			isFiniteNumber(leg.unrealizedPnlUsd) &&
+			isFiniteNumber(leg.unrealizedPnlPctMargin) &&
+			typeof leg.sample === 'boolean'
+		);
+	}
+	function loadNumericMap(value: unknown): Record<string, number> {
+		if (!value || typeof value !== 'object') return {};
+		const result: Record<string, number> = {};
+		for (const [key, raw] of Object.entries(value)) {
+			if (isFiniteNumber(raw)) result[key] = raw;
+		}
+		return result;
+	}
+	function clearBreakState() {
+		try {
+			localStorage.removeItem(BREAK_STATE_KEY);
+		} catch {
+			/* ignore unavailable storage */
+		}
+	}
+	function saveBreakState() {
+		const snapshot: PersistedBreakState = {
+			version: 1,
+			symbol: activeDisplay,
+			savedAt: Date.now(),
+			book,
+			legs,
+			reentryCooldowns,
+			reassessUntil,
+			riskDenied
+		};
+		try {
+			localStorage.setItem(BREAK_STATE_KEY, JSON.stringify(snapshot));
+		} catch {
+			/* ignore unavailable or full storage */
+		}
+	}
+	function restoreBreakState(symbol: string) {
+		try {
+			const raw = localStorage.getItem(BREAK_STATE_KEY);
+			if (!raw) return;
+			const parsed = JSON.parse(raw) as Partial<PersistedBreakState>;
+			if (parsed.version !== 1 || parsed.symbol !== symbol || !parsed.book || typeof parsed.book !== 'object') return;
+			const restoredBook: OpenBook = {};
+			for (const [traderId, entry] of Object.entries(parsed.book)) {
+				if (TRADERS.some((trader) => trader.id === traderId) && isBookEntry(entry)) restoredBook[traderId] = entry;
+			}
+			book = restoredBook;
+			legs = Array.isArray(parsed.legs) ? parsed.legs.filter(isTraderLeg) : [];
+			reentryCooldowns = loadNumericMap(parsed.reentryCooldowns);
+			reassessUntil = loadNumericMap(parsed.reassessUntil);
+			riskDenied = Array.isArray(parsed.riskDenied)
+				? parsed.riskDenied.filter((id): id is string => typeof id === 'string' && TRADERS.some((trader) => trader.id === id))
+				: [];
+			wallNow = Date.now();
+			clearBreakState();
+		} catch {
+			clearBreakState();
+		}
+	}
+	function takeBreak() {
+		saveBreakState();
+		void goto('/elevator?to=home');
+	}
 	// Closes the trader's position (organic or forced) with no P&L event and hands them back to their own
 	// decision loop: they show a thinking cloud for a minute, then scan and enter on their own rules again.
 	function releaseTrader(traderId: string) {
@@ -543,6 +653,8 @@
 		reassessUntil = { ...reassessUntil, [traderId]: now + RELEASE_MS };
 		wallNow = now;
 	}
+	// Closes every trader's simulated leg and gives the whole desk a minute of "rethinking" before
+	// they resume scanning and entering on their own rules again.
 	function resetAllTradersToThinking() {
 		const now = Date.now();
 		const resetUntil = Object.fromEntries(traders.map((trader) => [trader.id, now + RELEASE_MS]));
@@ -553,6 +665,11 @@
 		reentryCooldowns = resetUntil;
 		reassessUntil = resetUntil;
 		wallNow = now;
+		clearBreakState();
+	}
+	// Forces this trader into a position right now, same mechanism as typing "0" into their TIME field.
+	function startTrader(traderId: string) {
+		setTraderTradeDuration(traderId, 0);
 	}
 	function activeCooldowns(now: number): Set<string> {
 		return new Set(traders.filter((trader) => (reentryCooldowns[trader.id] ?? 0) > now).map((trader) => trader.id));
@@ -921,7 +1038,8 @@
 				pad: { left: 154, top: mobileTop + 116 },
 				calc: { left: 250, top: mobileTop + 116 },
 				coffee: { left: 306, top: mobileTop + 116 },
-				set: { left: 356, top: mobileTop + 116 }
+				set: { left: 356, top: mobileTop + 116 },
+				break: { left: 356, top: mobileTop + 172 }
 			};
 		}
 		const width = sceneFrame.clientWidth;
@@ -932,7 +1050,8 @@
 			pad: { left: 154, top: mobileTop + 116 },
 			calc: { left: Math.max(8, width - 44), top: mobileTop + 116 },
 			coffee: { left: 8, top: mobileTop + 172 },
-			set: { left: 50, top: mobileTop + 172 }
+			set: { left: 50, top: mobileTop + 172 },
+			break: { left: 92, top: mobileTop + 172 }
 		};
 	}
 
@@ -1288,6 +1407,7 @@
 		reentryCooldowns = {};
 		takeProfitFlashes = {};
 		reassessUntil = {};
+		clearBreakState();
 		lastDecisionCandle = 0;
 		lastMarket = null;
 		quote = null;
@@ -1328,10 +1448,10 @@
 			const mark = q.mark || q.price;
 			if (!Number.isFinite(mark) || mark <= 0) throw new Error('Invalid mark price from the tape');
 			const def = resolveSymbol(sym);
-			const decisionCandle = completedBars(bars, 15 * 60_000).at(-1)?.t ?? 0;
-			const decisionPoint = decisionCandle !== 0 && decisionCandle !== lastDecisionCandle;
 			const now = Date.now();
 			lastMarket = candles.bars.length ? { signal: s, quote: q, bars: candles.bars, sample: q.sample || s.sample || candles.sample } : null;
+			const decisionCandle = completedBars(bars, 15 * 60_000).at(-1)?.t ?? 0;
+			const decisionPoint = decisionCandle !== 0 && decisionCandle !== lastDecisionCandle;
 			const result = reconcileBook(
 				book,
 				s,
@@ -1384,6 +1504,7 @@
 			initial = DEFAULT_DISPLAY;
 		}
 		activeDisplay = initial;
+		restoreBreakState(initial);
 		newsHeadlines = sampleDeskHeadlines(resolveSymbol(initial).label);
 		newsSample = true;
 		try {
@@ -1737,6 +1858,7 @@
 								tradeDurationEnabled={lastMarket != null}
 								canRelease={!!book[t.id]}
 								onRelease={() => releaseTrader(t.id)}
+								onStart={() => startTrader(t.id)}
 								takeProfit={takeProfitFlashes[t.id] ? { pnlUsd: takeProfitFlashes[t.id].pnlUsd, target: takeProfitFlashes[t.id].target } : null}
 								{bars}
 								lampBoost={signal?.bias === 'LONG' ? 0.22 : 0}
@@ -1766,6 +1888,7 @@
 								tradeDurationEnabled={lastMarket != null}
 								canRelease={!!book[t.id]}
 								onRelease={() => releaseTrader(t.id)}
+								onStart={() => startTrader(t.id)}
 								takeProfit={takeProfitFlashes[t.id] ? { pnlUsd: takeProfitFlashes[t.id].pnlUsd, target: takeProfitFlashes[t.id].target } : null}
 								{bars}
 								lampBoost={signal?.bias === 'SHORT' ? 0.22 : 0}
@@ -2118,6 +2241,23 @@
 			title="Desk settings - drag to move"
 			onclick={() => deskPropClick('set', openDeskSettings)}
 		><span class="settings-glyph" aria-hidden="true"></span><b>SET</b></button>
+		<button
+			type="button"
+			class="desk-break-btn desk-prop"
+			class:is-dragging={deskProps.break.dragging}
+			class:is-ready={deskProps.break.ready}
+			class:compact={deskSettings.compactDeskTools}
+			style:left={`${deskProps.break.left}px`}
+			style:top={`${deskProps.break.top}px`}
+			use:deskPropAction={'break'}
+			onpointerdown={(e) => onDeskPropPointerDown('break', e)}
+			onpointermove={(e) => onDeskPropPointerMove('break', e)}
+			onpointerup={(e) => onDeskPropPointerUp('break', e)}
+			onpointercancel={(e) => onDeskPropPointerUp('break', e)}
+			aria-label="Take a break - leave the floor and go back to the lobby"
+			title="Take a break - drag to move"
+			onclick={() => deskPropClick('break', takeBreak)}
+		><span class="break-glyph" aria-hidden="true"></span><b>BREAK</b></button>
 {#if deskSettings.showClipboard && !deskSettings.hideAllDraggables && ((inspectedTrader && inspectedPosture) || inspectedStaff)}
 	<aside
 		bind:this={clipboardRoot}
@@ -3712,6 +3852,7 @@
 	.coffee.desk-prop,
 	.mouse-pad.desk-prop,
 	.desk-settings-btn.desk-prop,
+	.desk-break-btn.desk-prop,
 	.keyboard-main.desk-prop,
 	.wsj.desk-prop,
 	.legal-pad.desk-prop {
@@ -4750,7 +4891,8 @@
 		.mouse-pad.desk-prop,
 		.calculator.desk-prop,
 		.coffee.desk-prop,
-		.desk-settings-btn.desk-prop {
+		.desk-settings-btn.desk-prop,
+		.desk-break-btn.desk-prop {
 			display: block !important;
 			position: absolute !important;
 			bottom: auto !important;
@@ -4788,6 +4930,10 @@
 			height: 40px;
 		}
 		.desk-settings-btn.desk-prop {
+			width: 52px;
+			height: 42px;
+		}
+		.desk-break-btn.desk-prop {
 			width: 52px;
 			height: 42px;
 		}
@@ -4873,6 +5019,70 @@
 		outline: 2px solid #efc870;
 		outline-offset: 2px;
 		background: #4a4030;
+	}
+	.desk-break-btn {
+		flex: 0 0 auto;
+		width: 54px;
+		height: 48px;
+		padding: 3px 2px 2px;
+		background: linear-gradient(135deg, #37503f, #21332a 68%);
+		border: 3px solid #101a15;
+		border-radius: 3px;
+		color: #c7e8b8;
+		font: 700 9px/1 var(--mono, monospace);
+		cursor: pointer;
+		box-shadow: 3px 3px 0 rgba(0,0,0,0.4), inset 1px 1px #5a7a63, inset -2px -2px #0e1911;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2px;
+		transform: rotate(-1.5deg);
+	}
+	.desk-break-btn b {
+		padding: 2px 3px 1px;
+		background: #102117;
+		border: 1px solid #8fc89b;
+		color: #f3ffe8;
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		line-height: 1;
+		text-shadow: 1px 1px 0 #07100a;
+		white-space: nowrap;
+	}
+	.break-glyph {
+		position: relative;
+		width: 18px;
+		height: 18px;
+	}
+	.break-glyph::before {
+		content: '';
+		position: absolute;
+		left: 3px;
+		top: 1px;
+		width: 8px;
+		height: 16px;
+		background: #7ad19a;
+		border: 1px solid #1d170d;
+	}
+	.break-glyph::after {
+		content: '';
+		position: absolute;
+		right: 0;
+		top: 7px;
+		width: 0;
+		height: 0;
+		border-style: solid;
+		border-width: 3px 0 3px 6px;
+		border-color: transparent transparent transparent #7ad19a;
+		filter: drop-shadow(1px 1px #1d170d);
+	}
+	.desk-break-btn:hover,
+	.desk-break-btn:focus-visible {
+		outline: 2px solid #7ad19a;
+		outline-offset: 2px;
+		background: #375542;
 	}
 	.settings-backdrop {
 		position: fixed;

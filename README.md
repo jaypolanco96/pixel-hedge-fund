@@ -20,6 +20,10 @@ npm run build
 
 Do not expose the dev server to your network (`--host 0.0.0.0`) on a machine that holds `.env.local` or `.secrets/`: the `/api/blofin/*` and `/api/bybit/*` write routes fall back to those keys. Cross-site requests to them are rejected, but they have no login.
 
+## Landing: One World Trade Center
+
+`/` opens on a street-level shot of One World Trade Center. The skyline behind it is the same `Skyline.svelte` component and sim clock (`src/lib/weather/timeCycle.ts`) the trading floor uses, so day/night, weather, and sky birds match the floor exactly — with the rare UFO event hardcoded off; this page never imports it. Below the skyline: a modest "PHF · Floor 84" tenant plaque partway up the tower (not on the building itself), then a sidewalk with a curb, streetlamps, bigger trees, benches, and animated pedestrians (varied skin tone, hair, and outfit; some walking dogs), and stray cats. Below that, in its own space, the National September 11 Memorial: twin one-acre reflecting pools ("Reflecting Absence") with a bronze-parapet edge detail, the real Survivor Tree, a small "GROUND ZERO" sign, and a plaque with accurate site facts. **ACCESS THE FLOOR** navigates to `/elevator`, a 5 second ride showing one random desk tip (`src/lib/data/elevatorTips.ts`), then hands off to `/floor` (the trading floor; `?symbol=` still persists there; a **BREAK** desk prop next to **SET** takes you back to `/`). Each step is a real route, so the browser URL and back button reflect where you are. The memorial is a still, respectful presence with no interactive elements — keep it that way in future edits.
+
 ## Scene (office-first)
 
 Camera sits **behind a cluttered foreground desk** looking across the floor:

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import TradingFloor from '$lib/scene/TradingFloor.svelte';
+	import { goto } from '$app/navigation';
+	import HomeScene from '$lib/scene/HomeScene.svelte';
 </script>
 
-<TradingFloor />
+<HomeScene onEnter={() => goto('/elevator')} />

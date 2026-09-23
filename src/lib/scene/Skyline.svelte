@@ -9,6 +9,7 @@
 		raining,
 		snowing = false,
 		theme = 'nyc',
+		landmarkOffsetX = 0,
 		ufoActive = false,
 		ufoFrame = 0,
 		reduceMotion = false
@@ -18,6 +19,8 @@
 		raining: boolean;
 		snowing?: boolean;
 		theme?: OfficeTheme;
+		/** Horizontal viewBox offset for the primary city landmark. */
+		landmarkOffsetX?: number;
 		ufoActive?: boolean;
 		ufoFrame?: number;
 		reduceMotion?: boolean;
@@ -162,7 +165,7 @@
 		<!-- Center tower: Empire State Building (NYC) or Miami Tower's rounded, neon-lit
 		     crown (Miami Vice) - the lower tiers stay shared, since night window lights,
 		     snow dusting, and the UFO abduction beam all target this same silhouette. -->
-		<g class="esb" fill="#111a28">
+		<g class="esb" fill="#111a28" transform={`translate(${landmarkOffsetX} 0)`}>
 			<rect x="300" y="95" width="72" height="85" />
 			<rect x="312" y="45" width="48" height="50" />
 			<rect x="322" y="22" width="28" height="24" />
@@ -178,7 +181,7 @@
 		</g>
 		{#if miamiVice}
 			<!-- Miami Tower's signature illuminated setbacks. -->
-			<g class="miami-neon" aria-hidden="true">
+			<g class="miami-neon" aria-hidden="true" transform={`translate(${landmarkOffsetX} 0)`}>
 				<rect x="304" y="94" width="64" height="2" class="neon-cyan" />
 				<rect x="316" y="44" width="40" height="2" class="neon-pink" />
 				<rect x="326" y="21" width="20" height="2" class="neon-cyan" />
@@ -209,8 +212,10 @@
 		{#if birdMode === 'roost'}
 			<g class="roost-birds" fill="#1a2030" opacity="0.85">
 				<!-- on ESB antenna ledge -->
-				<rect x="330" y="6" width="2" height="2" />
-				<rect x="337" y="5" width="2" height="2" />
+				<g transform={`translate(${landmarkOffsetX} 0)`}>
+					<rect x="330" y="6" width="2" height="2" />
+					<rect x="337" y="5" width="2" height="2" />
+				</g>
 				<!-- on mid building ledge -->
 				<rect x="218" y="28" width="2" height="2" />
 				<rect x="224" y="29" width="2" height="2" />
@@ -238,8 +243,10 @@
 						opacity={(festive ? 0.55 : 0.35) + (i % 4) * 0.15}
 					/>
 				{/each}
-				<rect x="322" y="22" width="28" height="6" fill="#f5d78e" opacity="0.9" class="crown-glow" />
-				<rect x="332" y="8" width="8" height="4" fill="#ffe9a8" opacity="0.95" />
+				<g transform={`translate(${landmarkOffsetX} 0)`}>
+					<rect x="322" y="22" width="28" height="6" fill="#f5d78e" opacity="0.9" class="crown-glow" />
+					<rect x="332" y="8" width="8" height="4" fill="#ffe9a8" opacity="0.95" />
+				</g>
 				{#each Array(20) as _, i}
 					<rect
 						x={308 + (i % 10) * 6}
@@ -281,7 +288,7 @@
 				<rect x="177" y="83" width="3" height="3" fill="#3a6840" opacity="0.9" />
 				<rect x="178" y="84" width="1" height="1" fill="#c05040" />
 				<!-- warm glow line on ESB setback -->
-				<rect x="314" y="44" width="44" height="2" fill="#e8a860" opacity="0.55" />
+				<rect x={314 + landmarkOffsetX} y="44" width="44" height="2" fill="#e8a860" opacity="0.55" />
 			</g>
 		{/if}
 
@@ -291,7 +298,7 @@
 			<!-- rooftop dusting -->
 			<rect x="110" y="54" width="42" height="2" fill="#e8f0f8" opacity="0.35" />
 			<rect x="205" y="39" width="50" height="2" fill="#e8f0f8" opacity="0.3" />
-			<rect x="300" y="94" width="72" height="2" fill="#e8f0f8" opacity="0.28" />
+			<rect x={300 + landmarkOffsetX} y="94" width="72" height="2" fill="#e8f0f8" opacity="0.28" />
 			<rect x="420" y="49" width="48" height="2" fill="#e8f0f8" opacity="0.32" />
 			<rect x="555" y="59" width="40" height="2" fill="#e8f0f8" opacity="0.3" />
 		{/if}
