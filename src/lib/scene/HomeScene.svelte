@@ -9,6 +9,7 @@
 	let { onEnter = () => {} }: { onEnter?: () => void } = $props();
 
 	let reduceMotion = $state(false);
+	let wideViewport = $state(false);
 	// Same clock, same seed, same tick as the trading floor (TradingFloor.svelte) - the skyline here
 	// runs through dawn/day/golden/dusk/night exactly the way it does on the floor. No UFO, ever:
 	// ufoActive is hardcoded false below, this page never imports the UFO event module.
@@ -16,7 +17,11 @@
 
 	onMount(() => {
 		reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-		if (reduceMotion) return;
+		const wideQuery = window.matchMedia?.('(max-aspect-ratio: 2/1)');
+		const updateWideViewport = () => { wideViewport = wideQuery?.matches ?? false; };
+		updateWideViewport();
+		wideQuery?.addEventListener('change', updateWideViewport);
+		if (reduceMotion) return () => wideQuery?.removeEventListener('change', updateWideViewport);
 		let raf = 0;
 		let last = performance.now();
 		let totalSimMinutes = 0;
@@ -28,7 +33,10 @@
 			raf = requestAnimationFrame(loop);
 		};
 		raf = requestAnimationFrame(loop);
-		return () => cancelAnimationFrame(raf);
+		return () => {
+			cancelAnimationFrame(raf);
+			wideQuery?.removeEventListener('change', updateWideViewport);
+		};
 	});
 
 	// Lanes are fixed px offsets (not %) so a tall pedestrian in the back lane never has its head
@@ -70,7 +78,7 @@
 				raining={clock.raining}
 				snowing={clock.snowing}
 				theme="nyc"
-				landmarkOffsetX={-470}
+				landmarkOffsetX={wideViewport ? -270 : -470}
 				ufoActive={false}
 				ufoFrame={0}
 				{reduceMotion}

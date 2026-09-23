@@ -109,6 +109,13 @@
 			<div class="sun-rim"></div>
 		</div>
 	{/if}
+	{#if phase === 'night'}
+		<div class="moon-crescent" aria-hidden="true">
+			<svg viewBox="0 0 40 40" role="presentation">
+				<path d="M30.5 4.5C24.2 7.1 20 13.2 20 20c0 6.8 4.2 12.9 10.5 15.5C27.7 37.1 24.1 38 20 38 10.1 38 2 30 2 20S10.1 2 20 2c4.1 0 7.7.9 10.5 2.5Z" />
+			</svg>
+		</div>
+	{/if}
 
 	<div class="haze"></div>
 
@@ -488,6 +495,24 @@
 			0 0 10px 3px rgba(255, 180, 140, 0.55),
 			0 0 22px 8px rgba(255, 140, 100, 0.3);
 	}
+	.moon-crescent {
+		position: absolute;
+		z-index: 2;
+		top: 12%;
+		right: 15%;
+		width: 38px;
+		height: 38px;
+		filter: drop-shadow(0 0 7px rgba(246, 231, 178, 0.32)) drop-shadow(0 0 18px rgba(197, 208, 238, 0.12));
+		image-rendering: pixelated;
+	}
+	.moon-crescent svg {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
+	.moon-crescent path {
+		fill: #f6e7b2;
+	}
 
 	.raining .skyline {
 		filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8)) brightness(0.92);
@@ -626,6 +651,12 @@
 		.sun-glow.mid {
 			width: 28px;
 			height: 28px;
+		}
+		.moon-crescent {
+			top: 10%;
+			right: 12%;
+			width: 30px;
+			height: 30px;
 		}
 		/* Fewer visual birds on small screens via opacity on later ones */
 		.bird-flight:nth-child(n + 4) {
