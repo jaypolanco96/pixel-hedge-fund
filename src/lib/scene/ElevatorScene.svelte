@@ -87,20 +87,20 @@
 			<div class="lobby-columns"><i></i><i></i><i></i><i></i></div>
 			<div class="lobby-ceiling-lights"><i></i><i></i><i></i><i></i><i></i></div>
 			<div class="lobby-sign">
-				<span class="lobby-sign-mark">PGF</span>
+				<span class="lobby-sign-mark">PHF</span>
 				<strong>WORLD TRADE CENTER</strong>
 				<small>LOWER MANHATTAN . FLOOR 84</small>
 			</div>
 			<div class="lobby-directory">
 				<b>BUILDING DIRECTORY</b>
-				<span>84 . PGF CAPITAL</span>
+				<span>84 . PIXEL HEDGE FUND</span>
 				<span>RESEARCH . RETURNS</span>
 				<i></i>
 				<small>VISITORS REPORT TO RECEPTION</small>
 			</div>
 			<div class="lobby-clock"><span></span><b>08:42</b><small>NYC</small></div>
 			<div class="lobby-reception">
-				<div class="reception-monitor"><span>PGF // FRONT DESK</span><b>READY</b></div>
+				<div class="reception-monitor"><span>PHF // FRONT DESK</span><b>READY</b></div>
 				<div class="reception-keyboard"><i></i><i></i><i></i><i></i><i></i><i></i></div>
 				<div class="reception-phone"><i></i><b></b></div>
 				<div class="reception-calculator"><i></i><i></i><i></i><i></i><b>84</b></div>
@@ -152,8 +152,8 @@
 	{/if}
 
 	<div class="door left" class:open={doorsOpen}>
-		<div class="pgf-plaque" aria-label="PGF, floor 84, discipline, research, returns">
-			<strong>PGF</strong>
+		<div class="phf-plaque" aria-label="PHF, floor 84, discipline, research, returns">
+			<strong>PHF</strong>
 			<span>FLOOR 84</span>
 			<small>DISCIPLINE . RESEARCH . RETURNS</small>
 		</div>
@@ -855,7 +855,7 @@
 		font: 700 16px/1.55 'Courier New', monospace;
 		color: #f8efdc;
 	}
-	.pgf-plaque {
+	.phf-plaque {
 		position: absolute;
 		z-index: 3;
 		left: 50%;
@@ -878,13 +878,13 @@
 			5px 6px 0 rgba(0, 0, 0, 0.42);
 		text-align: center;
 	}
-	.pgf-plaque strong {
+	.phf-plaque strong {
 		color: #2a1a0d;
 		font: 900 clamp(22px, 4vw, 34px)/0.9 'Courier New', monospace;
 		letter-spacing: 0.12em;
 		text-shadow: 2px 2px 0 rgba(247, 222, 145, 0.6);
 	}
-	.pgf-plaque span {
+	.phf-plaque span {
 		padding: 3px 8px;
 		background: #2b2117;
 		color: #f2d47d;
@@ -892,7 +892,7 @@
 		font: 700 9px/1 'Courier New', monospace;
 		letter-spacing: 0.12em;
 	}
-	.pgf-plaque small {
+	.phf-plaque small {
 		color: #332313;
 		font: 700 6px/1.2 'Courier New', monospace;
 		letter-spacing: 0.08em;
@@ -1092,19 +1092,19 @@
 			font-size: 13px;
 			line-height: 1.4;
 		}
-		.pgf-plaque {
+		.phf-plaque {
 			width: min(180px, 78%);
 			min-height: 84px;
 			padding: 8px 5px;
 			gap: 3px;
 		}
-		.pgf-plaque strong {
+		.phf-plaque strong {
 			font-size: 22px;
 		}
-		.pgf-plaque span {
+		.phf-plaque span {
 			font-size: 7px;
 		}
-		.pgf-plaque small {
+		.phf-plaque small {
 			font-size: 4px;
 		}
 	}

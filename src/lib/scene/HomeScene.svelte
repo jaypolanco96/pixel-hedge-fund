@@ -62,11 +62,8 @@
 
 	const trees = [6, 30, 62, 74, 94];
 
-	// Two real, widely recognized NYC skyscrapers rendered as their own tall silhouettes beside One
-	// WTC - Empire State Building's setback crown and antenna, and the Chrysler Building's terraced
-	// Art Deco spire. <Skyline>'s own city (reused below for lighting/weather parity with the floor)
-	// already reaches both edges of the frame on its own, so these sit in the open gaps beside the
-	// tower rather than adding a second competing row of filler buildings.
+	// Every tower around One WTC (including the Empire State and Chrysler buildings) comes from
+	// <Skyline>'s shared building list, so the home page and the floor show the same city.
 </script>
 
 <div class="home">
@@ -85,17 +82,6 @@
 			/>
 			<RainLayer intensity={clock.rainIntensity} />
 			<SnowLayer intensity={clock.snowIntensity} {reduceMotion} />
-		</div>
-
-		<div class="flank-buildings" aria-hidden="true">
-			<!-- Chrysler Building: terraced Art Deco crown tapering to a needle spire. -->
-			<svg class="landmark chrysler" style:left="83%" style:height="60%" viewBox="0 0 50 180" preserveAspectRatio="xMidYMax meet">
-				<rect x="5" y="100" width="40" height="80" />
-				<rect x="10" y="75" width="30" height="25" />
-				<polygon points="15,75 35,75 31,45 19,45" />
-				<rect x="23" y="10" width="4" height="35" />
-				<polygon points="23,10 27,10 25,0" />
-			</svg>
 		</div>
 
 		<!-- One World Trade Center: square base chamfering into a tapering octagon, glass curtain
@@ -282,21 +268,6 @@
 		z-index: 0;
 	}
 
-	.flank-buildings {
-		position: absolute;
-		inset: 0;
-		z-index: 1;
-	}
-	/* The Chrysler silhouette sits on the far right of the home skyline. */
-	.landmark {
-		position: absolute;
-		bottom: 0;
-		width: 7%;
-		fill: #241a12;
-		stroke: rgba(217, 169, 74, 0.4);
-		stroke-width: 1.5;
-		filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
-	}
 
 	.tower-wrap {
 		position: absolute;
@@ -941,9 +912,12 @@
 		.survivor-tree {
 			display: none;
 		}
+		/* No room beside the pools on a phone: drop the sign into normal flow so it stacks between
+		   the pools and the plaque instead of floating on top of the memorial text. */
 		.ground-zero-sign {
-			left: 5%;
-			bottom: 14px;
+			position: static;
+			display: inline-block;
+			margin-top: 10px;
 			padding: 2px 4px;
 		}
 		.memorial-plaque {

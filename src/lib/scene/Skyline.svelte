@@ -2,6 +2,7 @@
 	import type { DayPhase } from '$lib/data/types';
 	import type { OfficeTheme } from '$lib/persist/deskSettings';
 	import { skyColors } from '$lib/weather/timeCycle';
+	import { buildingShape, FAR_BUILDINGS, skylineBuildings } from './skylineBuildings';
 
 	let {
 		phase,
@@ -82,6 +83,10 @@
 	const abducteeY = $derived(149 - Math.min(52, Math.max(0, ufoFrame - 10) * 3.2));
 
 	const festive = $derived(snowing);
+
+	const towers = $derived(skylineBuildings(theme).map((b, i) => ({ b, i, shape: buildingShape(b) })));
+	/** The centerpiece tower's three tiers - fixed geometry, see the comment where it is drawn. */
+	const CENTER_PARTS = ['M300 95h72v85h-72Z', 'M312 45h48v50h-48Z', 'M322 22h28v24h-28Z'];
 </script>
 
 <div
@@ -149,43 +154,75 @@
 	{/if}
 
 	<svg class="skyline" viewBox="0 0 640 180" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
-		<g class="far" fill="#0a1018" opacity="0.55">
-			<rect x="20" y="90" width="28" height="90" />
-			<rect x="52" y="70" width="22" height="110" />
-			<rect x="80" y="100" width="35" height="80" />
-			<rect x="520" y="85" width="30" height="95" />
-			<rect x="555" y="60" width="40" height="120" />
-			<rect x="600" y="95" width="25" height="85" />
+		<defs>
+			<!-- One World Trade Center's facade treatment (see HomeScene.svelte), shared by every tower:
+			     dark chamfered edges, a lit center, and banded window floors. -->
+			<linearGradient id="sk-glass" x1="0" y1="0" x2="1" y2="0">
+				<stop offset="0%" stop-color={miamiVice ? '#2b2a55' : '#2a3f57'} />
+				<stop offset="45%" stop-color={miamiVice ? '#6f86c4' : '#6f93b8'} />
+				<stop offset="55%" stop-color={miamiVice ? '#86c9d6' : '#7fa3c4'} />
+				<stop offset="100%" stop-color={miamiVice ? '#26254a' : '#233247'} />
+			</linearGradient>
+			<linearGradient id="sk-glass-far" x1="0" y1="0" x2="1" y2="0">
+				<stop offset="0%" stop-color="#2c3a4e" />
+				<stop offset="50%" stop-color="#55708e" />
+				<stop offset="100%" stop-color="#28364a" />
+			</linearGradient>
+			<pattern id="sk-floors" width="4" height="5" patternUnits="userSpaceOnUse">
+				<rect y="4.2" width="4" height="0.8" fill="#101823" opacity="0.55" />
+				<rect x="3.5" width="0.5" height="5" fill="#101823" opacity="0.18" />
+			</pattern>
+			<pattern id="sk-lit" width="7" height="8" patternUnits="userSpaceOnUse">
+				<rect x="1" y="1" width="2" height="2.4" fill="#f0c674" />
+				<rect x="4.4" y="5" width="1.6" height="2" fill="#f5d78e" opacity="0.7" />
+			</pattern>
+		</defs>
+
+		<g class="buildings">
+			<g class="far" opacity="0.6">
+				{#each FAR_BUILDINGS as f (f.x)}
+					<rect x={f.x} y={f.top} width={f.w} height={180 - f.top} fill="url(#sk-glass-far)" />
+					<rect x={f.x} y={f.top} width={f.w} height={180 - f.top} fill="url(#sk-floors)" />
+				{/each}
+			</g>
+
+			{#each towers as t (t.b.name)}
+				<g class="tower" aria-label={t.b.name}>
+					{#each t.shape.trims as trim, i (i)}
+						<rect x={trim.x} y={trim.y} width={trim.w} height={trim.h} fill="#1c2836" />
+					{/each}
+					{#each t.shape.parts as d, i (i)}
+						<path {d} fill="url(#sk-glass)" />
+						<path {d} fill="url(#sk-floors)" />
+						{#if night || festive}<path {d} fill="url(#sk-lit)" class="lit" class:festive-bright={festive} />{/if}
+					{/each}
+					{#if miamiVice}
+						<rect x={t.shape.roof.x} y={t.shape.roof.y} width={t.shape.roof.w} height="1.2" class={t.i % 2 ? 'neon-cyan' : 'neon-pink'} />
+					{/if}
+				</g>
+			{/each}
+
+			<!-- Center tower: Empire State Building (NYC) or Miami Tower's rounded, neon-lit
+			     crown (Miami Vice) - night crown glow, snow dusting, and the UFO abduction beam
+			     all target this same silhouette, so it keeps its exact geometry. -->
+			<g class="esb" transform={`translate(${landmarkOffsetX} 0)`}>
+				{#if miamiVice}
+					<rect x="323" y="12" width="26" height="10" rx="3" fill="url(#sk-glass)" />
+					<rect x="329" y="3" width="14" height="11" rx="5" fill="url(#sk-glass)" />
+					<ellipse cx="336" cy="3" rx="6" ry="4" class="miami-beacon" />
+				{:else}
+					<rect x="332" y="8" width="8" height="14" fill="#1c2836" />
+					<rect x="334" y="2" width="4" height="8" fill="#1c2836" />
+					<rect x="335" y="0" width="2" height="4" class="antenna" />
+				{/if}
+				{#each CENTER_PARTS as d (d)}
+					<path {d} fill="url(#sk-glass)" />
+					<path {d} fill="url(#sk-floors)" />
+					{#if night || festive}<path {d} fill="url(#sk-lit)" class="lit" class:festive-bright={festive} />{/if}
+				{/each}
+			</g>
 		</g>
 
-		<g class="mid" fill="#0d1520">
-			<rect x="110" y="55" width="42" height="125" />
-			<rect x="118" y="48" width="26" height="8" />
-			<rect x="160" y="75" width="36" height="105" />
-			<rect x="205" y="40" width="50" height="140" />
-			<rect x="215" y="30" width="30" height="12" />
-			<rect x="420" y="50" width="48" height="130" />
-			<rect x="430" y="42" width="28" height="10" />
-			<rect x="475" y="70" width="38" height="110" />
-		</g>
-
-		<!-- Center tower: Empire State Building (NYC) or Miami Tower's rounded, neon-lit
-		     crown (Miami Vice) - the lower tiers stay shared, since night window lights,
-		     snow dusting, and the UFO abduction beam all target this same silhouette. -->
-		<g class="esb" fill="#111a28" transform={`translate(${landmarkOffsetX} 0)`}>
-			<rect x="300" y="95" width="72" height="85" />
-			<rect x="312" y="45" width="48" height="50" />
-			<rect x="322" y="22" width="28" height="24" />
-			{#if miamiVice}
-				<rect x="323" y="12" width="26" height="10" rx="3" />
-				<rect x="329" y="3" width="14" height="11" rx="5" />
-				<ellipse cx="336" cy="3" rx="6" ry="4" class="miami-beacon" />
-			{:else}
-				<rect x="332" y="8" width="8" height="14" />
-				<rect x="334" y="2" width="4" height="8" />
-				<rect x="335" y="0" width="2" height="4" class="antenna" />
-			{/if}
-		</g>
 		{#if miamiVice}
 			<!-- Miami Tower's signature illuminated setbacks. -->
 			<g class="miami-neon" aria-hidden="true" transform={`translate(${landmarkOffsetX} 0)`}>
@@ -202,12 +239,6 @@
 					<path d="M72 180 L74 116 M74 120 L62 111 M74 120 L69 105 M74 118 L84 108 M74 116 L79 101" />
 					<path d="M552 180 L550 124 M550 128 L538 119 M550 128 L546 114 M550 126 L560 116 M550 124 L556 110" />
 				</g>
-				<g class="miami-neon">
-					<rect x="112" y="92" width="38" height="2" class="neon-pink" />
-					<rect x="208" y="64" width="43" height="2" class="neon-cyan" />
-					<rect x="421" y="76" width="46" height="2" class="neon-pink" />
-					<rect x="478" y="96" width="30" height="2" class="neon-cyan" />
-				</g>
 				<g class="miami-water">
 					<rect x="0" y="163" width="640" height="17" />
 					<path d="M0 166 H120 M180 168 H300 M390 165 H520 M560 169 H640" />
@@ -223,56 +254,18 @@
 					<rect x="330" y="6" width="2" height="2" />
 					<rect x="337" y="5" width="2" height="2" />
 				</g>
-				<!-- on mid building ledge -->
-				<rect x="218" y="28" width="2" height="2" />
-				<rect x="224" y="29" width="2" height="2" />
-				<rect x="428" y="40" width="2" height="2" />
+				<!-- on two rooftop ledges -->
+				{#each towers.slice(2, 4) as t (t.b.name)}
+					<rect x={t.shape.roof.x + 2} y={t.shape.roof.y - 2} width="2" height="2" />
+				{/each}
 			</g>
 		{/if}
 
 		{#if night || festive}
-			<g class="lights" fill="#f0c674" class:festive-bright={festive}>
-				{#each Array(18) as _, i}
-					<rect
-						x={118 + (i % 6) * 6}
-						y={70 + Math.floor(i / 6) * 14}
-						width="3"
-						height="4"
-						opacity={(festive ? 0.65 : 0.4) + (i % 3) * 0.2}
-					/>
-				{/each}
-				{#each Array(24) as _, i}
-					<rect
-						x={214 + (i % 8) * 5}
-						y={55 + Math.floor(i / 8) * 16}
-						width="3"
-						height="4"
-						opacity={(festive ? 0.55 : 0.35) + (i % 4) * 0.15}
-					/>
-				{/each}
-				<g transform={`translate(${landmarkOffsetX} 0)`}>
-					<rect x="322" y="22" width="28" height="6" fill="#f5d78e" opacity="0.9" class="crown-glow" />
-					<rect x="332" y="8" width="8" height="4" fill="#ffe9a8" opacity="0.95" />
-				</g>
-				{#each Array(20) as _, i}
-					<rect
-						x={308 + (i % 10) * 6}
-						y={105 + Math.floor(i / 10) * 20}
-						width="3"
-						height="5"
-						opacity={festive ? 0.7 : 0.5}
-						fill="#e8d48a"
-					/>
-				{/each}
-				{#each Array(16) as _, i}
-					<rect
-						x={430 + (i % 6) * 6}
-						y={60 + Math.floor(i / 6) * 18}
-						width="3"
-						height="4"
-						opacity={festive ? 0.65 : 0.45}
-					/>
-				{/each}
+			<!-- Window lights are part of each facade (#sk-lit); the center crown keeps its glow. -->
+			<g class="lights" transform={`translate(${landmarkOffsetX} 0)`}>
+				<rect x="322" y="22" width="28" height="6" fill="#f5d78e" opacity="0.9" class="crown-glow" />
+				<rect x="332" y="8" width="8" height="4" fill="#ffe9a8" opacity="0.95" />
 			</g>
 		{/if}
 
@@ -303,11 +296,10 @@
 		{#if snowing}
 			<rect x="0" y="168" width="640" height="12" fill="#d8e8f8" opacity="0.22" class="snow-ground" />
 			<!-- rooftop dusting -->
-			<rect x="110" y="54" width="42" height="2" fill="#e8f0f8" opacity="0.35" />
-			<rect x="205" y="39" width="50" height="2" fill="#e8f0f8" opacity="0.3" />
+			{#each towers as t (t.b.name)}
+				<rect x={t.shape.roof.x} y={t.shape.roof.y - 1} width={t.shape.roof.w} height="1.6" fill="#e8f0f8" opacity="0.32" />
+			{/each}
 			<rect x={300 + landmarkOffsetX} y="94" width="72" height="2" fill="#e8f0f8" opacity="0.28" />
-			<rect x="420" y="49" width="48" height="2" fill="#e8f0f8" opacity="0.32" />
-			<rect x="555" y="59" width="40" height="2" fill="#e8f0f8" opacity="0.3" />
 		{/if}
 
 		<!-- Rare UFO abduction event over the ESB. -->
@@ -396,6 +388,26 @@
 	}
 	.antenna {
 		fill: #c8d0dc;
+	}
+	/* Glass reads bright by day and settles toward silhouette after dark, where the lit
+	   windows take over. */
+	.buildings {
+		filter: brightness(calc(0.45 + 0.55 * var(--lux, 1)));
+		transition: filter 2.5s ease;
+	}
+	.lit {
+		opacity: 0.55;
+	}
+	.lit.festive-bright {
+		opacity: 0.8;
+	}
+	.tower .neon-pink {
+		fill: #ff4da6;
+		filter: drop-shadow(0 0 2px #ff4da6);
+	}
+	.tower .neon-cyan {
+		fill: #51e4dc;
+		filter: drop-shadow(0 0 2px #51e4dc);
 	}
 	.miami-beacon {
 		fill: #ff8fd1;

@@ -50,6 +50,8 @@ export interface BookEntry {
 	openedAt: number;
 	/** Placed by the user through the TIME field: exempt from thesis and time exits. */
 	manual?: boolean;
+	/** Half the leg was banked at TP1; the stop sits at breakeven or better and the runner rides to TP2. */
+	scaledOut?: boolean;
 }
 export type OpenBook = Record<string, BookEntry>;
 export interface TakeProfitEvent {
@@ -71,6 +73,22 @@ export const HEDGE_SIZE_SCALE = 0.5;
 /** The risk desk refuses entries that push net exposure past this share of combined desk capacity. */
 export const MAX_NET_FRACTION = 0.5;
 const BAR_MS = 15 * 60_000;
+/** Share of the leg banked at TP1; the rest runs to TP2 behind a breakeven-or-better stop. */
+export const SCALE_OUT_FRACTION = 0.5;
+/** Typical perp maintenance margin. Isolated liquidation sits about (1 / leverage - MMR) from entry. */
+const MAINTENANCE_MARGIN = 0.005;
+/** A stop must trigger well before liquidation would: at most this share of the liquidation distance. */
+const STOP_LIQ_BUFFER = 0.7;
+
+/** Fraction of entry price at which an isolated position at this leverage gets liquidated. */
+export function liquidationDistance(leverage: number): number {
+	return Math.max(1 / leverage - MAINTENANCE_MARGIN, 0.001);
+}
+
+/** Tight, liquidation-bound stops are noise bait in a wild tape, so the hottest desks sit it out. */
+export function tooWildFor(trader: TraderDef, signal: SignalResponse): boolean {
+	return trader.leverage >= 50 && signal.atr.state === 'wild';
+}
 
 /** A fade that has not worked within a few bars is a wrong idea; hotter desks give up sooner. */
 function fadeMaxHoldMs(trader: TraderDef): number {
@@ -141,7 +159,9 @@ function riskPlan(trader: TraderDef, signal: SignalResponse, entry: number, stra
 	const baseRisk = strategy === 'hedge'
 		? Math.max(signal.atr['14'], entry * 0.0015)
 		: Math.max(Math.abs(entry - signal.risk.stop), signal.atr['14'] * 0.7, entry * 0.0015);
-	const risk = baseRisk * profile.stop;
+	// A stop beyond the liquidation price is fiction: the exchange closes the leg first. High-leverage
+	// desks therefore size the stop off their liquidation distance, not the chart, when it is tighter.
+	const risk = Math.min(baseRisk * profile.stop, entry * liquidationDistance(trader.leverage) * STOP_LIQ_BUFFER);
 	const rrTp1 = strategy === 'hedge' ? Math.min(profile.tp1, 1.35) : profile.tp1;
 	const rrTp2 = strategy === 'hedge' ? Math.min(profile.tp2, 2.1) : profile.tp2;
 	const long = trader.side === 'long';
@@ -341,14 +361,15 @@ export function reconcileBook(
 	exchangeSymbol = 'SOLUSDT',
 	decisionPoint = true,
 	options: { cooldown?: ReadonlySet<string>; now?: number } = {}
-): { book: OpenBook; legs: TraderLeg[]; takeProfits: TakeProfitEvent[]; stopOuts: string[]; timeStops: string[]; riskDenied: string[] } {
+): { book: OpenBook; legs: TraderLeg[]; takeProfits: TakeProfitEvent[]; stopOuts: string[]; timeStops: string[]; riskDenied: string[]; volHeld: string[] } {
 	const next: OpenBook = {};
 	const legs: TraderLeg[] = [];
 	const takeProfits: TakeProfitEvent[] = [];
 	const stopOuts: string[] = [];
 	const timeStops: string[] = [];
 	const riskDenied: string[] = [];
-	if (!signal || mark <= 0) return { book: {}, legs: [], takeProfits, stopOuts, timeStops, riskDenied };
+	const volHeld: string[] = [];
+	if (!signal || mark <= 0) return { book: {}, legs: [], takeProfits, stopOuts, timeStops, riskDenied, volHeld };
 
 	const now = options.now ?? Date.now();
 	const netCap = traders.reduce((sum, t) => sum + traderNotional(t.leverage), 0) * MAX_NET_FRACTION;
@@ -375,7 +396,11 @@ export function reconcileBook(
 		} else {
 			continue;
 		}
-		const scale = strategy === 'hedge' ? HEDGE_SIZE_SCALE : 1;
+		if (!alreadyOpen && tooWildFor(t, signal)) {
+			volHeld.push(t.id);
+			continue;
+		}
+		const scale = (strategy === 'hedge' ? HEDGE_SIZE_SCALE : 1) * (existing?.scaledOut ? 1 - SCALE_OUT_FRACTION : 1);
 		if (!alreadyOpen) {
 			const signed = (t.side === 'long' ? 1 : -1) * traderNotional(t.leverage) * scale;
 			if (Math.abs(net + signed) > netCap && Math.abs(net + signed) > Math.abs(net)) {
@@ -384,45 +409,53 @@ export function reconcileBook(
 			}
 		}
 		const entry = existing?.entryMark ?? mark;
-		const leg = markLeg(t, entry, mark, sample, displaySymbol, exchangeSymbol, scale);
-		leg.strategy = strategy;
-		if (existing) {
-			leg.stop = existing.stop;
-			leg.tp1 = existing.tp1;
-			leg.tp2 = existing.tp2;
-			leg.rrTp1 = existing.rrTp1;
-			leg.rrTp2 = existing.rrTp2;
-		} else {
-			const plan = riskPlan(t, signal, entry, leg.strategy);
-			leg.stop = plan.stop;
-			leg.tp1 = plan.tp1;
-			leg.tp2 = plan.tp2;
-			leg.rrTp1 = plan.rrTp1;
-			leg.rrTp2 = plan.rrTp2;
+		const long = t.side === 'long';
+		let leg = markLeg(t, entry, mark, sample, displaySymbol, exchangeSymbol, scale);
+		const plan = existing ?? riskPlan(t, signal, entry, strategy);
+		let stop = plan.stop;
+		let scaledOut = existing?.scaledOut ?? false;
+		// The runner's stop only ever tightens: it trails the Supertrend once that is past breakeven.
+		if (scaledOut && strategy === 'trend') {
+			const st = signal.supertrend.value;
+			stop = long ? Math.max(stop, st < mark ? st : stop) : Math.min(stop, st > mark ? st : stop);
 		}
-		const targetReached = leg.tp1 != null && (
-			(t.side === 'long' && leg.tp1 > entry && mark >= leg.tp1)
-			|| (t.side === 'short' && leg.tp1 < entry && mark <= leg.tp1)
-		);
-		if (alreadyOpen && targetReached && leg.unrealizedPnlUsd > 0) {
-			takeProfits.push({ traderId: t.id, pnlUsd: leg.unrealizedPnlUsd, target: 'TP1' });
+		const hit = (level: number) => (long ? mark >= level : mark <= level);
+		const beyondEntry = (level: number) => (long ? level > entry : level < entry);
+		if (alreadyOpen && scaledOut && beyondEntry(plan.tp2) && hit(plan.tp2) && leg.unrealizedPnlUsd > 0) {
+			takeProfits.push({ traderId: t.id, pnlUsd: leg.unrealizedPnlUsd, target: 'TP2' });
 			continue;
 		}
-		const stopReached = leg.stop != null && (
-			(t.side === 'long' && mark <= leg.stop)
-			|| (t.side === 'short' && mark >= leg.stop)
-		);
+		if (alreadyOpen && !scaledOut && beyondEntry(plan.tp1) && hit(plan.tp1) && leg.unrealizedPnlUsd > 0) {
+			// Bank part of the leg at TP1 and let the rest run risk-free.
+			takeProfits.push({ traderId: t.id, pnlUsd: leg.unrealizedPnlUsd * SCALE_OUT_FRACTION, target: 'TP1' });
+			scaledOut = true;
+			stop = long ? Math.max(stop, entry) : Math.min(stop, entry);
+			leg = markLeg(t, entry, mark, sample, displaySymbol, exchangeSymbol, scale * (1 - SCALE_OUT_FRACTION));
+		}
+		const stopReached = long ? mark <= stop : mark >= stop;
 		if (alreadyOpen && stopReached) {
-			stopOuts.push(t.id);
+			// A runner stopped at breakeven or a trailed profit is a normal exit, not a losing stop-out.
+			if (!scaledOut) stopOuts.push(t.id);
 			continue;
 		}
-		next[t.id] = { entryMark: entry, stop: leg.stop!, tp1: leg.tp1!, tp2: leg.tp2!, strategy, rrTp1: leg.rrTp1!, rrTp2: leg.rrTp2!, openedAt: existing?.openedAt ?? now, ...(existing?.manual ? { manual: true } : {}) };
+		leg.strategy = strategy;
+		leg.stop = stop;
+		leg.tp1 = plan.tp1;
+		leg.tp2 = plan.tp2;
+		leg.rrTp1 = plan.rrTp1;
+		leg.rrTp2 = plan.rrTp2;
+		next[t.id] = {
+			entryMark: entry, stop, tp1: plan.tp1, tp2: plan.tp2, strategy, rrTp1: plan.rrTp1, rrTp2: plan.rrTp2,
+			openedAt: existing?.openedAt ?? now,
+			...(existing?.manual ? { manual: true } : {}),
+			...(scaledOut ? { scaledOut: true } : {})
+		};
 		legs.push(leg);
-		net += (t.side === 'long' ? 1 : -1) * leg.notionalUsd;
+		net += (long ? 1 : -1) * leg.notionalUsd;
 	}
 	const rank = new Map(traders.map((t, i) => [t.id, i]));
 	legs.sort((a, b) => (rank.get(a.traderId) ?? 0) - (rank.get(b.traderId) ?? 0));
-	return { book: next, legs, takeProfits, stopOuts, timeStops, riskDenied };
+	return { book: next, legs, takeProfits, stopOuts, timeStops, riskDenied, volHeld };
 }
 
 function fmtUsd(usd: number): string {

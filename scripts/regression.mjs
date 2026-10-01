@@ -259,6 +259,38 @@ try {
 		assert.equal(posture.staffNote(cio, tape(), risk), 'net cap hit . 1 desk held');
 		assert.equal(posture.staffNote(pm, tape({ bias: 'FLAT' }), { longUsd: 0, shortUsd: 0, netUsd: 0, grossUsd: 0, denied: 0 }), 'alloc: stay balanced');
 	});
+	await test('high-leverage stops sit inside the liquidation price, never past it', () => {
+		const opened = run(tape({ last: 100, rsi: 60 }), {}, 100);
+		for (const leg of opened.legs) {
+			const stopDist = Math.abs(leg.entryMark - leg.stop) / leg.entryMark;
+			assert.ok(stopDist < posture.liquidationDistance(leg.leverage), `${leg.traderId} stop beyond liquidation`);
+		}
+		const l100 = opened.legs.find((l) => l.traderId === 'L100');
+		const l10 = opened.legs.find((l) => l.traderId === 'L10');
+		assert.ok(Math.abs(100 - l100.stop) < Math.abs(100 - l10.stop), '100x runs a tighter stop than 10x');
+	});
+	await test('TP1 banks half and leaves a breakeven runner that closes at TP2 or a trailed stop', () => {
+		const opened = run(tape({ last: 100, rsi: 60 }), {}, 100);
+		const entry = opened.book.L10;
+		const atTp1 = run(tape({ last: entry.tp1, rsi: 60 }), opened.book, entry.tp1, false);
+		const tp1 = atTp1.takeProfits.find((p) => p.traderId === 'L10');
+		assert.equal(tp1.target, 'TP1');
+		const runner = atTp1.book.L10;
+		assert.ok(runner.scaledOut && runner.stop >= runner.entryMark, 'runner stop at breakeven or better');
+		assert.equal(atTp1.legs.find((l) => l.traderId === 'L10').notionalUsd, cast.traderNotional(10) * (1 - posture.SCALE_OUT_FRACTION));
+		const backToEntry = run(tape({ last: 100, rsi: 60 }), atTp1.book, 100, false);
+		assert.equal(backToEntry.book.L10, undefined);
+		assert.ok(!backToEntry.stopOuts.includes('L10'), 'a breakeven runner exit is not a losing stop-out');
+		const atTp2 = run(tape({ last: entry.tp2, rsi: 60 }), atTp1.book, entry.tp2, false);
+		assert.equal(atTp2.takeProfits.find((p) => p.traderId === 'L10').target, 'TP2');
+		assert.equal(atTp2.book.L10, undefined);
+	});
+	await test('50x and 100x desks sit out a wild tape while lower leverage still trades it', () => {
+		const wild = tape({ last: 100, rsi: 60, atr: { '14': 3, pct: 3, state: 'wild' } });
+		const res = run(wild, {}, 100);
+		assert.deepEqual([...res.volHeld].sort(), ['L100', 'L50']);
+		assert.ok(res.book.L10 && !res.book.L100);
+	});
 	await test('TIME backdates a position: entry is the tape price N minutes ago', () => {
 		const bar = 15 * 60_000;
 		const T0 = 1_000_000_000_000 - (1_000_000_000_000 % bar);

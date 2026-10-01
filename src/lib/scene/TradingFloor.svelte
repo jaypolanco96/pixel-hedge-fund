@@ -83,6 +83,7 @@
 	let legs = $state<TraderLeg[]>([]);
 	let book = $state<OpenBook>({});
 	let riskDenied = $state<string[]>([]);
+	let volHeld = $state<string[]>([]);
 	type TakeProfitFlash = { pnlUsd: number; target: 'TP1' | 'TP2'; expiresAt: number };
 	let takeProfitFlashes = $state<Record<string, TakeProfitFlash>>({});
 	let reentryCooldowns = $state<Record<string, number>>({});
@@ -677,6 +678,7 @@
 	function applyBookResult(result: ReturnType<typeof reconcileBook>, now: number) {
 		book = result.book;
 		riskDenied = result.riskDenied;
+		volHeld = result.volHeld;
 		legs = result.legs;
 		for (const profit of result.takeProfits) {
 			showTakeProfit(profit.traderId, profit.pnlUsd, profit.target);
@@ -778,6 +780,7 @@
 	function heldReason(id: string, hasLeg: boolean): string | null {
 		if (hasLeg) return null;
 		if ((reassessUntil[id] ?? 0) > wallNow) return 'rethinking the trade';
+		if (volHeld.includes(id)) return 'tape too wild for this leverage';
 		return riskDenied.includes(id) ? 'risk desk: net cap' : null;
 	}
 	function showTakeProfit(traderId: string, pnlUsd: number, target: 'TP1' | 'TP2') {
@@ -2557,7 +2560,7 @@
 		min-height: 1040px;
 		margin: 0 auto;
 		overflow: hidden;
-		background: #21130e;
+		background: #0f1813;
 		box-shadow: 0 0 80px #000;
 		image-rendering: pixelated;
 	}
@@ -2566,15 +2569,20 @@
 		height: 295px;
 		display: grid;
 		grid-template-columns: 230px 1fr 275px;
-		background: #3a2117;
-		border-bottom: 8px solid #6f4225;
-		box-shadow: inset 0 -12px 25px rgba(30, 10, 4, 0.65);
+		/* Forest-green lacquered wall with a brass chair rail, matching the marble floor below. */
+		background: #172a21;
+		border-bottom: 8px solid #8a6c34;
+		box-shadow: inset 0 -12px 25px rgba(2, 8, 5, 0.65), 0 2px 0 #c9a45c;
 	}
 	.wall-panel {
 		position: relative;
-		background: linear-gradient(90deg, #4b2c1e, #372017);
-		border-right: 6px solid #24140e;
-		border-left: 4px solid #6c442a;
+		/* Raised green panelling: inset brass-edged panels over a darker field. */
+		background:
+			linear-gradient(90deg, rgba(176, 141, 74, 0.35) 0 1px, transparent 1px calc(100% - 1px), rgba(176, 141, 74, 0.35) calc(100% - 1px)),
+			repeating-linear-gradient(0deg, transparent 0 58px, rgba(0, 0, 0, 0.28) 58px 60px, rgba(176, 141, 74, 0.18) 60px 61px),
+			linear-gradient(90deg, #1f3a2d, #16291f);
+		border-right: 6px solid #0b140f;
+		border-left: 4px solid #8a6c34;
 	}
 	.fund-sign {
 		display: flex;
@@ -2617,7 +2625,7 @@
 		padding: 10px 10px 8px;
 		background: #ece6d5;
 		color: #26333a;
-		border: 5px solid #6e5136;
+		border: 5px solid #8a6c34;
 		box-shadow: 4px 5px 0 rgba(20, 8, 4, 0.5);
 		transform: rotate(-0.4deg);
 	}
@@ -2649,7 +2657,7 @@
 		grid-template-columns: repeat(3, 1fr);
 		gap: 0;
 		padding: 10px 8px 0;
-		background: #1e1513;
+		background: #0f1813;
 	}
 	.panoramic-skyline {
 		position: absolute;
@@ -2666,18 +2674,19 @@
 		background: linear-gradient(
 			90deg,
 			transparent 0 calc(33.333% - 3.5px),
-			#1e1513 calc(33.333% - 3.5px) calc(33.333% + 3.5px),
+			#2b2418 calc(33.333% - 3.5px) calc(33.333% + 3.5px),
 			transparent calc(33.333% + 3.5px) calc(66.666% - 3.5px),
-			#1e1513 calc(66.666% - 3.5px) calc(66.666% + 3.5px),
+			#2b2418 calc(66.666% - 3.5px) calc(66.666% + 3.5px),
 			transparent calc(66.666% + 3.5px) 100%
 		);
 	}
 	.window-pane {
 		position: relative;
 		overflow: hidden;
-		border: 5px solid #433128;
-		border-bottom: 10px solid #5e4030;
-		box-shadow: inset 0 0 0 2px #8a6042;
+		/* Bronze window frames with a brass inner bead and a brass sill. */
+		border: 5px solid #2b2418;
+		border-bottom: 10px solid #8a6c34;
+		box-shadow: inset 0 0 0 2px #b08d4a, inset 0 0 0 3px #1a140c;
 		z-index: 2;
 	}
 	.glass-glare {
@@ -2699,7 +2708,7 @@
 		max-height: 268px;
 		overflow: hidden;
 		background: #11130f;
-		border: 5px solid #79603f;
+		border: 5px solid #8a6c34;
 		box-shadow:
 			inset 0 0 16px #000,
 			4px 5px 0 rgba(15, 5, 2, 0.5);
@@ -2989,18 +2998,29 @@
 		min-height: 580px;
 		padding: 12px 14px 64px;
 		box-sizing: border-box;
-		background: linear-gradient(170deg, #4a3226 0 3%, #34231c 12% 100%);
+		/* Polished forest-green marble HQ floor with a brass inlay strip where it meets the wall -
+		   it picks up the banker's lamps, the PHF mug, and the brass trim on the desk props. */
+		background:
+			linear-gradient(180deg, #2a221a 0 6px, #b08d4a 6px 8px, transparent 8px),
+			linear-gradient(180deg, #1f3129 0%, #19281f 55%, #121d17 100%);
+		box-shadow: inset 0 10px 18px rgba(0, 0, 0, 0.45);
 		overflow: visible;
 	}
 	.office-floor:before {
 		content: '';
 		position: absolute;
-		inset: 0;
+		inset: 8px 0 0;
+		/* 48px tiles with dark grout, pale marble veining, and a soft overhead sheen. */
 		background:
-			repeating-linear-gradient(90deg, rgba(227, 147, 74, 0.05) 0 2px, transparent 2px 35px),
-			repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 35px);
+			radial-gradient(ellipse 70% 40% at 50% 8%, rgba(150, 200, 170, 0.12), transparent 70%),
+			repeating-linear-gradient(118deg, transparent 0 37px, rgba(190, 220, 200, 0.07) 37px 38px, transparent 38px 91px),
+			repeating-linear-gradient(64deg, transparent 0 53px, rgba(190, 220, 200, 0.05) 53px 54px, transparent 54px 127px),
+			repeating-linear-gradient(90deg, rgba(5, 12, 8, 0.55) 0 1px, transparent 1px 48px),
+			repeating-linear-gradient(0deg, rgba(5, 12, 8, 0.55) 0 1px, transparent 1px 48px),
+			repeating-conic-gradient(rgba(255, 255, 255, 0.035) 0 25%, rgba(0, 0, 0, 0.08) 0 50%) 0 0 / 96px 96px;
 		transform: perspective(480px) rotateX(7deg);
 		transform-origin: top;
+		pointer-events: none;
 	}
 
 	.office-flag {
@@ -3072,7 +3092,7 @@
 	.floor-light {
 		position: absolute;
 		inset: 0;
-		background: radial-gradient(ellipse at 50% 0, rgba(235, 133, 63, 0.22), transparent 60%);
+		background: radial-gradient(ellipse at 50% 0, rgba(235, 190, 110, 0.16), transparent 60%);
 		pointer-events: none;
 	}
 	.back-staff {
@@ -3087,8 +3107,8 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		border: 2px solid rgba(114, 74, 47, 0.75);
-		background: rgba(31, 20, 16, 0.36);
+		border: 2px solid rgba(176, 141, 74, 0.45);
+		background: rgba(4, 10, 7, 0.3);
 		/* Sit on the carpet - no divider ...perch" line under feet */
 		overflow: visible;
 	}
@@ -3150,8 +3170,8 @@
 		position: relative;
 		min-width: 0;
 		padding: 18px 6px 18px;
-		border: 2px solid rgba(114, 74, 47, 0.75);
-		background: rgba(31, 20, 16, 0.36);
+		border: 2px solid rgba(176, 141, 74, 0.45);
+		background: rgba(4, 10, 7, 0.3);
 		transition: box-shadow 0.4s;
 		overflow: visible;
 		box-sizing: border-box;
@@ -3207,7 +3227,7 @@
 		flex-direction: column;
 		align-items: center;
 		padding-top: 33px;
-		color: #9b7657;
+		color: #b8a070;
 		font-size: 6px;
 		text-align: center;
 		letter-spacing: 0.13em;
@@ -3217,7 +3237,7 @@
 		width: 3px;
 		height: 34px;
 		margin: 5px 0;
-		background: repeating-linear-gradient(#b38961 0 6px, transparent 6px 12px);
+		background: repeating-linear-gradient(#b08d4a 0 6px, transparent 6px 12px);
 	}
 	/* Draggable lounge sofa - was static scenery, now a lounge-decor-piece like the table/plant. */
 	/* Oxblood leather chesterfield: rolled arms, tufted cushions with brass rivets, short wood legs. */
@@ -4537,11 +4557,11 @@
 		}
 		.left-wall {
 			border-right: 0;
-			border-bottom: 4px solid #24140e;
+			border-bottom: 4px solid #8a6c34;
 		}
 		.right-wall {
 			border-left: 0;
-			border-top: 4px solid #24140e;
+			border-top: 4px solid #8a6c34;
 			min-height: 160px;
 		}
 		.window-wall {
