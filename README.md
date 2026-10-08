@@ -83,6 +83,10 @@ The full symbol list lives in `SYMBOLS` in `src/lib/data/symbols.ts`; unlisted `
 
 Production is always live-only: Bybit is tried first, BloFin is the permitted public-data fallback, and unavailable exchange data returns an empty or `503` response. Local `npm run dev` keeps the labeled SAMPLE fallback for offline work; set `PHF_LIVE_ONLY=true` locally when you want to test the live-only behavior.
 
+The floor waits for each market poll to finish before waiting ten seconds for the next poll. Failed polls back off for 20, 40, 80, then 120 seconds; a successful poll restores the normal interval. Requests time out after 20 seconds, pair changes cancel stale requests, and leaving the floor cancels pending requests and timers. Tape requests also avoid overlap and back off after errors. The error note names the failed PHF endpoint and its HTTP status; existing simulated trader legs survive transient failures.
+
+To verify polling with mocked APIs, start a local preview after `npm run build`, then run `node scripts/market-poll-test.mjs`. `TEST_URL` defaults to `http://127.0.0.1:5173/floor`; set `TEST_BROWSER` to your Chromium browser executable if it is not installed at the default Windows Chrome path. The test covers failures, backoff, recovery, slow requests, pair cancellation, timeouts, tape rate limits, and live/SAMPLE labels without calling exchange APIs.
+
 ### Real WSJ wire headlines
 
 The WSJ desk prop requests real, multi-outlet crypto headlines through Google News RSS at `GET /api/news?symbol=BTCUSDT`. The active symbol's configured news phrase is searched, each story keeps its publisher and link, and successful results are cached for five minutes. The visible `SAMPLE` stories remain the final fallback when the live feed is unavailable.

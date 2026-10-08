@@ -90,6 +90,11 @@
 	let lastDecisionCandle = 0;
 	let marketRequest = 0;
 	let tapeRequest = 0;
+	let tapeController: AbortController | null = null;
+	let tapePending = false;
+	let tapeFailures = 0;
+	let tapeRetryAt = 0;
+	let tapeError = $state<string | null>(null);
 	let err = $state<string | null>(null);
 	let animTick = $state(0);
 	let totalSimMinutes = $state(0);
@@ -810,7 +815,7 @@
 				: leg
 		);
 		saveLeverageOverrides(next);
-		pollMarket();
+		void pollMarket();
 		pollNews();
 		pollDeskPositions();
 	}
@@ -1258,7 +1263,12 @@
 	}
 
 	function setWireMarket(market: 'futures' | 'spot') {
+		if (market === wireMarket) return;
 		wireMarket = market;
+		tapePending = true;
+		tapeFailures = 0;
+		tapeRetryAt = 0;
+		tapeController?.abort();
 		try {
 			localStorage.setItem(WIRE_MARKET_KEY, market);
 		} catch {
@@ -1283,17 +1293,31 @@
 	}
 
 	async function pollTape(market = wireMarket) {
+		if (marketDisposed || tapeController || Date.now() < tapeRetryAt) return;
+		tapePending = false;
+		const controller = new AbortController();
+		tapeController = controller;
+		const timeout = setTimeout(() => controller.abort(new Error('Request timed out after 20 seconds')), 20_000);
 		const request = ++tapeRequest;
 		try {
-			const res = await fetch(`/api/market/tape?market=${market}`);
-			if (!res.ok) throw new Error('Market Wire unavailable');
+			const res = await marketFetch(`/api/market/tape?market=${market}`, controller.signal);
 			const tape = (await res.json()) as { market?: 'futures' | 'spot'; quotes?: QuoteResponse[] };
-			if (request !== tapeRequest || market !== wireMarket) return;
+			if (marketDisposed || tapePending || request !== tapeRequest || market !== wireMarket) return;
 			tapeQuotes = tape.quotes ?? [];
+			tapeFailures = 0;
+			tapeRetryAt = 0;
+			tapeError = null;
 		} catch (e) {
-			if (request !== tapeRequest || market !== wireMarket) return;
+			if (marketDisposed || tapePending || request !== tapeRequest || market !== wireMarket) return;
 			tapeQuotes = [];
-			err = e instanceof Error ? e.message : 'Market Wire unavailable';
+			tapeFailures++;
+			tapeRetryAt = Date.now() + Math.min(120_000, 10_000 * 2 ** Math.min(tapeFailures, 4));
+			tapeError = e instanceof Error ? e.message : 'Market Wire unavailable';
+		} finally {
+			clearTimeout(timeout);
+			controller.abort();
+			tapeController = null;
+			if (!marketDisposed && (tapePending || market !== wireMarket)) void pollTape();
 		}
 	}
 
@@ -1419,7 +1443,7 @@
 		newsHeadlines = sampleDeskHeadlines(def.label);
 		newsSample = true;
 		persistSymbol(def.display);
-		pollMarket();
+		refreshMarket();
 		pollNews();
 		pollDeskPositions();
 	}
@@ -1429,22 +1453,52 @@
 		selectWireTicker(v);
 	}
 
+	const MARKET_POLL_MS = 10_000;
+	let marketTimer: ReturnType<typeof setTimeout> | null = null;
+	let marketController: AbortController | null = null;
+	let marketFailures = 0;
+	let marketPending = false;
+	let marketDisposed = false;
+
+	async function marketFetch(path: string, abortSignal: AbortSignal): Promise<Response> {
+		try {
+			const res = await fetch(path, { signal: abortSignal });
+			if (!res.ok) throw new Error(`HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`);
+			return res;
+		} catch (e) {
+			throw new Error(`${path.split('?')[0]}: ${e instanceof Error ? e.message : 'Request failed'}`);
+		}
+	}
+
+	function refreshMarket() {
+		marketFailures = 0;
+		marketPending = true;
+		marketController?.abort();
+		void pollMarket();
+	}
+
 	async function pollMarket() {
+		if (marketDisposed || marketController) return;
+		if (marketTimer) clearTimeout(marketTimer);
+		marketTimer = null;
+		marketPending = false;
+		const controller = new AbortController();
+		marketController = controller;
+		const timeout = setTimeout(() => controller.abort(new Error('Request timed out after 20 seconds')), 20_000);
 		const request = ++marketRequest;
 		const sym = activeDisplay;
 		void pollTape();
 		try {
 			const [qRes, sRes, cRes] = await Promise.all([
-				fetch(`/api/market/quote?symbol=${encodeURIComponent(sym)}`),
-				fetch(`/api/market/signal?symbol=${encodeURIComponent(sym)}`),
-				fetch(`/api/market/candles?symbol=${encodeURIComponent(sym)}&tf=15m&limit=80`)
+				marketFetch(`/api/market/quote?symbol=${encodeURIComponent(sym)}`, controller.signal),
+				marketFetch(`/api/market/signal?symbol=${encodeURIComponent(sym)}`, controller.signal),
+				marketFetch(`/api/market/candles?symbol=${encodeURIComponent(sym)}&tf=15m&limit=80`, controller.signal)
 			]);
-			if (!qRes.ok || !sRes.ok || !cRes.ok) throw new Error('Live Bybit or BloFin data unavailable');
 			const [q, s, candles] = await Promise.all([
 				qRes.json() as Promise<QuoteResponse>, sRes.json() as Promise<SignalResponse>, cRes.json() as Promise<CandlesResponse>
 			]);
 			// Ignore stale responses if user switched mid-flight
-			if (request !== marketRequest || sym !== activeDisplay) return;
+			if (marketDisposed || marketPending || request !== marketRequest || sym !== activeDisplay) return;
 			quote = q;
 			signal = s;
 			bars = candles.bars;
@@ -1469,9 +1523,10 @@
 			if (decisionPoint) lastDecisionCandle = decisionCandle;
 			applyBookResult(result, now);
 			wallNow = now;
+			marketFailures = 0;
 			err = null;
 		} catch (e) {
-			if (request !== marketRequest || sym !== activeDisplay) return;
+			if (marketDisposed || marketPending || request !== marketRequest || sym !== activeDisplay) return;
 			quote = null;
 			signal = null;
 			bars = [];
@@ -1479,11 +1534,20 @@
 			// Keep the last known cast legs through a transient tape failure. A
 			// missing poll is not a closed-candle invalidation and should not
 			// turn open traders into thinking or watching traders.
-			err = e instanceof Error ? e.message : 'Market poll failed';
+			marketFailures++;
+			const retrySeconds = Math.min(120, 10 * 2 ** Math.min(marketFailures, 4));
+			err = `${e instanceof Error ? e.message : 'Market poll failed'}; retrying in ${retrySeconds}s`;
 		} finally {
+			clearTimeout(timeout);
+			controller.abort();
+			marketController = null;
+			if (!marketDisposed) {
+				if (marketPending || sym !== activeDisplay) void pollMarket();
+				else marketTimer = setTimeout(() => { void pollMarket(); }, Math.min(120_000, MARKET_POLL_MS * 2 ** Math.min(marketFailures, 4)));
+			}
 			// The first poll to resolve (success or failure) is what settles the layout above
 			// the foreground desk; let the desk-prop placement debounce know it can start.
-			if (!firstMarketPollDone) {
+			if (!marketDisposed && !firstMarketPollDone) {
 				firstMarketPollDone = true;
 				requestAnimationFrame(() => requestAnimationFrame(updateDeskTop));
 			}
@@ -1520,7 +1584,7 @@
 
 		let raf = 0;
 		let last = performance.now();
-		let pollAcc = 0;
+		marketDisposed = false;
 		leverageOverrides = loadLeverageOverrides();
 		blofinAssignments = loadBloFinAssignments();
 		pricePadSaved = loadScenePosition(PRICE_PAD_KEY);
@@ -1567,11 +1631,6 @@
 			if (animPulse) lastUfoPulse = pulse;
 			ufo = tickUfo(ufo, clock.phase, totalSimMinutes, animPulse);
 			mariachi = tickMariachi(mariachi, clock.phase, totalSimMinutes, animPulse);
-			pollAcc += dt;
-			if (pollAcc >= 10) {
-				pollAcc = 0;
-				pollMarket();
-			}
 			animTick = Math.floor(now / 2800);
 			raf = requestAnimationFrame(loop);
 		};
@@ -1582,6 +1641,10 @@
 		void pollDeskPositions();
 		const posPollTimer = setInterval(() => { void pollDeskPositions(); }, 18_000);
 		return () => {
+			marketDisposed = true;
+			if (marketTimer) clearTimeout(marketTimer);
+			marketController?.abort();
+			tapeController?.abort();
 			cancelAnimationFrame(raf);
 			marketRequest++;
 			tapeRequest++;
@@ -2536,7 +2599,7 @@
 
 <ToastStack />
 
-{#if err}<div class="error-note">TAPE WIRE: {err}</div>{/if}
+{#if err || tapeError}<div class="error-note">TAPE WIRE: {err ?? tapeError}</div>{/if}
 
 <style>
 	:global(:root) {
